@@ -2645,6 +2645,23 @@ const HOLIDAYS = {
         return [center || '국제', date, court, time].join('_');
     }
 
+    // slot_locks 는 Firestore 규칙 미반영 시 권한 오류를 일으킬 수 있어 기본 비활성화
+    const slotLocksEnabled = false;
+
+    function safeSetInputValue(id, value) {
+        const el = document.getElementById(id);
+        if (el) el.value = value;
+    }
+
+    function safeSetChecked(id, value) {
+        const el = document.getElementById(id);
+        if (el) el.checked = !!value;
+    }
+
+    function updateNotificationButton() {
+        // 구버전 호출 호환용 no-op
+    }
+
     async function hasRecurringConflict(center, date, court, time) {
         const dayNum = new Date(date).getDay();
         const snap = await db.collection('recurring')
@@ -2680,8 +2697,6 @@ const HOLIDAYS = {
         docs.forEach(doc => {
             if (!doc.exists) return;
             const d = doc.data();
-            const lockRef = db.collection('slot_locks').doc(buildSlotLockId(d.center || currentCenter, d.date, d.court, d.time));
-            batch.delete(lockRef);
             count++;
             if (count % 400 === 0) {
                 commits.push(batch.commit());
@@ -2707,7 +2722,6 @@ const HOLIDAYS = {
             if (!doc.exists) return;
             const d = doc.data();
             batch.delete(doc.ref);
-            batch.delete(db.collection('slot_locks').doc(buildSlotLockId(d.center || currentCenter, d.date, d.court, d.time)));
             count++;
             if (count % 180 === 0) {
                 commits.push(batch.commit());
@@ -4627,6 +4641,7 @@ async function saveBook(uid) {
     let timeStr = slots.map(s => `${s.t}시`).join(', ');
 
     try {
+        // 저장 직전 재검사: 같은 날짜/코트/시간에 이미 예약이 생겼는지 확인
         for (const slot of slots) {
             const recurConflict = await hasRecurringConflict(currentCenter, date, slot.c, slot.t);
             if (recurConflict) {
@@ -4634,49 +4649,37 @@ async function saveBook(uid) {
                 loadDB();
                 return;
             }
+
+            const existing = await db.collection('reservations')
+                .where('center', '==', currentCenter)
+                .where('date', '==', date)
+                .where('court', '==', slot.c)
+                .where('time', '==', slot.t)
+                .where('status', 'in', ['PENDING','BOOKED','BLOCKED'])
+                .get();
+            if (!existing.empty) {
+                alert(`${slot.c}코트 ${slot.t}:00 자리가 방금 다른 예약으로 선점되었습니다.`);
+                loadDB();
+                return;
+            }
         }
 
-        await db.runTransaction(async (tx) => {
-            const lockRefs = slots.map(slot => db.collection('slot_locks').doc(buildSlotLockId(currentCenter, date, slot.c, slot.t)));
-            const lockDocs = await Promise.all(lockRefs.map(ref => tx.get(ref)));
-
-            for (let i = 0; i < lockDocs.length; i++) {
-                if (lockDocs[i].exists) {
-                    const slot = slots[i];
-                    throw new Error(`${slot.c}코트 ${slot.t}:00 자리가 방금 다른 예약으로 선점되었습니다.`);
-                }
-            }
-
-            for (let i = 0; i < slots.length; i++) {
-                const slot = slots[i];
-                const resRef = db.collection('reservations').doc();
-                const lockRef = lockRefs[i];
-                const reservationData = {
-                    center: currentCenter,
-                    date,
-                    court: slot.c,
-                    time: slot.t,
-                    name: bkName,
-                    phone: bkPhone,
-                    status: initialStatus,
-                    uid,
-                    at: new Date()
-                };
-
-                tx.set(resRef, reservationData);
-                tx.set(lockRef, {
-                    reservationId: resRef.id,
-                    center: currentCenter,
-                    date,
-                    court: slot.c,
-                    time: slot.t,
-                    status: initialStatus,
-                    name: bkName,
-                    phone: bkPhone,
-                    createdAt: new Date()
-                });
-            }
+        const batch = db.batch();
+        slots.forEach(slot => {
+            const resRef = db.collection('reservations').doc();
+            batch.set(resRef, {
+                center: currentCenter,
+                date,
+                court: slot.c,
+                time: slot.t,
+                name: bkName,
+                phone: bkPhone,
+                status: initialStatus,
+                uid,
+                at: new Date()
+            });
         });
+        await batch.commit();
 
         showSuccessAnimation();
         setTimeout(() => {
@@ -6709,48 +6712,34 @@ function loadPendingMembers() {
             const d = doc.data();
             if(d.prices) { prices=[]; for(let i=0; i<4; i++) prices.push([d.prices[i*2], d.prices[i*2+1]]); }
             if(d.adminPhone) admPh = d.adminPhone;
-            if(d.bankName) { bankName = d.bankName; bankAccount = d.bankAccount; document.getElementById('dispBank').innerText = bankName; document.getElementById('dispAcc').innerText = bankAccount; }
+            if(d.bankName) {
+                bankName = d.bankName; bankAccount = d.bankAccount;
+                const bankEl = document.getElementById('dispBank');
+                const accEl = document.getElementById('dispAcc');
+                if (bankEl) bankEl.innerText = bankName;
+                if (accEl) accEl.innerText = bankAccount;
+            }
             if(d.adminPass) adminPass = d.adminPass;
-            
-            // [수정] 카드결제 버튼 노출 제어
-            useCardPay = d.useCardPay === true; // 기본값 false
-            document.getElementById('setUseCard').checked = useCardPay;
-            isCenterOpen = d.isCenterOpen === true; 
-            document.getElementById('setOpenCenter').checked = isCenterOpen;
-            
-            // ▼▼▼ [신규] 요금 설정 불러오기 ▼▼▼
-            if (d.dayStartHour !== undefined) {
-                document.getElementById('settingDayStart').value = d.dayStartHour;
-                window.dayStartHour = d.dayStartHour;
-            } else {
-                window.dayStartHour = 7; // 기본값
-            }
-            
-            if (d.nightStartHour !== undefined) {
-                document.getElementById('settingNightStart').value = d.nightStartHour;
-                window.nightStartHour = d.nightStartHour;
-            } else {
-                window.nightStartHour = 19; // 기본값
-            }
-            
-            if (d.dayPrice !== undefined) {
-                document.getElementById('settingDayPrice').value = d.dayPrice;
-                window.dayPrice = d.dayPrice;
-            } else {
-                window.dayPrice = 5000; // 기본값
-            }
-            
-            if (d.nightPrice !== undefined) {
-                document.getElementById('settingNightPrice').value = d.nightPrice;
-                window.nightPrice = d.nightPrice;
-            } else {
-                window.nightPrice = 10000; // 기본값
-            }
-            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
-            
-            // 설정을 불러온 후 UI 즉시 업데이트
+
+            useCardPay = d.useCardPay === true;
+            safeSetChecked('setUseCard', useCardPay);
+            isCenterOpen = d.isCenterOpen === true;
+            safeSetChecked('setOpenCenter', isCenterOpen);
+
+            // 구버전 UI에 없는 입력창은 값이 있을 때도 무시하고 오류를 내지 않음
+            if (d.dayStartHour !== undefined) { window.dayStartHour = d.dayStartHour; safeSetInputValue('settingDayStart', d.dayStartHour); }
+            else window.dayStartHour = 7;
+            if (d.nightStartHour !== undefined) { window.nightStartHour = d.nightStartHour; safeSetInputValue('settingNightStart', d.nightStartHour); }
+            else window.nightStartHour = 19;
+            if (d.dayPrice !== undefined) { window.dayPrice = d.dayPrice; safeSetInputValue('settingDayPrice', d.dayPrice); }
+            else window.dayPrice = 5000;
+            if (d.nightPrice !== undefined) { window.nightPrice = d.nightPrice; safeSetInputValue('settingNightPrice', d.nightPrice); }
+            else window.nightPrice = 10000;
+
             updateAdminUI();
         }
+    }).catch(err => {
+        console.error('설정 불러오기 오류:', err);
     });
 }
 
