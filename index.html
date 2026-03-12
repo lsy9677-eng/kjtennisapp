@@ -1648,14 +1648,15 @@ body.dark-mode .cal-toggle-bar {
 </div>
 
 <div id="view-list" class="content-area">
-    <div style="margin: 0 0 10px 0; display:flex; gap:6px; padding:10px;">
-        <button id="btnListAll" class="btn-sm bg-blue" onclick="loadAllRes('all')" style="flex:1;">전체</button>
-        <button id="btnListGen" class="btn-sm bg-gray" onclick="loadAllRes('general')" style="flex:1;">일반</button>
-        <button id="btnListFix" class="btn-sm bg-gray" onclick="loadAllRes('recurring')" style="flex:1;">정기</button>
+    <div style="margin: 0 0 10px 0; display:flex; gap:6px; padding:10px; flex-wrap:wrap;">
+        <button id="btnListAll" class="btn-sm bg-blue" onclick="loadAllRes('all')" style="flex:1; min-width:70px;">전체</button>
+        <button id="btnListGen" class="btn-sm bg-gray" onclick="loadAllRes('general')" style="flex:1; min-width:70px;">일반</button>
+        <button id="btnListPend" class="btn-sm bg-gray" onclick="loadAllRes('pending')" style="flex:1; min-width:70px;">가승인</button>
+        <button id="btnListFix" class="btn-sm bg-gray" onclick="loadAllRes('recurring')" style="flex:1; min-width:70px;">정기</button>
     </div>
 
 <div style="background:#fff; padding:12px; border-radius:8px; border:1px solid #e2e8f0; margin:0 10px 15px;">
-        <div style="font-size:0.85rem; font-weight:bold; color:#64748b; margin-bottom:8px;">📅 기간별 조회 (일반 예약만)</div>
+        <div style="font-size:0.85rem; font-weight:bold; color:#64748b; margin-bottom:8px;">📅 기간별 조회 (일반/정기 조회용)</div>
         
         <div style="display:flex; gap:5px; align-items:center; margin-bottom:15px;">
             <input type="date" id="schStart" style="padding:8px; border:1px solid #cbd5e1; border-radius:6px; flex:1;">
@@ -2519,7 +2520,21 @@ async function doBulkReserve() {
                 if (customPrice !== null) docData.customPrice = customPrice;
 
                 currentBatch.set(ref, docData);
-                
+                currentBatch.set(
+                    db.collection('slot_locks').doc(buildSlotLockId(currentCenter, dateStr, court, t)),
+                    {
+                        reservationId: ref.id,
+                        center: currentCenter,
+                        date: dateStr,
+                        court: court,
+                        time: t,
+                        status: 'BOOKED',
+                        name: label,
+                        phone: admPh,
+                        createdAt: new Date()
+                    }
+                );
+
                 count++;
                 if (count % 400 === 0) {
                     totalBatches.push(currentBatch.commit());
@@ -2625,6 +2640,85 @@ const HOLIDAYS = {
     const db = firebase.firestore();
     const auth = firebase.auth();
     const storage = firebase.storage();
+
+    function buildSlotLockId(center, date, court, time) {
+        return [center || '국제', date, court, time].join('_');
+    }
+
+    async function hasRecurringConflict(center, date, court, time) {
+        const dayNum = new Date(date).getDay();
+        const snap = await db.collection('recurring')
+            .where('center', '==', center)
+            .where('court', '==', court)
+            .where('time', '==', time)
+            .get();
+
+        let conflict = false;
+        snap.forEach(doc => {
+            const d = doc.data();
+            if (conflict) return;
+            if (d.startDate && date < d.startDate) return;
+            if (d.endDate && date > d.endDate) return;
+            if (d.weekDays && !d.weekDays.includes(dayNum)) return;
+            if (d.excludeHoliday === true && HOLIDAYS[date]) return;
+            if (d.exceptionDates && d.exceptionDates.includes(date)) return;
+            conflict = true;
+        });
+        return conflict;
+    }
+
+    async function releaseReservationLocksByIds(reservationIds) {
+        if (!reservationIds || reservationIds.length === 0) return;
+        const uniqueIds = [...new Set(reservationIds.filter(Boolean))];
+        if (uniqueIds.length === 0) return;
+
+        const docs = await Promise.all(uniqueIds.map(id => db.collection('reservations').doc(id).get()));
+        let batch = db.batch();
+        let count = 0;
+        const commits = [];
+
+        docs.forEach(doc => {
+            if (!doc.exists) return;
+            const d = doc.data();
+            const lockRef = db.collection('slot_locks').doc(buildSlotLockId(d.center || currentCenter, d.date, d.court, d.time));
+            batch.delete(lockRef);
+            count++;
+            if (count % 400 === 0) {
+                commits.push(batch.commit());
+                batch = db.batch();
+            }
+        });
+
+        if (count % 400 !== 0) commits.push(batch.commit());
+        if (commits.length) await Promise.all(commits);
+    }
+
+    async function deleteReservationsWithLocksByIds(reservationIds) {
+        if (!reservationIds || reservationIds.length === 0) return 0;
+        const uniqueIds = [...new Set(reservationIds.filter(Boolean))];
+        if (uniqueIds.length === 0) return 0;
+
+        const docs = await Promise.all(uniqueIds.map(id => db.collection('reservations').doc(id).get()));
+        let batch = db.batch();
+        let count = 0;
+        const commits = [];
+
+        docs.forEach(doc => {
+            if (!doc.exists) return;
+            const d = doc.data();
+            batch.delete(doc.ref);
+            batch.delete(db.collection('slot_locks').doc(buildSlotLockId(d.center || currentCenter, d.date, d.court, d.time)));
+            count++;
+            if (count % 180 === 0) {
+                commits.push(batch.commit());
+                batch = db.batch();
+            }
+        });
+
+        if (count % 180 !== 0) commits.push(batch.commit());
+        if (commits.length) await Promise.all(commits);
+        return count;
+    }
 
     let isAdmin = false;
     let currentUser = null; 
@@ -2828,28 +2922,15 @@ async function doRangeDelete() {
     const startStr = document.getElementById('rangeDelStart').value;
     const endStr = document.getElementById('rangeDelEnd').value;
 
-    if(!startStr || !endStr) return alert("날짜를 선택해주세요.");
-    if(!confirm("해당 기간의 모든 예약을 삭제하시겠습니까?")) return;
+    if(!startStr || !endStr) return alert('날짜를 선택해주세요.');
+    if(!confirm('해당 기간의 모든 예약을 삭제하시겠습니까?')) return;
 
-    const snap = await db.collection("reservations").where("date", ">=", startStr).where("date", "<=", endStr).get();
-    if(snap.empty) return alert("삭제할 예약이 없습니다.");
+    const snap = await db.collection('reservations').where('date', '>=', startStr).where('date', '<=', endStr).get();
+    if(snap.empty) return alert('삭제할 예약이 없습니다.');
 
-    let currentBatch = db.batch();
-    let count = 0;
-    const totalBatches = [];
-
-    snap.forEach(doc => {
-        currentBatch.delete(doc.ref);
-        count++;
-        if (count % 400 === 0) {
-            totalBatches.push(currentBatch.commit());
-            currentBatch = db.batch();
-        }
-    });
-
-    totalBatches.push(currentBatch.commit());
-    await Promise.all(totalBatches);
-    alert(`${count}건 삭제 완료!`);
+    const ids = snap.docs.map(doc => doc.id);
+    const deletedCount = await deleteReservationsWithLocksByIds(ids);
+    alert(`${deletedCount}건 삭제 완료!`);
     closeModal('modalSet');
     loadDB();
 }
@@ -4529,62 +4610,94 @@ const isRed = (new Date(date).getDay() % 6 == 0 || HOLIDAYS[date]);
     }
 
 /* [수정] 예약 저장 함수 (화면 입력값 우선 사용) */
-function saveBook(uid) {
-    const batch = db.batch();
+async function saveBook(uid) {
     const date = document.getElementById('hiddenDate').value;
-    
-    // ▼▼▼ [핵심 수정] 관리자는 화면에 입력된 값(value)을 가져오도록 변경 ▼▼▼
-    const bkName = isAdmin ? (document.getElementById('bkName').value || "관리자") : currentUser.name;
+    const bkName = isAdmin ? (document.getElementById('bkName').value || '관리자') : currentUser.name;
     const bkPhone = isAdmin ? document.getElementById('bkPhone').value : currentUser.phone;
-    // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
-    
+
     if(!bkPhone) {
-        alert("전화번호가 입력되지 않았습니다.");
+        alert('전화번호가 입력되지 않았습니다.');
         return;
     }
 
-    // 일반 회원은 PENDING(가예약), 관리자는 바로 BOOKED(확정)
-    const initialStatus = isAdmin ? "BOOKED" : "PENDING";
-    
-    // 문자 발송용 정보
-    const payMethod = (uid === "TRANSFER") ? "계좌이체" : (uid === "ADMIN" ? "관리자등록" : "카드결제");
+    const initialStatus = isAdmin ? 'BOOKED' : 'PENDING';
+    const payMethod = (uid === 'TRANSFER') ? '계좌이체' : (uid === 'ADMIN' ? '관리자등록' : '카드결제');
     const amt = document.getElementById('txtPrice').innerText;
-    let timeStr = ""; 
-    
-    selected.forEach(s => {
-        const ref = db.collection("reservations").doc();
-        batch.set(ref, {
-            center: currentCenter,
-            date, court:s.c, time:s.t, 
-            name:bkName, phone:bkPhone, // 수정된 전화번호가 저장됨
-            status: initialStatus,
-            uid, at:new Date()
-        });
-        timeStr += `${s.t}시, `; 
-    });
-    
-    if(timeStr.length > 2) timeStr = timeStr.substring(0, timeStr.length-2);
+    const slots = [...selected].map(s => ({ ...s })).sort((a,b) => (a.c - b.c) || (a.t - b.t));
+    let timeStr = slots.map(s => `${s.t}시`).join(', ');
 
-    batch.commit().then(() => { 
-        // ▼▼▼ [추가] 축하 애니메이션 ▼▼▼
+    try {
+        for (const slot of slots) {
+            const recurConflict = await hasRecurringConflict(currentCenter, date, slot.c, slot.t);
+            if (recurConflict) {
+                alert(`${slot.c}코트 ${slot.t}시는 정기 예약과 겹쳐 예약할 수 없습니다.`);
+                loadDB();
+                return;
+            }
+        }
+
+        await db.runTransaction(async (tx) => {
+            const lockRefs = slots.map(slot => db.collection('slot_locks').doc(buildSlotLockId(currentCenter, date, slot.c, slot.t)));
+            const lockDocs = await Promise.all(lockRefs.map(ref => tx.get(ref)));
+
+            for (let i = 0; i < lockDocs.length; i++) {
+                if (lockDocs[i].exists) {
+                    const slot = slots[i];
+                    throw new Error(`${slot.c}코트 ${slot.t}:00 자리가 방금 다른 예약으로 선점되었습니다.`);
+                }
+            }
+
+            for (let i = 0; i < slots.length; i++) {
+                const slot = slots[i];
+                const resRef = db.collection('reservations').doc();
+                const lockRef = lockRefs[i];
+                const reservationData = {
+                    center: currentCenter,
+                    date,
+                    court: slot.c,
+                    time: slot.t,
+                    name: bkName,
+                    phone: bkPhone,
+                    status: initialStatus,
+                    uid,
+                    at: new Date()
+                };
+
+                tx.set(resRef, reservationData);
+                tx.set(lockRef, {
+                    reservationId: resRef.id,
+                    center: currentCenter,
+                    date,
+                    court: slot.c,
+                    time: slot.t,
+                    status: initialStatus,
+                    name: bkName,
+                    phone: bkPhone,
+                    createdAt: new Date()
+                });
+            }
+        });
+
         showSuccessAnimation();
-        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
-        
         setTimeout(() => {
-            alert(isAdmin ? "예약이 완료되었습니다." : "가예약 신청되었습니다. 입금 확인 후 최종 승인됩니다.");
+            alert(isAdmin ? '예약이 완료되었습니다.' : '가예약 신청되었습니다. 입금 확인 후 최종 승인됩니다.');
         }, 800);
-        
-        closeModal('modalBook'); 
+
+        closeModal('modalBook');
         loadDB();
 
         if(!isAdmin) {
             setTimeout(() => {
-                if(confirm("가예약이 완료되었습니다.\n관리자에게 예약 내역 승인문자를 보내시겠습니까?")) {
+                if(confirm('가예약이 완료되었습니다.\n관리자에게 예약 내역 승인문자를 보내시겠습니까?')) {
                     sendSmsToAdmin(bkName, bkPhone, date, timeStr, payMethod, amt);
                 }
             }, 1000);
         }
-    });
+    } catch(err) {
+        console.error(err);
+        alert(err.message || ('예약 실패: ' + err.message));
+        loadDB();
+    }
 }
     // [추가] 문자 발송 헬퍼 함수
     function sendSmsToAdmin(name, phone, date, times, method, amount) {
@@ -5165,11 +5278,23 @@ async function doBlock(isRecur) {
             batch.set(db.collection("recurring").doc(), docData);
         } else {
             // 일반 1회성 예약
-            batch.set(db.collection("reservations").doc(), { 
+            const ref = db.collection('reservations').doc();
+            batch.set(ref, { 
                 center: currentCenter, 
                 date: date, court: s.c, time: s.t, 
                 name: inputName, phone: inputPhone, 
-                status: "BOOKED", uid: "ADMIN", at: new Date() 
+                status: 'BOOKED', uid: 'ADMIN', at: new Date() 
+            });
+            batch.set(db.collection('slot_locks').doc(buildSlotLockId(currentCenter, date, s.c, s.t)), {
+                reservationId: ref.id,
+                center: currentCenter,
+                date,
+                court: s.c,
+                time: s.t,
+                status: 'BOOKED',
+                name: inputName,
+                phone: inputPhone,
+                createdAt: new Date()
             });
         }
     });
@@ -5197,17 +5322,28 @@ function doBlockSlot() {
     const reason = "⛔ 예약불가"; 
 
     selected.forEach(s => {
-        const ref = db.collection("reservations").doc();
+        const ref = db.collection('reservations').doc();
         batch.set(ref, {
             center: currentCenter,
             date: date, 
             court: s.c, 
             time: s.t,
-            name: reason,       // 화면에 표시될 이름
-            phone: "ADMIN",     // 관리자 표식
-            status: "BLOCKED",  // [중요] 상태를 'BLOCKED'로 저장
-            uid: "ADMIN_BLOCK", 
+            name: reason,
+            phone: 'ADMIN',
+            status: 'BLOCKED',
+            uid: 'ADMIN_BLOCK', 
             at: new Date()
+        });
+        batch.set(db.collection('slot_locks').doc(buildSlotLockId(currentCenter, date, s.c, s.t)), {
+            reservationId: ref.id,
+            center: currentCenter,
+            date,
+            court: s.c,
+            time: s.t,
+            status: 'BLOCKED',
+            name: reason,
+            phone: 'ADMIN',
+            createdAt: new Date()
         });
     });
 
@@ -6140,8 +6276,8 @@ async function processAdminCancel(mode) {
                 alert("선택하신 시간만 제외되었습니다.");
             } else {
                 if(!confirm(`[일반 예약 1건 취소]\n\n시간: ${target.time}시\n\n이 예약만 취소하시겠습니까?`)) return;
-                await docRef.delete();
-                alert("취소되었습니다.");
+                await deleteReservationsWithLocksByIds([target.id]);
+                alert('취소되었습니다.');
             }
         } 
         
@@ -6217,10 +6353,9 @@ async function processAdminCancel(mode) {
 
                 if(!confirm(msg)) return;
 
-                const batch = db.batch();
-                snap.forEach(doc => batch.delete(doc.ref));
-                await batch.commit();
-                alert("일괄 취소되었습니다.");
+                const ids = snap.docs.map(doc => doc.id);
+                await deleteReservationsWithLocksByIds(ids);
+                alert('일괄 취소되었습니다.');
             }
         } 
         
@@ -6700,39 +6835,39 @@ async function savePriceSettings() {
    /* [수정] 일괄 삭제 실행 (정기 대관은 날짜만 제외, 일반 예약은 삭제) */
 async function doBatchDelete() {
     if(deleteQueue.length === 0) return;
-    
-    if(!confirm(`선택한 ${deleteQueue.length}건을 처리하시겠습니까?\n\n- 정기 대관: 해당 날짜만 휴강됨\n- 일반 예약: 영구 삭제됨`)) return;
 
-    const batch = db.batch();
-    
-    deleteQueue.forEach(item => {
-        const ref = db.collection(item.coll).doc(item.id);
-        
-        if (item.coll === 'recurring') {
-            // [정기 대관] -> 문서를 지우지 않고 '제외 날짜'에 추가
-            batch.update(ref, {
-                exceptionDates: firebase.firestore.FieldValue.arrayUnion(item.date)
-            });
-        } else {
-            // [일반 예약] -> 문서 삭제
-            batch.delete(ref);
-        }
-    });
+    if(!confirm(`선택한 ${deleteQueue.length}건을 처리하시겠습니까?
+
+- 정기 대관: 해당 날짜만 휴강됨
+- 일반 예약: 영구 삭제됨`)) return;
+
+    const recurringQueue = deleteQueue.filter(item => item.coll === 'recurring');
+    const reservationIds = deleteQueue.filter(item => item.coll !== 'recurring').map(item => item.id);
 
     try {
-        await batch.commit();
-        alert("처리가 완료되었습니다.");
-        
-        // 초기화
+        if (recurringQueue.length) {
+            const batch = db.batch();
+            recurringQueue.forEach(item => {
+                const ref = db.collection(item.coll).doc(item.id);
+                batch.update(ref, {
+                    exceptionDates: firebase.firestore.FieldValue.arrayUnion(item.date)
+                });
+            });
+            await batch.commit();
+        }
+
+        if (reservationIds.length) {
+            await deleteReservationsWithLocksByIds(reservationIds);
+        }
+
+        alert('처리가 완료되었습니다.');
         deleteQueue = [];
         document.getElementById('btnBatchExec').style.display = 'none';
         document.getElementById('chkBatchDel').checked = false;
         isBatchMode = false;
-        
-        loadDB(); // 화면 갱신
-        
+        loadDB();
     } catch(e) {
-        alert("오류 발생: " + e.message);
+        alert('오류 발생: ' + e.message);
     }
 }
 
@@ -6741,6 +6876,49 @@ async function doBatchDelete() {
    [여기서부터 붙여넣기 시작] 
    단체 대관 그룹핑 기능이 포함된 새로운 코드들입니다.
    ============================================================ */
+
+/* [수정] 가승인 경과시간/날짜 포맷 헬퍼 */
+function toJsDateSafe(v) {
+    try {
+        if (!v) return null;
+        if (v instanceof Date) return v;
+        if (v.toDate) return v.toDate();
+        if (typeof v === 'string') return new Date(v);
+        return new Date(v);
+    } catch(e) {
+        return null;
+    }
+}
+function formatDateTimeKR(v) {
+    const d = toJsDateSafe(v);
+    if (!d || isNaN(d.getTime())) return '-';
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    const hh = String(d.getHours()).padStart(2,'0');
+    const mm = String(d.getMinutes()).padStart(2,'0');
+    return `${y}-${m}-${day} ${hh}:${mm}`;
+}
+function formatElapsedKR(v) {
+    const d = toJsDateSafe(v);
+    if (!d || isNaN(d.getTime())) return '-';
+    let diff = Math.max(0, Date.now() - d.getTime());
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return '방금 전';
+    if (mins < 60) return `${mins}분 경과`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}시간 ${mins % 60}분 경과`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days}일 ${hours % 24}시간 경과`;
+    const months = Math.floor(days / 30);
+    return `${months}개월 ${days % 30}일 경과`;
+}
+function recurringMatchesSelectedRange(item, s, e) {
+    const start = item.startDate || (item.details && item.details[0] ? item.details[0].startDate : '');
+    const end = item.endDate || (item.details && item.details[0] ? item.details[0].endDate : '');
+    if (!start || !end) return false;
+    return !(end < s || start > e);
+}
 
 /* [수정] 가승인 건에 '승인하기' 버튼 추가 */
 /* [수정] 예약 목록 렌더링 (수정 버튼 추가됨) */
@@ -6790,7 +6968,8 @@ function renderReservations(snap, listElement, type) {
                     court: d.court, 
                     time: d.time,
                     startDate: d.startDate, // [추가] 시작일
-                    endDate: d.endDate      // [추가] 종료일
+                    endDate: d.endDate,     // [추가] 종료일
+                    at: d.at || d.createdAt || d.pendingAt || null
                 }] 
             };
             renderList.push(groups[key]);
@@ -6802,7 +6981,8 @@ function renderReservations(snap, listElement, type) {
                 court: d.court, 
                 time: d.time,
                 startDate: d.startDate, // [추가]
-                endDate: d.endDate      // [추가]
+                endDate: d.endDate,     // [추가]
+                at: d.at || d.createdAt || d.pendingAt || null
             });
         }
     });
@@ -6863,6 +7043,15 @@ function renderReservations(snap, listElement, type) {
         }
         if(timeTxt.length > 15) timeTxt = timeTxt.substring(0, 15) + "...";
         const totalCount = item.details.length;
+        let pendingMetaHtml = "";
+        if (item.theme === 'pending') {
+            const pendingAt = item.details[0].at || null;
+            pendingMetaHtml = `
+                <div class="res-card-detail" style="margin-top:4px; color:#047857; font-size:0.8rem; display:flex; flex-direction:column; gap:2px;">
+                    <span>🕒 가승인 완료: ${formatDateTimeKR(pendingAt)}</span>
+                    <span>⏱️ 경과시간: ${formatElapsedKR(pendingAt)}</span>
+                </div>`;
+        }
 
         if (item.theme === 'purple') {
             div.style.border = `1px solid ${colors.bar}`;
@@ -6882,7 +7071,8 @@ const detailObj = {
     startDate: (item.collection === 'recurring') ? item.details[0].startDate : "",
     endDate: (item.collection === 'recurring') ? item.details[0].endDate : "",
     time: item.details[0].time,
-    court: item.details[0].court
+    court: item.details[0].court,
+    pendingAt: item.details[0].at || null
 };
         const detailJson = encodeURIComponent(JSON.stringify(detailObj));
         
@@ -6914,6 +7104,7 @@ if (item.theme === 'orange') {
                     <span>📍 ${courtTxt}</span>
                     <span style="border-left:1px solid #cbd5e1; padding-left:8px;">⏰ ${timeTxt}</span>
                 </div>
+                ${pendingMetaHtml}
             </div>
             <div class="res-btns">
                 ${ (item.theme === 'pending') ? 
@@ -7004,13 +7195,8 @@ async function deleteGroupBooking(ids, collectionName) {
     if(!confirm(msg)) return;
     
     const uniqueIds = [...new Set(ids)];
-    const batch = db.batch();
-    uniqueIds.forEach(id => {
-        batch.delete(db.collection(collectionName).doc(id));
-    });
-
-    batch.commit().then(() => {
-        alert("삭제되었습니다.");
+    deleteReservationsWithLocksByIds(uniqueIds).then(() => {
+        alert('삭제되었습니다.');
         // 화면 새로고침
         if(document.getElementById('btnListAll')?.classList.contains('bg-blue')) loadAllRes('all');
         else if(document.getElementById('btnListFix')?.classList.contains('bg-blue')) loadAllRes('recurring');
@@ -7018,7 +7204,7 @@ async function deleteGroupBooking(ids, collectionName) {
         
         if(document.getElementById('view-res')?.classList.contains('active')) loadDB();
 
-    }).catch(err => alert("삭제 실패: " + err.message));
+    }).catch(err => alert('삭제 실패: ' + err.message));
 }
 /* [수정] 부분 취소 모달 열기 (버튼 초기화 포함) */
 function openGroupDetail(jsonStr) {
@@ -7078,28 +7264,33 @@ function openGroupDetail(jsonStr) {
     openModal('modalGroupDetail');
 }
 /** [수정됨] 선택된 항목 부분 삭제 실행 (컬렉션 구분) */
-function doPartialGroupDelete() {
+async function doPartialGroupDelete() {
     const checked = document.querySelectorAll('.chk-part-del:checked');
-    if(checked.length === 0) return alert("삭제할 항목을 선택하세요.");
-    
-    const collectionName = document.getElementById('groupDetailList').dataset.collection || "reservations";
-    
+    if(checked.length === 0) return alert('삭제할 항목을 선택하세요.');
+
+    const collectionName = document.getElementById('groupDetailList').dataset.collection || 'reservations';
+
     if(!confirm(`선택한 ${checked.length}건을 삭제하시겠습니까?`)) return;
 
-    const batch = db.batch();
-    checked.forEach(el => {
-        batch.delete(db.collection(collectionName).doc(el.value));
-    });
+    try {
+        if (collectionName === 'recurring') {
+            const batch = db.batch();
+            checked.forEach(el => batch.delete(db.collection(collectionName).doc(el.value)));
+            await batch.commit();
+        } else {
+            await deleteReservationsWithLocksByIds(Array.from(checked).map(el => el.value));
+        }
 
-    batch.commit().then(() => {
-        alert("선택한 항목이 취소되었습니다.");
+        alert('선택한 항목이 취소되었습니다.');
         closeModal('modalGroupDetail');
-        
-        // 목록 새로고침
+
         if(document.getElementById('btnListAll').classList.contains('bg-blue')) loadAllRes('all');
         else if(document.getElementById('btnListFix').classList.contains('bg-blue')) loadAllRes('recurring');
+        else if(document.getElementById('btnListPend') && document.getElementById('btnListPend').classList.contains('bg-blue')) loadAllRes('pending');
         else loadAllRes('general');
-    }).catch(err => alert("삭제 실패: " + err.message));
+    } catch(err) {
+        alert('삭제 실패: ' + err.message);
+    }
 }/* ▼▼▼ [수정] 인덱스 에러 처리 헬퍼 (클릭 가능한 버튼으로 변경) ▼▼▼ */
 function handleIndexError(err, list) {
     // 에러 메시지에서 링크 주소 추출
@@ -7146,10 +7337,12 @@ function loadAllRes(type, isPageMove = false) {
         // 버튼 스타일 초기화
         document.getElementById('btnListAll').className = 'btn-sm bg-gray';
         document.getElementById('btnListGen').className = 'btn-sm bg-gray';
+        if(document.getElementById('btnListPend')) document.getElementById('btnListPend').className = 'btn-sm bg-gray';
         document.getElementById('btnListFix').className = 'btn-sm bg-gray';
         
         if(type === 'all') document.getElementById('btnListAll').className = 'btn-sm bg-blue';
         else if(type === 'general') document.getElementById('btnListGen').className = 'btn-sm bg-blue';
+        else if(type === 'pending' && document.getElementById('btnListPend')) document.getElementById('btnListPend').className = 'btn-sm bg-blue';
         else if(type === 'recurring') document.getElementById('btnListFix').className = 'btn-sm bg-blue';
         
         // 전체 개수 파악 (페이지 번호 계산용) - 일반 예약일 때만
@@ -7201,17 +7394,50 @@ function loadAllRes(type, isPageMove = false) {
 
         }).catch(err => handleIndexError(err, list));
 
+    } else if (type === 'pending') {
+        const bar = document.querySelector('.pagination-bar');
+        if(bar) bar.style.display = 'none';
+
+        db.collection('reservations')
+          .where('center', '==', currentCenter)
+          .where('date', '>=', todayStr)
+          .orderBy('date', 'asc')
+          .get()
+          .then(snap => {
+              const pendingDocs = snap.docs.filter(doc => (doc.data().status === 'PENDING'));
+              list.innerHTML = `<div style="padding:0 0 10px; font-weight:bold; border-bottom:1px solid #ddd; margin-bottom:10px; color:#059669;">⏳ 가승인 조회 결과 (${pendingDocs.length}건)</div>`;
+              const container = document.createElement('div');
+              list.appendChild(container);
+              renderReservations({ empty: pendingDocs.length === 0, forEach: (cb) => pendingDocs.forEach(cb) }, container, 'general');
+          })
+          .catch(err => handleIndexError(err, list));
+
     } else if (type === 'recurring') {
-        // 정기 예약은 개수가 적으므로 페이지네이션 없이 전체 로드
+        // 정기 예약은 기본적으로 현재 유효한 건만 표시
         const bar = document.querySelector('.pagination-bar');
         if(bar) bar.style.display = 'none'; 
+
+        const s = document.getElementById('schStart') ? document.getElementById('schStart').value : '';
+        const e = document.getElementById('schEnd') ? document.getElementById('schEnd').value : '';
         
         db.collection("recurring")
           .where("center", "==", currentCenter)
           .orderBy("name", "asc").get()
           .then(snap => {
-              list.innerHTML = "";
-              renderReservations(snap, list, 'recurring');
+              let docs = snap.docs;
+              if (s && e) {
+                  docs = docs.filter(doc => {
+                      const d = doc.data() || {};
+                      return !(String(d.endDate || '') < s || String(d.startDate || '') > e);
+                  });
+                  list.innerHTML = `<div style="padding:0 0 10px; font-weight:bold; border-bottom:1px solid #ddd; margin-bottom:10px; color:#ea580c;">🔄 정기 예약 조회 결과 (${docs.length}건) <span style="font-weight:normal; font-size:0.8rem; color:#64748b;">${s} ~ ${e}</span></div>`;
+              } else {
+                  docs = docs.filter(doc => String((doc.data() || {}).endDate || '') >= todayStr);
+                  list.innerHTML = `<div style="padding:0 0 10px; font-weight:bold; border-bottom:1px solid #ddd; margin-bottom:10px; color:#ea580c;">🔄 현재 유효한 정기 예약 (${docs.length}건)</div>`;
+              }
+              const container = document.createElement('div');
+              list.appendChild(container);
+              renderReservations({ empty: docs.length === 0, forEach: (cb) => docs.forEach(cb) }, container, 'recurring');
           });
 
     } else if (type === 'all') {
@@ -7224,14 +7450,26 @@ function loadAllRes(type, isPageMove = false) {
              .where("date", ">=", todayStr).orderBy("date", "asc").limit(50).get(), 
            db.collection("recurring").where("center", "==", currentCenter).get()
         ]).then(([resSnap, recSnap]) => {
+            const s = document.getElementById('schStart') ? document.getElementById('schStart').value : '';
+            const e = document.getElementById('schEnd') ? document.getElementById('schEnd').value : '';
+            let recurringDocs = recSnap.docs;
+            if (s && e) {
+                recurringDocs = recurringDocs.filter(doc => {
+                    const d = doc.data() || {};
+                    return !(String(d.endDate || '') < s || String(d.startDate || '') > e);
+                });
+            } else {
+                recurringDocs = recurringDocs.filter(doc => String((doc.data() || {}).endDate || '') >= todayStr);
+            }
+
             list.innerHTML = "";
             list.innerHTML += `<div style="font-weight:800; margin:10px 0;">📋 일반 예약 (최근 50건)</div>`;
             const divGen = document.createElement('div'); list.appendChild(divGen);
             renderReservations(resSnap, divGen, 'general');
 
-            list.innerHTML += `<div style="font-weight:800; margin:30px 0 10px; border-top:1px solid #eee; padding-top:20px;">🔄 정기 예약</div>`;
+            list.innerHTML += `<div style="font-weight:800; margin:30px 0 10px; border-top:1px solid #eee; padding-top:20px;">🔄 정기 예약 ${s && e ? `<span style="font-size:0.82rem; color:#64748b; font-weight:600;">(${s} ~ ${e})</span>` : `<span style="font-size:0.82rem; color:#64748b; font-weight:600;">(현재 유효한 예약만)</span>`}</div>`;
             const divRec = document.createElement('div'); list.appendChild(divRec);
-            renderReservations(recSnap, divRec, 'recurring');
+            renderReservations({ empty: recurringDocs.length === 0, forEach: (cb) => recurringDocs.forEach(cb) }, divRec, 'recurring');
         });
     }
 }
@@ -7296,6 +7534,7 @@ function loadRangeRes() {
     // 상단 탭 버튼 색 빼기
     document.getElementById('btnListAll').className = 'btn-sm bg-gray';
     document.getElementById('btnListGen').className = 'btn-sm bg-gray';
+    if(document.getElementById('btnListPend')) document.getElementById('btnListPend').className = 'btn-sm bg-gray';
     document.getElementById('btnListFix').className = 'btn-sm bg-gray';
 
     db.collection("reservations")
@@ -7417,32 +7656,37 @@ function updateListBatchBar() {
 async function doListBatchDelete() {
     const checked = document.querySelectorAll('.list-chk:checked');
     if(checked.length === 0) return;
-    
-    if(!confirm(`선택한 ${checked.length}건의 예약을 정말 삭제하시겠습니까?\n(복구할 수 없습니다)`)) return;
 
-    const batch = db.batch();
-    
-    checked.forEach(el => {
-        const docId = el.value;
-        const coll = el.dataset.coll; // reservations 또는 recurring
-        const ref = db.collection(coll).doc(docId);
-        batch.delete(ref);
-    });
+    if(!confirm(`선택한 ${checked.length}건의 예약을 정말 삭제하시겠습니까?
+(복구할 수 없습니다)`)) return;
 
     try {
-        await batch.commit();
-        alert("일괄 삭제되었습니다.");
-        
-        // 삭제 바 숨기기
+        const reservationIds = [];
+        const recurringIds = [];
+        checked.forEach(el => {
+            const coll = el.dataset.coll;
+            if (coll === 'recurring') recurringIds.push(el.value);
+            else reservationIds.push(el.value);
+        });
+
+        if (recurringIds.length) {
+            const batch = db.batch();
+            recurringIds.forEach(id => batch.delete(db.collection('recurring').doc(id)));
+            await batch.commit();
+        }
+        if (reservationIds.length) {
+            await deleteReservationsWithLocksByIds(reservationIds);
+        }
+
+        alert('일괄 삭제되었습니다.');
         document.getElementById('listBatchBar').style.display = 'none';
-        
-        // 목록 새로고침 (현재 보고 있는 탭 기준)
+
         if(document.getElementById('btnListAll').classList.contains('bg-blue')) loadAllRes('all');
         else if(document.getElementById('btnListFix').classList.contains('bg-blue')) loadAllRes('recurring');
+        else if(document.getElementById('btnListPend') && document.getElementById('btnListPend').classList.contains('bg-blue')) loadAllRes('pending');
         else loadAllRes('general');
-        
     } catch(err) {
-        alert("삭제 중 오류 발생: " + err.message);
+        alert('삭제 중 오류 발생: ' + err.message);
     }
 }
 
@@ -8393,6 +8637,7 @@ function loadNameRes() {
     // 상단 탭 버튼 색상 초기화 (검색 결과임을 표시하기 위해)
     document.getElementById('btnListAll').className = 'btn-sm bg-gray';
     document.getElementById('btnListGen').className = 'btn-sm bg-gray';
+    if(document.getElementById('btnListPend')) document.getElementById('btnListPend').className = 'btn-sm bg-gray';
     document.getElementById('btnListFix').className = 'btn-sm bg-gray';
 
     // DB에서 검색 (현재 센터 + 이름 일치 + 최신순 정렬)
@@ -8422,7 +8667,7 @@ async function doApprove(mode) {
     if(mode === 'ONE') {
         if(!confirm("이 시간의 예약만 입금 확인(승인) 하시겠습니까?")) return;
         
-        await db.collection(target.coll).doc(target.id).update({ status: "BOOKED" });
+        await db.collection(target.coll).doc(target.id).update({ status: "BOOKED", approvedAt: new Date() });
         alert("승인되었습니다.");
         finishApprove([target]); // 문자 발송 여부 묻기
         
@@ -8442,7 +8687,7 @@ async function doApprove(mode) {
         const approvedList = [];
         
         snap.forEach(doc => {
-            batch.update(doc.ref, { status: "BOOKED" });
+            batch.update(doc.ref, { status: "BOOKED", approvedAt: new Date() });
             const d = doc.data();
             approvedList.push({ date: d.date, time: d.time });
         });
@@ -8806,8 +9051,8 @@ async function updateRecurFeeByName(name, docIdsStr) {
 function deleteFromStats(id) {
     if(!confirm("정말 이 내역을 삭제하시겠습니까?\n(매출 통계에서도 제외됩니다)")) return;
 
-    db.collection("reservations").doc(id).delete().then(() => {
-        alert("삭제되었습니다.");
+    deleteReservationsWithLocksByIds([id]).then(() => {
+        alert('삭제되었습니다.');
         loadMonthlyStats().then(() => {
             if(document.getElementById('modalStatsDetail').style.display === 'flex') {
                 openStatsDetail('general');
