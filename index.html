@@ -2423,15 +2423,15 @@ body.dark-mode .cal-toggle-bar {
         <!-- 공유 버튼 -->
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
             <button onclick="shareDutchPay('sms')" style="background:#22c55e; color:white; padding:14px; border:none; border-radius:10px; font-weight:bold; cursor:pointer; font-size:0.95rem; box-shadow:0 4px 12px rgba(34,197,94,0.3);">
-                💬 문자 공유
+                📱 문자 공유
             </button>
-            <button onclick="shareDutchPay('kakao')" style="background:#fee500; color:#3c1e1e; padding:14px; border:none; border-radius:10px; font-weight:bold; cursor:pointer; font-size:0.95rem; box-shadow:0 4px 12px rgba(254,229,0,0.3);">
-                💛 카톡 공유
+            <button onclick="shareDutchPay('copy')" style="background:#3b82f6; color:white; padding:14px; border:none; border-radius:10px; font-weight:bold; cursor:pointer; font-size:0.95rem; box-shadow:0 4px 12px rgba(59,130,246,0.3);">
+                📋 텍스트 복사
             </button>
         </div>
         
         <div style="text-align:center; margin-top:12px; font-size:0.75rem; color:#94a3b8;">
-            친구들에게 정산 내용을 공유해보세요!
+            📱 문자 공유: 문자앱이 바로 열립니다 &nbsp;|&nbsp; 📋 복사 후 카카오·문자에 붙여넣기
         </div>
     </div>
 </div>
@@ -4418,9 +4418,11 @@ function validateSelection() {
 function loadDB() {
     const date = document.getElementById('hiddenDate').value;
     
-    // 1. 그리드 초기화
+    // 1. 그리드 초기화 (인라인 스타일도 제거 - 날짜 변경 시 노란색 잔상 버그 수정)
     document.querySelectorAll('.data-cell').forEach(e => {
-        e.className = 'cell data-cell'; e.innerHTML = ''; delete e.dataset.id; delete e.dataset.coll;
+        e.className = 'cell data-cell'; e.innerHTML = '';
+        e.style.background = ''; e.style.boxShadow = ''; e.style.transform = ''; e.style.zIndex = '';
+        delete e.dataset.id; delete e.dataset.coll; delete e.dataset.info; delete e.dataset.ph; delete e.dataset.status;
     });
     selected = []; 
     document.getElementById('selCnt').innerText = "0";
@@ -8221,7 +8223,7 @@ function shareDutchPay(method) {
     
     const d = currentDutchPayData;
     const people = parseInt(document.getElementById('dutchPeople').value) || 2;
-    const totalPrice = d.totalPrice; // 변경: price → totalPrice
+    const totalPrice = d.totalPrice;
     const perPerson = Math.ceil(totalPrice / people);
     
     // 예약 시간대 목록 생성
@@ -8244,31 +8246,15 @@ ${d.timeSlots.length > 1 ? `📋 예약 내역 (${d.timeSlots.length}시간)\n${
 장유국제테니스장
 `;
 
-    if (method === 'kakao') {
-        // 카카오톡 공유
-        if (typeof Kakao === 'undefined' || !Kakao.isInitialized()) {
-            alert('카카오톡 SDK 오류. 문자로 공유합니다.');
-            shareViaSMS(message);
-            return;
-        }
-        
-        try {
-            Kakao.Share.sendDefault({
-                objectType: 'text',
-                text: message,
-                link: {
-                    mobileWebUrl: window.location.origin,
-                    webUrl: window.location.origin
-                }
-            });
-        } catch(err) {
-            console.error('카카오톡 공유 오류:', err);
-            alert('카카오톡 공유 실패. 문자로 전환합니다.');
-            shareViaSMS(message);
-        }
+    if (method === 'sms') {
+        // [수정] 문자앱 직접 열기 (sms: 링크 사용)
+        const encoded = encodeURIComponent(message);
+        // Android: sms:?body=..., iOS: sms:&body=...
+        const smsUrl = `sms:?body=${encoded}`;
+        window.location.href = smsUrl;
     } else {
-        // 문자 공유
-        shareViaSMS(message);
+        // [수정] 텍스트 복사 (카카오·문자 직접 붙여넣기용)
+        copyToClipboard(message);
     }
 }
 
