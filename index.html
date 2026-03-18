@@ -2426,12 +2426,12 @@ body.dark-mode .cal-toggle-bar {
                 📱 문자 공유
             </button>
             <button onclick="shareDutchPay('copy')" style="background:#3b82f6; color:white; padding:14px; border:none; border-radius:10px; font-weight:bold; cursor:pointer; font-size:0.95rem; box-shadow:0 4px 12px rgba(59,130,246,0.3);">
-                📋 텍스트 복사
+                📤 텍스트 공유
             </button>
         </div>
         
         <div style="text-align:center; margin-top:12px; font-size:0.75rem; color:#94a3b8;">
-            📱 문자 공유: 문자앱이 바로 열립니다 &nbsp;|&nbsp; 📋 복사 후 카카오·문자에 붙여넣기
+            📱 문자 공유: 문자앱이 바로 열립니다 &nbsp;|&nbsp; 📤 텍스트 공유: 카카오·문자 등 앱 선택
         </div>
     </div>
 </div>
@@ -8247,14 +8247,22 @@ ${d.timeSlots.length > 1 ? `📋 예약 내역 (${d.timeSlots.length}시간)\n${
 `;
 
     if (method === 'sms') {
-        // [수정] 문자앱 직접 열기 (sms: 링크 사용)
+        // 문자앱 직접 열기
         const encoded = encodeURIComponent(message);
-        // Android: sms:?body=..., iOS: sms:&body=...
-        const smsUrl = `sms:?body=${encoded}`;
-        window.location.href = smsUrl;
+        window.location.href = `sms:?body=${encoded}`;
     } else {
-        // [수정] 텍스트 복사 (카카오·문자 직접 붙여넣기용)
-        copyToClipboard(message);
+        // 공유 시트 열기 (카카오·문자·기타 앱 선택 가능)
+        if (navigator.share) {
+            navigator.share({
+                title: '테니스 예약 정산',
+                text: message
+            }).catch(err => {
+                if (err.name !== 'AbortError') copyToClipboard(message);
+            });
+        } else {
+            // Web Share API 미지원 시 클립보드 복사로 폴백
+            copyToClipboard(message);
+        }
     }
 }
 
