@@ -4758,28 +4758,58 @@ async function saveBook(uid) {
             }
         }
 
-        // ② runTransaction: 중복 검사 + 저장을 원자적으로 처리 (동시 예약 Race Condition 방지)
-        await db.runTransaction(async (transaction) => {
+        // ② 과도기 보호: 기존 자동ID 예약과 중복 여부 사전 확인 (트랜잭션 밖)
+        //    이전 방식(자동ID)으로 저장된 예약이 남아있는 동안 누락 없이 체크
+        for (const slot of slots) {
+            const oldSnap = await db.collection('reservations')
+                .where('center', '==', currentCenter)
+                .where('date', '==', date)
+                .where('court', '==', slot.c)
+                .where('time', '==', slot.t)
+                .where('status', 'in', ['PENDING', 'BOOKED', 'BLOCKED'])
+                .get();
+            if (!oldSnap.empty) {
+                alert(`${slot.c}코트 ${slot.t}:00 자리가 이미 예약되어 있습니다.`);
+                loadDB();
+                return;
+            }
+        }
 
-            // 트랜잭션 안에서 각 슬롯 중복 여부 확인
+        // ③ runTransaction: 슬롯별 고정 문서 ID로 중복 검사 + 저장을 원자적으로 처리
+        //    같은 시간/코트에 대해 동시에 두 명이 눌러도 한 명만 성공하도록 보강
+        await db.runTransaction(async (transaction) => {
+            const reservationRefs = [];
+
             for (const slot of slots) {
-                const existing = await db.collection('reservations')
+                const reservationId = buildSlotLockId(currentCenter, date, slot.c, slot.t);
+                const resRef = db.collection('reservations').doc(reservationId);
+                const resSnap = await transaction.get(resRef);
+
+                if (resSnap.exists) {
+                    const existingData = resSnap.data() || {};
+                    const existingStatus = existingData.status;
+
+                    if (['PENDING', 'BOOKED', 'BLOCKED'].includes(existingStatus)) {
+                        throw new Error(`${slot.c}코트 ${slot.t}:00 자리가 방금 다른 분의 예약으로 선점되었습니다.`);
+                    }
+                }
+
+                // 트랜잭션 안에서도 기존 자동ID 예약 재확인 (race condition 최종 방어)
+                const oldSnap = await db.collection('reservations')
                     .where('center', '==', currentCenter)
                     .where('date', '==', date)
                     .where('court', '==', slot.c)
                     .where('time', '==', slot.t)
-                    .where('status', 'in', ['PENDING','BOOKED','BLOCKED'])
+                    .where('status', 'in', ['PENDING', 'BOOKED', 'BLOCKED'])
                     .get();
-
-                if (!existing.empty) {
-                    // 트랜잭션 내에서 throw하면 자동 롤백됨
+                if (!oldSnap.empty) {
                     throw new Error(`${slot.c}코트 ${slot.t}:00 자리가 방금 다른 분의 예약으로 선점되었습니다.`);
                 }
+
+                reservationRefs.push({ slot, resRef });
             }
 
-            // 중복 없음 확인 후 트랜잭션 안에서 저장
-            slots.forEach(slot => {
-                const resRef = db.collection('reservations').doc();
+            reservationRefs.forEach(({ slot, resRef }) => {
                 transaction.set(resRef, {
                     center: currentCenter,
                     date,
@@ -4789,7 +4819,7 @@ async function saveBook(uid) {
                     phone: bkPhone,
                     status: initialStatus,
                     uid,
-                    at: new Date()
+                    at: firebase.firestore.FieldValue.serverTimestamp()
                 });
             });
         });
