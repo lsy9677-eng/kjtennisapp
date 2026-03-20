@@ -1965,8 +1965,6 @@ body.dark-mode .cal-toggle-bar {
     </button>
 </div>
         <p id="modalInfo" style="background:#f1f5f9; padding:12px; border-radius:8px; font-size:0.9rem; color:#475569; text-align:center; margin-bottom:20px; font-weight:600;"></p>
-        <div class="modal-head">예약 결제</div>
-<p id="modalInfo" style="background:#f1f5f9; padding:12px; border-radius:8px; font-size:0.9rem; color:#475569; text-align:center; margin-bottom:20px; font-weight:600;"></p>
 
 <div style="background:#fef2f2; border:1px solid #ef4444; border-radius:8px; padding:10px; margin-bottom:15px; text-align:center;">
     <p style="color:#dc2626; font-weight:800; font-size:1rem; margin:0 0 5px 0;">🚫 사설 레슨 및 통볼(볼박스) 금지</p>
@@ -2745,14 +2743,19 @@ const HOLIDAYS = {
         docs.forEach(doc => {
             if (!doc.exists) return;
             const d = doc.data();
+            if (!slotLocksEnabled) return;
+
+            const lockId = buildSlotLockId(d.center || currentCenter, d.date, d.court, d.time);
+            batch.delete(db.collection('slot_locks').doc(lockId));
             count++;
-            if (count % 400 === 0) {
+
+            if (count % 180 === 0) {
                 commits.push(batch.commit());
                 batch = db.batch();
             }
         });
 
-        if (count % 400 !== 0) commits.push(batch.commit());
+        if (count % 180 !== 0) commits.push(batch.commit());
         if (commits.length) await Promise.all(commits);
     }
 
@@ -2769,7 +2772,14 @@ const HOLIDAYS = {
         docs.forEach(doc => {
             if (!doc.exists) return;
             const d = doc.data();
+
             batch.delete(doc.ref);
+
+            if (slotLocksEnabled) {
+                const lockId = buildSlotLockId(d.center || currentCenter, d.date, d.court, d.time);
+                batch.delete(db.collection('slot_locks').doc(lockId));
+            }
+
             count++;
             if (count % 180 === 0) {
                 commits.push(batch.commit());
@@ -2833,6 +2843,8 @@ function checkAppVersion() {
 }
 
 // [중요] 페이지 로드 시 바로 실행되도록 호출
+// ▼▼▼ [설정] 현재 이 코드의 버전 (업데이트 할 때마다 이 숫자를 1씩 올려서 배포하세요) ▼▼▼
+const CURRENT_APP_VERSION = 4;
 checkAppVersion();
 /* [신규] 승인 모달 열기 */
 let currentApproveData = null; // 승인 처리를 위한 임시 저장소
@@ -3002,8 +3014,7 @@ async function doRangeDelete() {
     closeModal('modalSet');
     loadDB();
 }
-// ▼▼▼ [설정] 현재 이 코드의 버전 (업데이트 할 때마다 이 숫자를 1씩 올려서 배포하세요) ▼▼▼
-const CURRENT_APP_VERSION = 4; 
+// ▼▼▼ 예약 일괄 삭제 후 처리
 
     
     // [추가] 일괄 모드 관련 변수
@@ -3776,7 +3787,6 @@ function drawCalendar() {
     markMyReservedDates(); // 내 예약 날짜 dot 표시
 }    
 
-    function pickDate(s) { document.getElementById('hiddenDate').value = s; drawCalendar(); loadDB(); }
     function mvMonth(n) { viewDate.setMonth(viewDate.getMonth() + n); drawCalendar(); }
 
 /* 달력에 내 예약 날짜 dot 표시 */
@@ -4285,30 +4295,35 @@ function createConfetti(color) {
 function toggleMenu() {
     const panel = document.getElementById('menuPanel');
     const overlay = document.getElementById('menuOverlay');
+
+    if (!panel || !overlay) {
+        console.log('menuPanel/menuOverlay 요소가 없어 toggleMenu를 건너뜁니다.');
+        return;
+    }
+
     const isOpen = panel.style.right === '0px';
-    
+
     if (isOpen) {
-        // 닫기
         panel.style.right = '-300px';
         overlay.style.display = 'none';
     } else {
-        // 열기
         panel.style.right = '0px';
         overlay.style.display = 'block';
-        
-        // 메뉴 내용 업데이트
         updateMenuContent();
     }
 }
 
 function updateMenuContent() {
-    // 로그인 상태에 따라 메뉴 표시
     const myInfoSection = document.getElementById('menuMyInfo');
     const myInfoBtn = document.getElementById('menuMyInfoBtn');
     const notificationItem = document.getElementById('menuNotification');
-    
+
+    if (!myInfoSection || !myInfoBtn || !notificationItem) {
+        console.log('햄버거 메뉴 내부 요소가 없어 updateMenuContent를 건너뜁니다.');
+        return;
+    }
+
     if (currentUser && !isAdmin) {
-        // 일반 회원
         myInfoSection.style.display = 'block';
         myInfoBtn.style.display = 'flex';
         notificationItem.style.display = 'flex';
@@ -4733,7 +4748,7 @@ async function saveBook(uid) {
     let timeStr = slots.map(s => `${s.t}시`).join(', ');
 
     try {
-        // 저장 직전 재검사: 같은 날짜/코트/시간에 이미 예약이 생겼는지 확인
+        // ① 정기예약 충돌 검사 (트랜잭션 밖에서 먼저 처리 - Firestore 제약)
         for (const slot of slots) {
             const recurConflict = await hasRecurringConflict(currentCenter, date, slot.c, slot.t);
             if (recurConflict) {
@@ -4741,38 +4756,45 @@ async function saveBook(uid) {
                 loadDB();
                 return;
             }
-
-            const existing = await db.collection('reservations')
-                .where('center', '==', currentCenter)
-                .where('date', '==', date)
-                .where('court', '==', slot.c)
-                .where('time', '==', slot.t)
-                .where('status', 'in', ['PENDING','BOOKED','BLOCKED'])
-                .get();
-            if (!existing.empty) {
-                alert(`${slot.c}코트 ${slot.t}:00 자리가 방금 다른 예약으로 선점되었습니다.`);
-                loadDB();
-                return;
-            }
         }
 
-        const batch = db.batch();
-        slots.forEach(slot => {
-            const resRef = db.collection('reservations').doc();
-            batch.set(resRef, {
-                center: currentCenter,
-                date,
-                court: slot.c,
-                time: slot.t,
-                name: bkName,
-                phone: bkPhone,
-                status: initialStatus,
-                uid,
-                at: new Date()
+        // ② runTransaction: 중복 검사 + 저장을 원자적으로 처리 (동시 예약 Race Condition 방지)
+        await db.runTransaction(async (transaction) => {
+
+            // 트랜잭션 안에서 각 슬롯 중복 여부 확인
+            for (const slot of slots) {
+                const existing = await db.collection('reservations')
+                    .where('center', '==', currentCenter)
+                    .where('date', '==', date)
+                    .where('court', '==', slot.c)
+                    .where('time', '==', slot.t)
+                    .where('status', 'in', ['PENDING','BOOKED','BLOCKED'])
+                    .get();
+
+                if (!existing.empty) {
+                    // 트랜잭션 내에서 throw하면 자동 롤백됨
+                    throw new Error(`${slot.c}코트 ${slot.t}:00 자리가 방금 다른 예약으로 선점되었습니다.`);
+                }
+            }
+
+            // 중복 없음 확인 후 트랜잭션 안에서 저장
+            slots.forEach(slot => {
+                const resRef = db.collection('reservations').doc();
+                transaction.set(resRef, {
+                    center: currentCenter,
+                    date,
+                    court: slot.c,
+                    time: slot.t,
+                    name: bkName,
+                    phone: bkPhone,
+                    status: initialStatus,
+                    uid,
+                    at: new Date()
+                });
             });
         });
-        await batch.commit();
 
+        // ③ 트랜잭션 성공 후 처리
         showSuccessAnimation();
         setTimeout(() => {
             alert(isAdmin ? '예약이 완료되었습니다.' : '가예약 신청되었습니다. 입금 확인 후 최종 승인됩니다.');
@@ -4790,7 +4812,8 @@ async function saveBook(uid) {
         }
     } catch(err) {
         console.error(err);
-        alert(err.message || ('예약 실패: ' + err.message));
+        // 선점 메시지는 그대로, 그 외 오류는 일반 메시지
+        alert(err.message || '예약 처리 중 오류가 발생했습니다. 다시 시도해주세요.');
         loadDB();
     }
 }
@@ -5458,111 +5481,8 @@ function chkAdmin() {
 }
 
 // ==========================================
-// ▼▼▼ [신규] 요금 및 시간대 설정 기능 ▼▼▼
-// ==========================================
-
-// 1. 요금 설정 토글
-function togglePriceSettings() {
-    const box = document.getElementById('priceSettingsBox');
-    const icon = document.getElementById('priceSettingsIcon');
-    
-    if (box.style.display === 'none') {
-        box.style.display = 'block';
-        icon.textContent = '▲';
-        
-        // 현재 저장된 설정 불러오기
-        loadPriceSettings();
-    } else {
-        box.style.display = 'none';
-        icon.textContent = '▼';
-    }
-}
-
-// 2. 요금 설정 불러오기
-async function loadPriceSettings() {
-    try {
-        const doc = await db.collection('settings').doc('pricing').get();
-        
-        if (doc.exists) {
-            const data = doc.data();
-            
-            document.getElementById('settingDayStart').value = data.dayStart || 7;
-            document.getElementById('settingNightStart').value = data.nightStart || 19;
-            document.getElementById('settingDayPrice').value = data.dayPrice || 5000;
-            document.getElementById('settingNightPrice').value = data.nightPrice || 10000;
-        }
-    } catch (err) {
-        console.error('요금 설정 불러오기 오류:', err);
-    }
-}
-
-// 3. 요금 설정 저장
-async function savePriceSettings() {
-    if (!isAdmin) {
-        alert('관리자만 설정할 수 있습니다.');
-        return;
-    }
-    
-    const dayStart = parseInt(document.getElementById('settingDayStart').value);
-    const nightStart = parseInt(document.getElementById('settingNightStart').value);
-    const dayPrice = parseInt(document.getElementById('settingDayPrice').value);
-    const nightPrice = parseInt(document.getElementById('settingNightPrice').value);
-    
-    // 유효성 검사
-    if (dayStart < 0 || dayStart > 23 || nightStart < 0 || nightStart > 23) {
-        alert('시간은 0~23 사이여야 합니다.');
-        return;
-    }
-    
-    if (dayStart >= nightStart) {
-        alert('주간 시작 시간이 야간 시작 시간보다 빨라야 합니다.');
-        return;
-    }
-    
-    if (dayPrice < 0 || nightPrice < 0) {
-        alert('요금은 0원 이상이어야 합니다.');
-        return;
-    }
-    
-    try {
-        await db.collection('settings').doc('pricing').set({
-            dayStart: dayStart,
-            nightStart: nightStart,
-            dayPrice: dayPrice,
-            nightPrice: nightPrice,
-            updatedAt: new Date(),
-            updatedBy: currentUser.name || currentUser.email
-        });
-        
-        alert(`✅ 요금 설정이 저장되었습니다!
-
-☀️ 주간: ${dayStart}시~${nightStart-1}시 / ${dayPrice.toLocaleString()}원
-🌙 야간: ${nightStart}시~23시 / ${nightPrice.toLocaleString()}원
-
-더치페이 계산에 바로 적용됩니다.`);
-        
-    } catch (err) {
-        console.error('요금 설정 저장 오류:', err);
-        alert('저장 중 오류가 발생했습니다: ' + err.message);
-    }
-}
-
 // ▼▼▼ [신규] 계절별 요금 관리 함수 ▼▼▼
 window.seasonalPricings = [];
-
-function togglePriceSettings() {
-    const box = document.getElementById('priceSettingsBox');
-    const icon = document.getElementById('priceSettingsIcon');
-    
-    if (box.style.display === 'none') {
-        box.style.display = 'block';
-        icon.textContent = '▲';
-        loadSeasonalPricings();
-    } else {
-        box.style.display = 'none';
-        icon.textContent = '▼';
-    }
-}
 
 async function loadSeasonalPricings() {
     try {
@@ -6515,35 +6435,38 @@ async function processUserCancel(mode) {
     let targetList = [];
 
     // 1. 취소 대상 목록 확보
-    if (mode === 'ONE') {
-        // [수정] status 정보도 함께 가져오도록 변경
-        targetList.push({ 
-            id: target.id, 
-            date: target.date, 
-            time: target.time, 
-            status: target.status // 여기서 status가 없으면 undefined가 될 수 있으므로 주의
+    // 'TIME' 또는 예전 호환용 'ONE' 모두 1건 취소로 처리
+    if (mode === 'TIME' || mode === 'ONE') {
+        targetList.push({
+            id: target.id,
+            date: target.date,
+            time: target.time,
+            status: target.status
         });
-        
-        // 만약 target.status가 비어있다면 DB에서 다시 확인하는 안전장치
-        if(!target.status) {
+
+        // target.status가 비어있다면 DB에서 다시 확인하는 안전장치
+        if (!target.status) {
             try {
                 const doc = await db.collection(target.coll).doc(target.id).get();
-                if(doc.exists) targetList[0].status = doc.data().status;
-            } catch(e) {}
+                if (doc.exists) targetList[0].status = doc.data().status;
+            } catch (e) {}
         }
 
-    } else {
-        // '오늘 전체 취소'인 경우 DB에서 조회
+    } else if (mode === 'DAY' || mode === 'ALL') {
+        // '오늘 전체 취소' 또는 '전체 취소'인 경우 DB에서 조회
         const snap = await db.collection("reservations")
             .where("date", "==", target.date)
             .where("phone", "==", target.phone)
             .where("center", "==", currentCenter)
             .get();
-        
+
         snap.forEach(doc => {
             const d = doc.data();
             targetList.push({ id: doc.id, date: d.date, time: d.time, status: d.status });
         });
+    } else {
+        alert("취소 방식이 올바르지 않습니다.");
+        return;
     }
 
     if (targetList.length === 0) return alert("취소할 내역이 없습니다.");
@@ -6558,17 +6481,16 @@ async function processUserCancel(mode) {
         openRefundPopup(targetList);
     } else {
         // [전부 가승인] -> 관리자에게 문자 발송
-        if(!confirm("가승인(입금 대기) 상태의 예약입니다.\n관리자에게 취소 요청 문자를 보내시겠습니까?")) return;
+        if (!confirm("가승인(입금 대기) 상태의 예약입니다.\n관리자에게 취소 요청 문자를 보내시겠습니까?")) return;
 
         const adminPhone = await getAdminPhoneNumber();
         const userName = currentUser ? currentUser.name : "회원";
-        
-        // 문자 내용 생성
+
         let details = "";
         targetList.forEach(t => details += `- ${t.date} ${t.time}:00\n`);
-        
+
         const msgBody = `[가승인 취소 요청]\n신청자: ${userName}\n\n${details}\n위 예약을 취소해 주세요.`;
-        
+
         const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
         location.href = `sms:${adminPhone}${isIOS ? '&' : '?'}body=${encodeURIComponent(msgBody)}`;
     }
@@ -7775,22 +7697,39 @@ async function doListBatchDelete() {
     }
 }
 
-/* ▼▼▼ [추가] 다크모드 전환 함수 ▼▼▼ */
-function toggleDarkMode() {
-    document.body.classList.toggle('dark-mode');
-    
-    const isDark = document.body.classList.contains('dark-mode');
-    const btn = event.target; // 클릭한 버튼
-    
-    if(isDark) {
-        btn.innerText = "라이트";
-        // (선택사항) 나중에 다시 들어와도 유지되게 하려면 아래 주석 해제
-        // localStorage.setItem('theme', 'dark');
-    } else {
-        btn.innerText = "다크";
-        // localStorage.setItem('theme', 'light');
-    }
+/* ▼▼▼ [수정] 다크모드 전환 함수 ▼▼▼ */
+function applyDarkModeState(isDark) {
+    document.body.classList.toggle('dark-mode', !!isDark);
+
+    const setDarkMode = document.getElementById('setDarkMode');
+    const userDarkModeToggle = document.getElementById('userDarkModeToggle');
+
+    if (setDarkMode) setDarkMode.checked = !!isDark;
+    if (userDarkModeToggle) userDarkModeToggle.checked = !!isDark;
+
+    try {
+        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    } catch (e) {}
 }
+
+function toggleDarkMode(forceValue) {
+    const isDark = typeof forceValue === 'boolean'
+        ? forceValue
+        : !document.body.classList.contains('dark-mode');
+
+    applyDarkModeState(isDark);
+}
+
+(function initDarkMode() {
+    try {
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark') {
+            applyDarkModeState(true);
+        } else if (savedTheme === 'light') {
+            applyDarkModeState(false);
+        }
+    } catch (e) {}
+})();
 /* ▼▼▼ [신규] 데이터 백업 및 복구 시스템 ▼▼▼ */
 
 // 1. 데이터 백업 (다운로드)
@@ -9448,7 +9387,6 @@ function drawScoreChart(w, l, d) {
 </script>
 <div id="modalForceUpdate" class="modal-mask" style="z-index: 9999; background: rgba(0,0,0,0.8);">
     <div class="modal-win" style="text-align:center;">
-<span class="modal-close" onclick="document.getElementById('modalForceUpdate').style.display='none'">&times;</span>
         <div style="font-size:3rem; margin-bottom:10px;">🚀</div>
         <div class="modal-head" style="margin-bottom:10px;">업데이트 알림</div>
         <p id="updateMsg" style="color:#64748b; margin-bottom:20px;">
