@@ -4773,7 +4773,7 @@ async function saveBook(uid) {
 
                 if (!existing.empty) {
                     // 트랜잭션 내에서 throw하면 자동 롤백됨
-                    throw new Error(`${slot.c}코트 ${slot.t}:00 자리가 방금 다른 예약으로 선점되었습니다.`);
+                    throw new Error(`${slot.c}코트 ${slot.t}:00 자리가 방금 다른 분의 예약으로 선점되었습니다.`);
                 }
             }
 
