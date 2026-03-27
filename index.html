@@ -3136,7 +3136,15 @@ auth.onAuthStateChanged(user => {
                     setTimeout(checkUpcomingPopup, 500); 
                 }
                 updateAdminUI(); // UI 갱신 (여기서 관리자 배지가 그려짐)
+                try {
+                    setTimeout(() => {
+                        if (typeof loadDB === 'function') loadDB();
+                        if (typeof refreshTodayMyReservationCard === 'function') refreshTodayMyReservationCard(true);
+                    }, 80);
+                } catch (_) {}
             }
+        }).catch(err => {
+            console.error('사용자 정보 로딩 실패:', err);
         });
     } else {
         // [로그아웃 상태]
@@ -3869,6 +3877,56 @@ function drawGrid() {
 }
 
 /* ========== 내 예약 빠른 보기 ========== */
+async function refreshTodayMyReservationCard(forceDateSync = false) {
+    try {
+        if (!currentUser || isAdmin || !currentUser.phone) {
+            const card = document.getElementById('myReservationCard');
+            if (card) card.style.display = 'none';
+            return;
+        }
+
+        const dateInput = document.getElementById('hiddenDate');
+        let currentDate = dateInput ? dateInput.value : '';
+        if (!currentDate || forceDateSync) {
+            const now = new Date();
+            currentDate = now.toISOString().split('T')[0];
+            if (dateInput && !dateInput.value) dateInput.value = currentDate;
+        }
+
+        const snap = await db.collection('reservations')
+            .where('date', '==', currentDate)
+            .where('center', '==', currentCenter)
+            .where('phone', '==', currentUser.phone)
+            .get();
+
+        const items = [];
+        snap.forEach(doc => {
+            const d = doc.data() || {};
+            if (!['PENDING', 'BOOKED', 'BLOCKED'].includes(d.status)) return;
+            items.push({ court: d.court, time: d.time, status: d.status, name: d.name || '예약' });
+        });
+
+        const card = document.getElementById('myReservationCard');
+        const listContainer = document.getElementById('myReservationList');
+        if (!card || !listContainer) return;
+
+        if (!items.length) {
+            card.style.display = 'none';
+            return;
+        }
+
+        items.sort((a, b) => (a.time - b.time) || (a.court - b.court));
+        listContainer.innerHTML = items.map(res => {
+            const timeStr = `${String(res.time).padStart(2,'0')}시`;
+            return `<span onclick="scrollToReservation(${res.court}, ${res.time})" style="background: rgba(255,255,255,0.9); padding: 4px 10px; border-radius: 16px; font-size: 0.8rem; color: #92400e; cursor: pointer; border: 1px solid rgba(146,64,14,0.2);">${res.court}코트 ${timeStr}</span>`;
+        }).join('');
+
+        card.style.display = 'block';
+    } catch (err) {
+        console.error('오늘 내 예약 카드 로딩 실패:', err);
+    }
+}
+
 function updateMyReservations() {
     // 관리자이거나 로그인 안 했으면 카드 숨김
     if (!currentUser || isAdmin) {
@@ -4578,6 +4636,7 @@ Promise.all([
     
     // ▼▼▼ [추가] 내 예약 빠른 보기 업데이트 ▼▼▼
     updateMyReservations();
+    refreshTodayMyReservationCard();
     // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 });
 }
@@ -4855,7 +4914,8 @@ async function saveBook(uid) {
                     name: bkName,
                     phone: bkPhone,
                     status: initialStatus,
-                    uid,
+                    uid: actorUid,
+                    paymentUid: uid,
                     at: firebase.firestore.FieldValue.serverTimestamp()
                 });
             });
@@ -4872,6 +4932,7 @@ async function saveBook(uid) {
 
         closeModal('modalBook');
         loadDB();
+        refreshTodayMyReservationCard(true);
 
         if(!isAdmin) {
             setTimeout(() => {
@@ -4908,13 +4969,18 @@ async function logBookingAttempt(payload) {
 }
 
 async function getRecentAttemptLogs(uid, ms) {
-    const since = firebase.firestore.Timestamp.fromMillis(Date.now() - ms);
-    const snap = await db.collection('booking_attempt_logs')
-        .where('uid', '==', uid)
-        .where('createdAt', '>=', since)
-        .orderBy('createdAt', 'desc')
-        .get();
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    try {
+        const since = firebase.firestore.Timestamp.fromMillis(Date.now() - ms);
+        const snap = await db.collection('booking_attempt_logs')
+            .where('uid', '==', uid)
+            .where('createdAt', '>=', since)
+            .orderBy('createdAt', 'desc')
+            .get();
+        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (e) {
+        console.warn('최근 시도 로그 조회 실패:', e);
+        return [];
+    }
 }
 
 function calcMacroScore(logs) {
@@ -4942,51 +5008,73 @@ function calcMacroScore(logs) {
 
 async function isBlockedUser(uid) {
     if (!uid || uid === 'guest') return false;
-    const snap = await db.collection('blocked_users').doc(uid).get();
-    if (!snap.exists) return false;
-    const data = snap.data() || {};
-    if (data.expiresAt && data.expiresAt.toMillis && data.expiresAt.toMillis() < Date.now()) return false;
-    return true;
+    try {
+        const snap = await db.collection('blocked_users').doc(uid).get();
+        if (!snap.exists) return false;
+        const data = snap.data() || {};
+        if (data.expiresAt && data.expiresAt.toMillis && data.expiresAt.toMillis() < Date.now()) return false;
+        return true;
+    } catch (e) {
+        console.warn('차단 여부 조회 실패:', e);
+        return false;
+    }
 }
 
 async function setUserCooldown(uid) {
     if (!uid || uid === 'guest') return;
-    await db.collection('booking_guard').doc(uid).set({
-        lastAttemptAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    try {
+        await db.collection('booking_guard').doc(uid).set({
+            lastAttemptAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+    } catch (e) {
+        console.warn('쿨다운 저장 실패:', e);
+    }
 }
 
 async function checkCooldown(uid) {
     if (!uid || uid === 'guest') return;
-    const snap = await db.collection('booking_guard').doc(uid).get();
-    if (!snap.exists) return;
-    const data = snap.data() || {};
-    const last = data.lastAttemptAt && data.lastAttemptAt.toMillis ? data.lastAttemptAt.toMillis() : 0;
-    if (last && Date.now() - last < MACRO_LIMITS.COOLDOWN_MS) {
-        throw new Error('요청이 너무 빠릅니다. 잠시 후 다시 시도해주세요.');
+    try {
+        const snap = await db.collection('booking_guard').doc(uid).get();
+        if (!snap.exists) return;
+        const data = snap.data() || {};
+        const last = data.lastAttemptAt && data.lastAttemptAt.toMillis ? data.lastAttemptAt.toMillis() : 0;
+        if (last && Date.now() - last < MACRO_LIMITS.COOLDOWN_MS) {
+            throw new Error('요청이 너무 빠릅니다. 잠시 후 다시 시도해주세요.');
+        }
+    } catch (e) {
+        const msg = String(e && e.message ? e.message : e);
+        if (msg.includes('too fast') || msg.includes('요청이 너무 빠릅니다')) throw e;
+        console.warn('쿨다운 조회 실패:', e);
     }
 }
 
 async function checkBookingGuards(meta) {
     const uid = meta.uid;
-    if (await isBlockedUser(uid)) {
-        throw new Error('이 계정은 예약이 제한되었습니다. 관리자에게 문의하세요.');
+    try {
+        if (await isBlockedUser(uid)) {
+            throw new Error('이 계정은 예약이 제한되었습니다. 관리자에게 문의하세요.');
+        }
+
+        await checkCooldown(uid);
+
+        const shortLogs = await getRecentAttemptLogs(uid, MACRO_LIMITS.SHORT_MS);
+        const shortCount = shortLogs.filter(l => l.result !== 'SUCCESS').length;
+        if (shortLogs.length >= MACRO_LIMITS.SHORT_MAX || shortCount >= MACRO_LIMITS.SHORT_MAX) {
+            throw new Error('짧은 시간에 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.');
+        }
+
+        const midLogs = await getRecentAttemptLogs(uid, MACRO_LIMITS.MID_MS);
+        if (midLogs.length >= MACRO_LIMITS.MID_MAX) {
+            throw new Error('과도한 반복 시도로 인해 잠시 예약이 제한되었습니다.');
+        }
+
+        await setUserCooldown(uid);
+    } catch (e) {
+        const msg = String(e && e.message ? e.message : e);
+        const isExpectedGuard = msg.includes('제한되었습니다') || msg.includes('시도가 너무 많') || msg.includes('요청이 너무 빠릅니다');
+        if (isExpectedGuard) throw e;
+        console.warn('매크로 가드 검사 중 권한/조회 오류 - 예약은 계속 진행:', e);
     }
-
-    await checkCooldown(uid);
-
-    const shortLogs = await getRecentAttemptLogs(uid, MACRO_LIMITS.SHORT_MS);
-    const shortCount = shortLogs.filter(l => l.result !== 'SUCCESS').length;
-    if (shortLogs.length >= MACRO_LIMITS.SHORT_MAX || shortCount >= MACRO_LIMITS.SHORT_MAX) {
-        throw new Error('짧은 시간에 시도가 너무 많습니다. 잠시 후 다시 시도해주세요.');
-    }
-
-    const midLogs = await getRecentAttemptLogs(uid, MACRO_LIMITS.MID_MS);
-    if (midLogs.length >= MACRO_LIMITS.MID_MAX) {
-        throw new Error('과도한 반복 시도로 인해 잠시 예약이 제한되었습니다.');
-    }
-
-    await setUserCooldown(uid);
 }
 
 async function maybeAutoBlockUser(uid) {
@@ -5800,6 +5888,7 @@ function doBlockSlot() {
         alert("처리가 완료되었습니다.");
         closeModal('modalBook');
         loadDB();
+        refreshTodayMyReservationCard(true);
     }).catch(err => alert("오류: " + err.message));
 }
 function chkAdmin() { 
