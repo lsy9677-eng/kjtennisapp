@@ -2694,6 +2694,183 @@ const HOLIDAYS = {
     // slot_locks 는 Firestore 규칙 미반영 시 권한 오류를 일으킬 수 있어 기본 비활성화
     const slotLocksEnabled = false;
 
+    // --- 매크로 의심 탐지 / 1차 차단 설정 ---
+    const BOOKING_ATTEMPT_COLLECTION = 'booking_attempt_logs';
+    const RATE_LIMIT_SHORT_WINDOW_MS = 10000;   // 10초
+    const RATE_LIMIT_SHORT_MAX = 3;             // 10초 내 3회 초과 차단
+    const RATE_LIMIT_LONG_WINDOW_MS = 60000;    // 60초
+    const RATE_LIMIT_LONG_MAX = 8;              // 60초 내 8회 초과 차단
+    const MONITOR_FETCH_LIMIT = 120;
+
+    function getAttemptActorKey(name, phone) {
+        const authUid = auth.currentUser && auth.currentUser.uid ? auth.currentUser.uid : '';
+        const cleanPhone = String(phone || '').replace(/\D/g, '');
+        if (authUid) return `uid:${authUid}`;
+        if (cleanPhone) return `phone:${cleanPhone}`;
+        return `name:${String(name || 'unknown').trim() || 'unknown'}`;
+    }
+
+    function getAttemptCreatedAtMs(docOrData) {
+        const data = typeof docOrData.data === 'function' ? docOrData.data() : docOrData;
+        const ts = data && data.createdAt;
+        if (!ts) return 0;
+        if (typeof ts.toMillis === 'function') return ts.toMillis();
+        if (typeof ts.seconds === 'number') return ts.seconds * 1000;
+        if (typeof ts === 'number') return ts;
+        return 0;
+    }
+
+    function formatAttemptTime(ts) {
+        const ms = getAttemptCreatedAtMs(ts);
+        if (!ms) return '-';
+        const d = new Date(ms);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth()+1).padStart(2,'0');
+        const dd = String(d.getDate()).padStart(2,'0');
+        const hh = String(d.getHours()).padStart(2,'0');
+        const mi = String(d.getMinutes()).padStart(2,'0');
+        const ss = String(d.getSeconds()).padStart(2,'0');
+        return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+    }
+
+    async function logBookingAttempt(payload) {
+        try {
+            await db.collection(BOOKING_ATTEMPT_COLLECTION).add({
+                ...payload,
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                userAgent: navigator.userAgent || '',
+                isAdminAttempt: !!isAdmin
+            });
+        } catch (e) {
+            console.warn('예약 시도 로그 저장 실패:', e);
+        }
+    }
+
+    async function checkReservationRateLimit(actorKey) {
+        try {
+            const snap = await db.collection(BOOKING_ATTEMPT_COLLECTION)
+                .orderBy('createdAt', 'desc')
+                .limit(80)
+                .get();
+
+            const now = Date.now();
+            let shortCount = 0;
+            let longCount = 0;
+
+            snap.forEach(doc => {
+                const data = doc.data() || {};
+                if (data.actorKey !== actorKey) return;
+                const ms = getAttemptCreatedAtMs(data);
+                if (!ms) return;
+                const diff = now - ms;
+                if (diff <= RATE_LIMIT_SHORT_WINDOW_MS) shortCount++;
+                if (diff <= RATE_LIMIT_LONG_WINDOW_MS) longCount++;
+            });
+
+            return {
+                blocked: shortCount >= RATE_LIMIT_SHORT_MAX || longCount >= RATE_LIMIT_LONG_MAX,
+                shortCount,
+                longCount
+            };
+        } catch (e) {
+            console.warn('rate limit 검사 실패(우선 허용):', e);
+            return { blocked:false, shortCount:0, longCount:0 };
+        }
+    }
+
+    async function loadMacroMonitor() {
+        const box = document.getElementById('macroMonitorBox');
+        if (!box) return;
+        box.innerHTML = "<div style='text-align:center; padding:20px; color:#64748b;'>의심 로그 불러오는 중...</div>";
+
+        try {
+            const snap = await db.collection(BOOKING_ATTEMPT_COLLECTION)
+                .orderBy('createdAt', 'desc')
+                .limit(MONITOR_FETCH_LIMIT)
+                .get();
+
+            if (snap.empty) {
+                box.innerHTML = "<div style='text-align:center; padding:20px; color:#64748b;'>저장된 예약 시도 로그가 없습니다.</div>";
+                return;
+            }
+
+            const logs = snap.docs.map(doc => ({ id: doc.id, ...(doc.data() || {}) }));
+            const now = Date.now();
+            const suspicious = {};
+
+            logs.forEach(item => {
+                const actorKey = item.actorKey || 'unknown';
+                if (!suspicious[actorKey]) {
+                    suspicious[actorKey] = {
+                        actorKey,
+                        name: item.name || '-',
+                        phone: item.phone || '-',
+                        recent10s: 0,
+                        recent60s: 0,
+                        success: 0,
+                        fail: 0,
+                        blocked: 0,
+                        lastAt: item.createdAt || null
+                    };
+                }
+                const row = suspicious[actorKey];
+                const diff = now - getAttemptCreatedAtMs(item);
+                if (diff <= 10000) row.recent10s++;
+                if (diff <= 60000) row.recent60s++;
+                if (item.result === 'SUCCESS') row.success++;
+                else if (item.result === 'FAIL_RATE_LIMIT') row.blocked++;
+                else row.fail++;
+            });
+
+            const suspiciousRows = Object.values(suspicious)
+                .filter(v => v.recent10s >= 2 || v.recent60s >= 4 || v.blocked > 0 || v.fail >= 3)
+                .sort((a,b) => (b.blocked - a.blocked) || (b.recent10s - a.recent10s) || (b.fail - a.fail) || (b.recent60s - a.recent60s));
+
+            let html = "";
+            html += `<div style="background:#fff7ed; border:1px solid #fdba74; border-radius:10px; padding:12px; margin-bottom:12px;">
+                <div style="font-weight:800; color:#9a3412; margin-bottom:6px;">🚨 의심 사용자 요약</div>
+                <div style="font-size:0.8rem; color:#7c2d12;">기준: 10초 내 2회+, 60초 내 4회+, 실패 3회+, rate limit 차단 기록</div>
+            </div>`;
+
+            if (suspiciousRows.length === 0) {
+                html += `<div style="background:#f0fdf4; border:1px solid #86efac; color:#166534; padding:12px; border-radius:10px; margin-bottom:12px;">현재 눈에 띄는 이상 패턴은 없습니다.</div>`;
+            } else {
+                html += suspiciousRows.slice(0, 15).map(v => `
+                    <div style="background:#fff; border:1px solid #fecaca; border-left:5px solid #ef4444; border-radius:10px; padding:10px; margin-bottom:8px;">
+                        <div style="font-weight:800; color:#991b1b;">${v.name} (${v.phone || '-'})</div>
+                        <div style="font-size:0.82rem; color:#7f1d1d; margin-top:4px;">10초 내 ${v.recent10s}회 · 60초 내 ${v.recent60s}회 · 성공 ${v.success} · 실패 ${v.fail} · 차단 ${v.blocked}</div>
+                    </div>
+                `).join('');
+            }
+
+            html += `<div style="margin-top:14px; font-weight:800; color:#1e293b;">📋 최근 예약 시도 ${logs.length}건</div>`;
+            html += `<div style="margin-top:8px; max-height:320px; overflow:auto; background:#fff; border:1px solid #e2e8f0; border-radius:10px;">`;
+            html += logs.map(item => {
+                const resultColor = item.result === 'SUCCESS' ? '#16a34a' : (item.result === 'FAIL_RATE_LIMIT' ? '#dc2626' : '#ea580c');
+                const slotText = Array.isArray(item.slotSummary) ? item.slotSummary.join(', ') : (item.slotSummary || '-');
+                return `
+                    <div style="padding:10px 12px; border-bottom:1px solid #f1f5f9;">
+                        <div style="display:flex; justify-content:space-between; gap:8px; align-items:flex-start;">
+                            <div>
+                                <div style="font-weight:700; color:#0f172a;">${item.name || '-'} / ${item.phone || '-'}</div>
+                                <div style="font-size:0.78rem; color:#475569; margin-top:2px;">${item.center || '-'} · ${item.date || '-'} · ${slotText}</div>
+                                <div style="font-size:0.74rem; color:#64748b; margin-top:2px;">${formatAttemptTime(item)}</div>
+                            </div>
+                            <div style="text-align:right; min-width:90px;">
+                                <div style="font-weight:800; color:${resultColor};">${item.result || '-'}</div>
+                                <div style="font-size:0.72rem; color:#64748b; margin-top:2px;">${item.reason || ''}</div>
+                            </div>
+                        </div>
+                    </div>`;
+            }).join('');
+            html += `</div>`;
+            box.innerHTML = html;
+        } catch (err) {
+            console.error('매크로 감시판 로딩 오류:', err);
+            box.innerHTML = `<div style="background:#fef2f2; color:#991b1b; border:1px solid #fecaca; padding:12px; border-radius:10px;">감시 로그를 불러오지 못했습니다.<br>${err.message || err}</div>`;
+        }
+    }
+
     function safeSetInputValue(id, value) {
         const el = document.getElementById(id);
         if (el) el.value = value;
@@ -2970,7 +3147,7 @@ function doAppUpdate(btnElement) {
     }
 
     // 2. [핵심] 서비스워커와 캐시를 완전히 파괴하고 새로고침
-    if ('serviceWorker' in navigator) {
+    if (location.protocol !== 'file:' && 'serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(function(registrations) {
             // 실행 중인 서비스워커 모두 종료
             for(let registration of registrations) {
@@ -3030,7 +3207,7 @@ async function doRangeDelete() {
     }
 
 /* ▼▼▼ [수정] 캐시 자동 삭제 및 강제 업데이트 스크립트 ▼▼▼ */
-if ('serviceWorker' in navigator) {
+if (location.protocol !== 'file:' && 'serviceWorker' in navigator) {
     // 1. sw.js 뒤에 ?v=날짜를 붙여서 매번 파일이 달라진 것처럼 인식시킴 (개발 중에만 유용, 배포 후엔 버전 관리 필요)
     navigator.serviceWorker.register('./sw.js?v=' + new Date().getTime()).then(reg => {
         
@@ -4746,12 +4923,42 @@ async function saveBook(uid) {
     const amt = document.getElementById('txtPrice').innerText;
     const slots = [...selected].map(s => ({ ...s })).sort((a,b) => (a.c - b.c) || (a.t - b.t));
     let timeStr = slots.map(s => `${s.t}시`).join(', ');
+    const actorKey = getAttemptActorKey(bkName, bkPhone);
+    const slotSummary = slots.map(s => `${s.c}코트 ${s.t}시`);
+    const attemptBase = {
+        actorKey,
+        center: currentCenter,
+        date,
+        name: bkName,
+        phone: bkPhone,
+        slotSummary,
+        slotCount: slots.length,
+        payMethod,
+        amount: Number(String(amt).replace(/[^0-9]/g, '')) || 0,
+        uid: uid || ''
+    };
 
     try {
+        const limitState = await checkReservationRateLimit(actorKey);
+        if (limitState.blocked) {
+            await logBookingAttempt({
+                ...attemptBase,
+                result: 'FAIL_RATE_LIMIT',
+                reason: `10초:${limitState.shortCount}회 / 60초:${limitState.longCount}회`
+            });
+            alert('요청이 너무 빠릅니다. 잠시 후 다시 시도해주세요.');
+            return;
+        }
+
         // ① 정기예약 충돌 검사 (트랜잭션 밖에서 먼저 처리 - Firestore 제약)
         for (const slot of slots) {
             const recurConflict = await hasRecurringConflict(currentCenter, date, slot.c, slot.t);
             if (recurConflict) {
+                await logBookingAttempt({
+                    ...attemptBase,
+                    result: 'FAIL_RECURRING',
+                    reason: `${slot.c}코트 ${slot.t}시 정기예약 충돌`
+                });
                 alert(`${slot.c}코트 ${slot.t}시는 정기 예약과 겹쳐 예약할 수 없습니다.`);
                 loadDB();
                 return;
@@ -4759,7 +4966,6 @@ async function saveBook(uid) {
         }
 
         // ② 과도기 보호: 기존 자동ID 예약과 중복 여부 사전 확인 (트랜잭션 밖)
-        //    이전 방식(자동ID)으로 저장된 예약이 남아있는 동안 누락 없이 체크
         for (const slot of slots) {
             const oldSnap = await db.collection('reservations')
                 .where('center', '==', currentCenter)
@@ -4769,6 +4975,11 @@ async function saveBook(uid) {
                 .where('status', 'in', ['PENDING', 'BOOKED', 'BLOCKED'])
                 .get();
             if (!oldSnap.empty) {
+                await logBookingAttempt({
+                    ...attemptBase,
+                    result: 'FAIL_DUPLICATE',
+                    reason: `${slot.c}코트 ${slot.t}시 기존 예약 존재`
+                });
                 alert(`${slot.c}코트 ${slot.t}:00 자리가 이미 예약되어 있습니다.`);
                 loadDB();
                 return;
@@ -4776,7 +4987,6 @@ async function saveBook(uid) {
         }
 
         // ③ runTransaction: 슬롯별 고정 문서 ID로 중복 검사 + 저장을 원자적으로 처리
-        //    같은 시간/코트에 대해 동시에 두 명이 눌러도 한 명만 성공하도록 보강
         await db.runTransaction(async (transaction) => {
             const reservationRefs = [];
 
@@ -4794,7 +5004,6 @@ async function saveBook(uid) {
                     }
                 }
 
-                // 트랜잭션 안에서도 기존 자동ID 예약 재확인 (race condition 최종 방어)
                 const oldSnap = await db.collection('reservations')
                     .where('center', '==', currentCenter)
                     .where('date', '==', date)
@@ -4824,7 +5033,12 @@ async function saveBook(uid) {
             });
         });
 
-        // ③ 트랜잭션 성공 후 처리
+        await logBookingAttempt({
+            ...attemptBase,
+            result: 'SUCCESS',
+            reason: initialStatus
+        });
+
         showSuccessAnimation();
         setTimeout(() => {
             alert(isAdmin ? '예약이 완료되었습니다.' : '가예약 신청되었습니다. 입금 확인 후 최종 승인됩니다.');
@@ -4842,7 +5056,11 @@ async function saveBook(uid) {
         }
     } catch(err) {
         console.error(err);
-        // 선점 메시지는 그대로, 그 외 오류는 일반 메시지
+        await logBookingAttempt({
+            ...attemptBase,
+            result: 'FAIL_CONFLICT',
+            reason: err && err.message ? err.message : '예약 처리 중 오류'
+        });
         alert(err.message || '예약 처리 중 오류가 발생했습니다. 다시 시도해주세요.');
         loadDB();
     }
@@ -6680,6 +6898,35 @@ function openConf() {
         const target = document.querySelector('#modalSet .modal-win .inp-row');
         target.parentNode.insertBefore(statsBtn, target);
         target.parentNode.insertBefore(statsDiv, target);
+    }
+
+    let macroBtn = document.getElementById('btnToggleMacroMonitor');
+    let macroDiv = document.getElementById('macroMonitorBox');
+    if (!macroBtn) {
+        macroBtn = document.createElement('button');
+        macroBtn.id = 'btnToggleMacroMonitor';
+        macroBtn.className = 'btn-full';
+        macroBtn.style.cssText = 'background:#ef4444; margin-bottom:15px;';
+        macroBtn.innerHTML = '🛡 매크로 의심 감시판 보기';
+        macroBtn.onclick = function() {
+            const box = document.getElementById('macroMonitorBox');
+            if (box.style.display === 'none') {
+                box.style.display = 'block';
+                this.innerHTML = '🛡 매크로 의심 감시판 숨기기';
+                loadMacroMonitor();
+            } else {
+                box.style.display = 'none';
+                this.innerHTML = '🛡 매크로 의심 감시판 보기';
+            }
+        };
+
+        macroDiv = document.createElement('div');
+        macroDiv.id = 'macroMonitorBox';
+        macroDiv.style.cssText = 'background:#fffaf0; border:1px solid #fdba74; border-radius:12px; padding:15px; margin-bottom:15px; display:none;';
+
+        const target = document.querySelector('#modalSet .modal-win .inp-row');
+        target.parentNode.insertBefore(macroBtn, target);
+        target.parentNode.insertBefore(macroDiv, target);
     }
     // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
