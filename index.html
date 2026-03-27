@@ -4348,7 +4348,7 @@ function createConfetti(color) {
     
     setTimeout(() => {
         confetti.remove();
-    }, 3000);
+    }, 15000);
 }
 
 /* ========== 햄버거 메뉴 ========== */
@@ -4791,6 +4791,54 @@ const isRed = (new Date(date).getDay() % 6 == 0 || HOLIDAYS[date]);
         });
     }
 
+
+async function validateDailyReservationLimits(meta) {
+    if (isAdmin) return;
+    const phone = String(meta.phone || '').trim();
+    const date = meta.date;
+    const newSlots = Array.isArray(meta.slots) ? meta.slots : [];
+    if (!phone || !date || !newSlots.length) return;
+
+    const snap = await db.collection('reservations')
+        .where('phone', '==', phone)
+        .where('date', '==', date)
+        .where('status', 'in', ['PENDING', 'BOOKED', 'BLOCKED'])
+        .get();
+
+    const slotMap = new Map();
+    snap.forEach(doc => {
+        const d = doc.data() || {};
+        if (d.court == null || d.time == null) return;
+        const key = `${d.court}_${d.time}`;
+        slotMap.set(key, { court: Number(d.court), time: Number(d.time) });
+    });
+    newSlots.forEach(s => {
+        const key = `${s.court}_${s.time}`;
+        slotMap.set(key, { court: Number(s.court), time: Number(s.time) });
+    });
+
+    const merged = Array.from(slotMap.values());
+    if (merged.length > 6) {
+        throw new Error('하루 예약은 전체 합산 최대 6시간까지만 가능합니다.');
+    }
+
+    const courts = [...new Set(merged.map(s => Number(s.court)))];
+    if (courts.length > 2) {
+        throw new Error('하루 예약은 최대 2개 코트까지만 가능합니다.');
+    }
+
+    const byCourt = {};
+    merged.forEach(s => {
+        const c = Number(s.court);
+        byCourt[c] = (byCourt[c] || 0) + 1;
+    });
+    for (const [court, hours] of Object.entries(byCourt)) {
+        if (hours > 3) {
+            throw new Error(`${court}코트는 하루 최대 3시간까지만 예약 가능합니다.`);
+        }
+    }
+}
+
 /* [수정] 예약 저장 함수 (화면 입력값 우선 사용) */
 async function saveBook(uid) {
     const date = document.getElementById('hiddenDate').value;
@@ -4835,6 +4883,8 @@ async function saveBook(uid) {
             }
             throw guardErr;
         }
+
+        await validateDailyReservationLimits(attemptMeta);
 
         if (!isAdmin) {
             await new Promise(res => setTimeout(res, Math.floor(Math.random() * MACRO_LIMITS.RANDOM_DELAY_MS)));
@@ -5122,7 +5172,7 @@ function startMacroMonitorAutoRefresh() {
     macroMonitorTimer = setInterval(() => {
         const box = document.getElementById('macroMonitorBox');
         if (box && box.style.display !== 'none') loadMacroMonitor();
-    }, 3000);
+    }, 15000);
 }
 function stopMacroMonitorAutoRefresh() {
     if (macroMonitorTimer) {
@@ -5141,7 +5191,10 @@ function scoreBadge(score) {
 async function loadMacroMonitor() {
     const box = document.getElementById('macroMonitorBox');
     if (!box) return;
-    box.innerHTML = '<div style="color:#9a3412;font-weight:700;">감시 로그를 불러오는 중...</div>';
+    const hadContent = !!box.innerHTML.trim();
+    if (!hadContent) {
+        box.innerHTML = '<div style="color:#9a3412;font-weight:700;">감시 로그를 불러오는 중...</div>';
+    }
 
     try {
         const [logsSnap, blockedSnap] = await Promise.all([
@@ -5211,7 +5264,7 @@ async function loadMacroMonitor() {
                 <div style="background:#fff;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center;"><div style="font-size:0.72rem;color:#78716c;">최근 로그</div><div style="font-weight:800;color:#9a3412;font-size:1.05rem;">${logs.length}건</div></div>
                 <div style="background:#fff;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center;"><div style="font-size:0.72rem;color:#78716c;">의심 사용자</div><div style="font-weight:800;color:#b45309;font-size:1.05rem;">${suspicious.filter(x => x.score >= MACRO_LIMITS.SUSPICIOUS_SCORE).length}명</div></div>
                 <div style="background:#fff;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center;"><div style="font-size:0.72rem;color:#78716c;">차단 사용자</div><div style="font-weight:800;color:#dc2626;font-size:1.05rem;">${Object.keys(blockedMap).length}명</div></div>
-                <div style="background:#fff;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center;"><div style="font-size:0.72rem;color:#78716c;">자동 새로고침</div><div style="font-weight:800;color:#2563eb;font-size:1.05rem;">3초</div></div>
+                <div style="background:#fff;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center;"><div style="font-size:0.72rem;color:#78716c;">자동 새로고침</div><div style="font-weight:800;color:#2563eb;font-size:1.05rem;">15초</div></div>
             </div>`;
 
         box.innerHTML = `${summary}
