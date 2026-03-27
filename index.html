@@ -2795,7 +2795,7 @@ const HOLIDAYS = {
     let isAdmin = false;
     let currentUser = null; 
     window.bookingLogs = [];
-    const MACRO_LIMITS = { SHORT_MS: 10000, MID_MS: 60000, SHORT_MAX: 3, MID_MAX: 8, AUTO_BLOCK_SCORE: 90, SUSPICIOUS_SCORE: 40, COOLDOWN_MS: 3000, RANDOM_DELAY_MS: 1200 };
+    const MACRO_LIMITS = { SHORT_MS: 10000, MID_MS: 60000, SHORT_MAX: 3, MID_MAX: 8, AUTO_BLOCK_SCORE: 30, SUSPICIOUS_SCORE: 12, COOLDOWN_MS: 1200, RANDOM_DELAY_MS: 700 };
     let viewDate = new Date();
     let selected = [];
     let prices = [[5000,10000],[8000,15000],[7000,12000],[10000,18000]];
@@ -4764,17 +4764,29 @@ async function saveBook(uid) {
     };
 
     try {
-        await checkBookingGuards(attemptMeta);
+        await logBookingAttempt({ ...attemptMeta, result: 'TRY' });
+
+        try {
+            await checkBookingGuards(attemptMeta);
+        } catch (guardErr) {
+            await logBookingAttempt({ ...attemptMeta, result: 'FAIL_GUARD', reason: guardErr && guardErr.message ? guardErr.message : 'GUARD_BLOCK' });
+            if (!isAdmin) await maybeAutoBlockUser(actorUid);
+            if (document.getElementById('macroMonitorBox') && document.getElementById('macroMonitorBox').style.display !== 'none') {
+                loadMacroMonitor();
+            }
+            throw guardErr;
+        }
 
         if (!isAdmin) {
             await new Promise(res => setTimeout(res, Math.floor(Math.random() * MACRO_LIMITS.RANDOM_DELAY_MS)));
         }
 
-        await logBookingAttempt({ ...attemptMeta, result: 'TRY' });
         // ① 정기예약 충돌 검사 (트랜잭션 밖에서 먼저 처리 - Firestore 제약)
         for (const slot of slots) {
             const recurConflict = await hasRecurringConflict(currentCenter, date, slot.c, slot.t);
             if (recurConflict) {
+                await logBookingAttempt({ ...attemptMeta, result: 'FAIL', reason: `${slot.c}코트 ${slot.t}시 정기예약 겹침` });
+                if (document.getElementById('macroMonitorBox') && document.getElementById('macroMonitorBox').style.display !== 'none') loadMacroMonitor();
                 alert(`${slot.c}코트 ${slot.t}시는 정기 예약과 겹쳐 예약할 수 없습니다.`);
                 loadDB();
                 return;
@@ -4792,6 +4804,8 @@ async function saveBook(uid) {
                 .where('status', 'in', ['PENDING', 'BOOKED', 'BLOCKED'])
                 .get();
             if (!oldSnap.empty) {
+                await logBookingAttempt({ ...attemptMeta, result: 'FAIL', reason: `${slot.c}코트 ${slot.t}시 이미 예약됨` });
+                if (document.getElementById('macroMonitorBox') && document.getElementById('macroMonitorBox').style.display !== 'none') loadMacroMonitor();
                 alert(`${slot.c}코트 ${slot.t}:00 자리가 이미 예약되어 있습니다.`);
                 loadDB();
                 return;
@@ -4850,6 +4864,7 @@ async function saveBook(uid) {
         // ③ 트랜잭션 성공 후 처리
         await logBookingAttempt({ ...attemptMeta, result: 'SUCCESS' });
         if (!isAdmin) await maybeAutoBlockUser(actorUid);
+        if (document.getElementById('macroMonitorBox') && document.getElementById('macroMonitorBox').style.display !== 'none') loadMacroMonitor();
         showSuccessAnimation();
         setTimeout(() => {
             alert(isAdmin ? '예약이 완료되었습니다.' : '가예약 신청되었습니다. 입금 확인 후 최종 승인됩니다.');
@@ -4869,6 +4884,7 @@ async function saveBook(uid) {
         try {
             await logBookingAttempt({ ...attemptMeta, result: 'FAIL', reason: err && err.message ? err.message : 'UNKNOWN' });
             if (!isAdmin) await maybeAutoBlockUser(actorUid);
+            if (document.getElementById('macroMonitorBox') && document.getElementById('macroMonitorBox').style.display !== 'none') loadMacroMonitor();
         } catch(_) {}
         console.error(err);
         // 선점 메시지는 그대로, 그 외 오류는 일반 메시지
@@ -4907,11 +4923,19 @@ function calcMacroScore(logs) {
     logs.forEach(l => {
         const ts = l.createdAt && l.createdAt.toMillis ? l.createdAt.toMillis() : 0;
         const age = now - ts;
-        if (age <= 10000) score += 12;
-        else if (age <= 60000) score += 4;
+        if (age <= 10000) score += 8;
+        else if (age <= 60000) score += 3;
+
+        if (l.result === 'TRY') score += 1;
         if (l.result === 'FAIL') score += 8;
-        if (l.result === 'TRY') score += 2;
-        if (String(l.reason || '').includes('선점')) score += 10;
+        if (l.result === 'FAIL_GUARD') score += 12;
+        if (l.result === 'SUCCESS') score += 2;
+
+        const reason = String(l.reason || '');
+        if (reason.includes('선점')) score += 10;
+        if (reason.includes('너무 빠릅니다')) score += 12;
+        if (reason.includes('과도한 반복')) score += 15;
+        if (reason.includes('제한되었습니다')) score += 20;
     });
     return score;
 }
@@ -5004,6 +5028,21 @@ window.unblockUser = async (uid) => {
     loadMacroMonitor();
 };
 
+let macroMonitorTimer = null;
+function startMacroMonitorAutoRefresh() {
+    stopMacroMonitorAutoRefresh();
+    macroMonitorTimer = setInterval(() => {
+        const box = document.getElementById('macroMonitorBox');
+        if (box && box.style.display !== 'none') loadMacroMonitor();
+    }, 3000);
+}
+function stopMacroMonitorAutoRefresh() {
+    if (macroMonitorTimer) {
+        clearInterval(macroMonitorTimer);
+        macroMonitorTimer = null;
+    }
+}
+
 function scoreBadge(score) {
     if (score >= 90) return '<span style="background:#dc2626;color:#fff;padding:3px 8px;border-radius:999px;font-size:0.72rem;font-weight:700;">자동 차단 후보</span>';
     if (score >= 70) return '<span style="background:#ea580c;color:#fff;padding:3px 8px;border-radius:999px;font-size:0.72rem;font-weight:700;">강한 의심</span>';
@@ -5080,9 +5119,19 @@ async function loadMacroMonitor() {
             </div>`;
         }).join('');
 
-        box.innerHTML = `
+        const summary = `<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px;">
+                <div style="background:#fff;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center;"><div style="font-size:0.72rem;color:#78716c;">최근 로그</div><div style="font-weight:800;color:#9a3412;font-size:1.05rem;">${logs.length}건</div></div>
+                <div style="background:#fff;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center;"><div style="font-size:0.72rem;color:#78716c;">의심 사용자</div><div style="font-weight:800;color:#b45309;font-size:1.05rem;">${suspicious.filter(x => x.score >= MACRO_LIMITS.SUSPICIOUS_SCORE).length}명</div></div>
+                <div style="background:#fff;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center;"><div style="font-size:0.72rem;color:#78716c;">차단 사용자</div><div style="font-weight:800;color:#dc2626;font-size:1.05rem;">${Object.keys(blockedMap).length}명</div></div>
+                <div style="background:#fff;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center;"><div style="font-size:0.72rem;color:#78716c;">자동 새로고침</div><div style="font-weight:800;color:#2563eb;font-size:1.05rem;">3초</div></div>
+            </div>`;
+
+        box.innerHTML = `${summary}
             <div style="margin-bottom:12px;">
-                <div style="font-weight:800;color:#9a3412;margin-bottom:8px;">🚨 의심 사용자 자동 표시</div>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
+                    <div style="font-weight:800;color:#9a3412;">🚨 의심 사용자 자동 표시</div>
+                    <button onclick="loadMacroMonitor()" style="background:#fff;border:1px solid #fdba74;color:#9a3412;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:0.78rem;font-weight:700;">새로고침</button>
+                </div>
                 ${suspiciousHtml || '<div style="padding:12px;border:1px solid #d9f99d;background:#f7fee7;border-radius:10px;color:#3f6212;">현재 자동 감지된 의심 사용자가 없습니다.</div>'}
             </div>
             <div style="margin-top:16px;">
@@ -6945,9 +6994,11 @@ function openConf() {
                 box.style.display = 'block';
                 this.innerHTML = '🛡 매크로 의심 감시판 숨기기';
                 loadMacroMonitor();
+                startMacroMonitorAutoRefresh();
             } else {
                 box.style.display = 'none';
                 this.innerHTML = '🛡 매크로 의심 감시판 보기';
+                stopMacroMonitorAutoRefresh();
             }
         };
 
