@@ -3284,6 +3284,9 @@ auth.onAuthStateChanged(user => {
                 }
                 updateAdminUI(); // UI 갱신 (여기서 관리자 배지가 그려짐)
                 try {
+                    if (typeof loadWeeklyWeather === 'function') {
+                        requestAnimationFrame(() => loadWeeklyWeather());
+                    }
                     setTimeout(() => {
                         if (typeof scheduleLoadDB === 'function') scheduleLoadDB(80);
                     }, 80);
@@ -3310,6 +3313,11 @@ auth.onAuthStateChanged(user => {
             btnSet.style.display = 'none';
         }
         updateAdminUI();
+        try {
+            if (typeof loadWeeklyWeather === 'function') {
+                requestAnimationFrame(() => loadWeeklyWeather());
+            }
+        } catch (_) {}
     }
 });
         const now = new Date();
@@ -3320,6 +3328,9 @@ auth.onAuthStateChanged(user => {
         
         drawCalendar();
         drawGrid();
+        requestAnimationFrame(() => {
+            if (typeof loadWeeklyWeather === 'function') loadWeeklyWeather();
+        });
         scheduleLoadDB(0);
         loadConfig();
         loadPosts();
@@ -9311,44 +9322,72 @@ function checkUpcomingPopup() {
 /* =========================================
    [속도 개선] 날씨 캐싱 시스템 (저장 후 즉시 로딩)
    ========================================= */
+let latestWeatherData = null;
+let weatherLoadPromise = null;
+
+function applySavedWeatherImmediately(cacheObj) {
+    if (!cacheObj || !cacheObj.data) return false;
+    latestWeatherData = cacheObj.data;
+    applyWeatherToCalendar(cacheObj.data);
+    const curDate = document.getElementById('hiddenDate').value;
+    updateWeatherBanner(curDate, cacheObj.data);
+    return true;
+}
+
 /* [수정] 날씨 데이터 로딩 (풍속, 강수확률 추가) */
-async function loadWeeklyWeather() {
-    const CACHE_KEY = 'tenniskj_weather_v2'; // 키 이름 변경 (데이터 구조가 바뀜)
-    const CACHE_TIME = 3 * 60 * 60 * 1000; // 3시간마다 갱신
+async function loadWeeklyWeather(forceRefresh = false) {
+    const CACHE_KEY = 'tenniskj_weather_v2';
+    const CACHE_TIME = 3 * 60 * 60 * 1000;
 
     const saved = localStorage.getItem(CACHE_KEY);
+    let parsed = null;
+
     if (saved) {
         try {
-            const parsed = JSON.parse(saved);
-            const now = new Date().getTime();
-            if (now - parsed.timestamp < CACHE_TIME) {
-                applyWeatherToCalendar(parsed.data);
-                // [신규] 오늘 날짜 배너 즉시 갱신
-                const curDate = document.getElementById('hiddenDate').value;
-                updateWeatherBanner(curDate, parsed.data); 
-                return;
+            parsed = JSON.parse(saved);
+            applySavedWeatherImmediately(parsed);
+
+            const now = Date.now();
+            if (!forceRefresh && parsed.timestamp && (now - parsed.timestamp < CACHE_TIME)) {
+                return parsed.data;
             }
-        } catch (e) { console.error("캐시 오류", e); }
+        } catch (e) {
+            console.error("캐시 오류", e);
+        }
+    } else if (latestWeatherData && !forceRefresh) {
+        applyWeatherToCalendar(latestWeatherData);
+        const curDate = document.getElementById('hiddenDate').value;
+        updateWeatherBanner(curDate, latestWeatherData);
+        return latestWeatherData;
     }
 
-    // 김해 장유 좌표 + 풍속(ms), 강수확률 추가 요청
+    if (weatherLoadPromise && !forceRefresh) return weatherLoadPromise;
+
     const lat = 35.15;
     const lon = 128.80;
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max&timezone=auto&forecast_days=16&wind_speed_unit=ms`;
 
-    try {
-        const res = await fetch(url);
-        const data = await res.json();
-        
-        const cacheObj = { timestamp: new Date().getTime(), data: data };
-        localStorage.setItem(CACHE_KEY, JSON.stringify(cacheObj));
-        
-        applyWeatherToCalendar(data);
-        // [신규] 로딩 완료 후 배너 갱신
-        const curDate = document.getElementById('hiddenDate').value;
-        updateWeatherBanner(curDate, data);
+    weatherLoadPromise = fetch(url)
+        .then(res => res.json())
+        .then(data => {
+            latestWeatherData = data;
+            const cacheObj = { timestamp: Date.now(), data };
+            localStorage.setItem(CACHE_KEY, JSON.stringify(cacheObj));
+            applyWeatherToCalendar(data);
+            const curDate = document.getElementById('hiddenDate').value;
+            updateWeatherBanner(curDate, data);
+            return data;
+        })
+        .catch(err => {
+            console.error("날씨 로딩 실패:", err);
+            if (parsed && parsed.data) return parsed.data;
+            throw err;
+        })
+        .finally(() => {
+            weatherLoadPromise = null;
+        });
 
-    } catch(err) { console.error("날씨 로딩 실패:", err); }
+    return weatherLoadPromise;
 }
 
 function applyWeatherToCalendar(data) {
