@@ -2687,37 +2687,148 @@ const HOLIDAYS = {
     const auth = firebase.auth();
     const storage = firebase.storage();
 
-    function getProofStoragePath(uid) {
-        return `proofs/${uid}/latest_proof.jpg`;
-    }
 
-    async function deleteStorageByUrl(url) {
+    function getStoragePathFromUrl(url) {
         try {
-            if (!url) return;
-            await storage.refFromURL(url).delete();
-        } catch (e) {
-            console.warn('storage delete skip:', e);
+            if (!url) return "";
+            const clean = url.split('?')[0];
+            const marker = '/o/';
+            const idx = clean.indexOf(marker);
+            if (idx === -1) return "";
+            return decodeURIComponent(clean.substring(idx + marker.length));
+        } catch (_) {
+            return "";
         }
     }
 
-    async function replaceProofImage(uid, file, oldUrl) {
-        const compressedFile = await compressImage(file, 600, 0.5);
-        if (oldUrl) await deleteStorageByUrl(oldUrl);
-        const path = getProofStoragePath(uid);
-        const ref = storage.ref().child(path);
-        await ref.put(compressedFile);
-        const url = await ref.getDownloadURL();
-        return { url, path };
+    async function deleteProofByUrl(url) {
+        try {
+            if (!url) return false;
+            await storage.refFromURL(url).delete();
+            return true;
+        } catch (e) {
+            console.warn('증빙 사진 삭제 실패:', e);
+            return false;
+        }
     }
 
-    function buildCitizenAuditEntry(status, note = '') {
-        return {
-            status,
-            note: note || '',
-            at: new Date().toISOString(),
-            by: (auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : 'system'
-        };
+    async function appendCitizenAudit(uid, action, extra = {}) {
+        try {
+            await db.collection('citizen_audit').add({
+                uid,
+                action,
+                at: firebase.firestore.FieldValue.serverTimestamp(),
+                actorUid: (auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : 'system',
+                actorName: (currentUser && currentUser.name) ? currentUser.name : (isAdmin ? '관리자' : ''),
+                ...extra
+            });
+        } catch (e) {
+            console.warn('citizen_audit 저장 실패:', e);
+        }
     }
+
+    function stripProofFieldsForBackup(userData) {
+        if (!userData || typeof userData !== 'object') return userData;
+        const cloned = JSON.parse(JSON.stringify(userData));
+        delete cloned.proofUrl;
+        delete cloned.proofUploadedAt;
+        delete cloned.proofDeletedAt;
+        return cloned;
+    }
+
+
+    const PROOF_AUTO_DELETE_DAYS = 30;
+    let citizenProofCleanupRunning = false;
+
+    function toMillisSafe(v) {
+        try {
+            if (!v) return 0;
+            if (typeof v === 'number') return v;
+            if (v.toMillis) return v.toMillis();
+            if (v.toDate) return v.toDate().getTime();
+            return new Date(v).getTime() || 0;
+        } catch (_) {
+            return 0;
+        }
+    }
+
+    function isProofExpired(uploadedAt, nowMs = Date.now()) {
+        const uploadedMs = toMillisSafe(uploadedAt);
+        if (!uploadedMs) return false;
+        return (nowMs - uploadedMs) >= (PROOF_AUTO_DELETE_DAYS * 24 * 60 * 60 * 1000);
+    }
+
+    async function cleanupExpiredCitizenProofs(options = {}) {
+        const opts = Object.assign({ silent: true, force: false, onlyUid: '' }, options || {});
+        if (citizenProofCleanupRunning) return { cleaned: 0, skipped: 0 };
+        citizenProofCleanupRunning = true;
+
+        const storageKey = opts.onlyUid ? `citizenProofCleanupAt:${opts.onlyUid}` : 'citizenProofCleanupAt:global';
+        const nowMs = Date.now();
+
+        try {
+            if (!opts.force) {
+                const lastRun = parseInt(localStorage.getItem(storageKey) || '0', 10);
+                if (lastRun && (nowMs - lastRun) < (12 * 60 * 60 * 1000)) {
+                    return { cleaned: 0, skipped: 1 };
+                }
+            }
+
+            let snap;
+            if (opts.onlyUid) {
+                snap = await db.collection('users').doc(opts.onlyUid).get();
+                snap = { docs: snap.exists ? [snap] : [] };
+            } else {
+                snap = await db.collection('users')
+                    .where('verifStatus', 'in', ['PENDING', 'APPROVED', 'REJECTED'])
+                    .get();
+            }
+
+            let cleaned = 0;
+
+            for (const doc of snap.docs) {
+                const u = doc.data() || {};
+                if (!u.proofUrl) continue;
+                if (!isProofExpired(u.proofUploadedAt, nowMs)) continue;
+
+                const deleted = await deleteProofByUrl(u.proofUrl);
+                await doc.ref.update({
+                    proofUrl: "",
+                    proofDeletedAt: new Date(),
+                    proofAutoDeletedAt: new Date()
+                });
+
+                await appendCitizenAudit(doc.id, 'AUTO_DELETE_30D', {
+                    name: u.name || '',
+                    phone: u.phone || '',
+                    address: u.address || '',
+                    verifStatus: u.verifStatus || '',
+                    deletedFromStorage: !!deleted
+                });
+
+                if (currentUser && currentUser.uid === doc.id) {
+                    currentUser.proofUrl = "";
+                    currentUser.proofDeletedAt = new Date();
+                }
+                cleaned++;
+            }
+
+            localStorage.setItem(storageKey, String(nowMs));
+
+            if (!opts.silent && cleaned > 0) {
+                alert(`30일 지난 시민 인증 사진 ${cleaned}건을 자동 정리했습니다.`);
+            }
+            return { cleaned, skipped: 0 };
+        } catch (err) {
+            console.error('30일 지난 시민 인증 사진 자동 정리 실패:', err);
+            if (!opts.silent) alert('자동 사진 정리 실패: ' + err.message);
+            return { cleaned: 0, skipped: 0, error: err };
+        } finally {
+            citizenProofCleanupRunning = false;
+        }
+    }
+
+
 
     function buildSlotLockId(center, date, court, time) {
         return [center || '국제', date, court, time].join('_');
@@ -2892,7 +3003,7 @@ function checkAppVersion() {
 
 // [중요] 페이지 로드 시 바로 실행되도록 호출
 // ▼▼▼ [설정] 현재 이 코드의 버전 (업데이트 할 때마다 이 숫자를 1씩 올려서 배포하세요) ▼▼▼
-const CURRENT_APP_VERSION = 5;
+const CURRENT_APP_VERSION = 4;
 checkAppVersion();
 /* [신규] 승인 모달 열기 */
 let currentApproveData = null; // 승인 처리를 위한 임시 저장소
@@ -3158,6 +3269,7 @@ auth.onAuthStateChanged(user => {
                     // === 관리자일 때 ===
                     btnSet.style.display = 'inline-block';
                     if(btnMyRes) btnMyRes.style.display = 'none';
+                    cleanupExpiredCitizenProofs({ silent: true, force: false });
                     // *UI 업데이트 호출 시 관리자 배지가 적용됨*
                 } else {
                     // === 일반 회원일 때 (관리자가 아닐 때만 실행) ===
@@ -3353,23 +3465,31 @@ function goTab(t) {
             const uid = cred.user.uid;
             let proofUrl = "";
 
-            let proofStoragePath = "";
             if(file) {
                 try {
-                    const uploaded = await replaceProofImage(uid, file, "");
-                    proofUrl = uploaded.url;
-                    proofStoragePath = uploaded.path;
+                    const compressedFile = await compressImage(file, 800, 0.6); // 화질 약간 조정
+                    const path = `proofs/${uid}_proof.jpg`;
+                    const ref = storage.ref().child(path);
+                    await ref.put(compressedFile);
+                    proofUrl = await ref.getDownloadURL();
                 } catch(imgErr) { console.error("이미지 실패:", imgErr); }
             }
 
             // DB 저장 시 동의 날짜 기록 (법적 분쟁 대비)
             await db.collection("users").doc(uid).set({
                 email: email, name: name, phone: ph, birth: birth, address: addr,
-                proofUrl: proofUrl, proofStoragePath: proofStoragePath, isCitizen: false, verifStatus: file ? "PENDING" : "NONE",
-                citizenAuditTrail: file ? [buildCitizenAuditEntry('SUBMITTED', '회원가입 시 시민 인증 자료 제출')] : [],
+                proofUrl: proofUrl, proofUploadedAt: file ? new Date() : null,
+                isCitizen: false, verifStatus: file ? "PENDING" : "NONE",
                 isAdmin: false, 
                 joinedAt: new Date(),
                 agreedAt: new Date() // 약관 동의 시점 저장
+            });
+
+            await appendCitizenAudit(uid, 'JOIN', {
+                name: name,
+                phone: ph,
+                address: addr,
+                hasProof: !!proofUrl
             });
 
             alert("회원가입 완료! 로그인해주세요.");
@@ -6218,12 +6338,15 @@ async function saveUserSettingsInfo() {
         
         // 김해시민 인증 파일 업로드
         if (file) {
-            const uploaded = await replaceProofImage(currentUser.uid, file, currentUser.proofUrl || '');
-            updateData.proofUrl = uploaded.url;
-            updateData.proofStoragePath = uploaded.path;
+            const compressedFile = await compressImage(file, 600, 0.5);
+            const path = `proofs/${currentUser.uid}_proof_${new Date().getTime()}.jpg`;
+            const ref = storage.ref().child(path);
+            
+            await ref.put(compressedFile);
+            const url = await ref.getDownloadURL();
+            
+            updateData.proofUrl = url;
             updateData.isCitizen = false; // 재심사 대기
-            updateData.verifStatus = "PENDING";
-            updateData.citizenAuditTrail = firebase.firestore.FieldValue.arrayUnion(buildCitizenAuditEntry('SUBMITTED', '내 정보 수정에서 시민 인증 재신청'));
             
             alert("김해시민 인증 서류가 업로드되었습니다. 관리자 승인을 기다려주세요.");
         }
@@ -7035,7 +7158,7 @@ async function processUserCancel(mode) {
             alert("로그인 정보가 없습니다. 다시 로그인해주세요.");
             return;
         }
-        
+
         const btn = document.getElementById('btnSaveInfo');
         btn.innerText = "저장중...";
         btn.disabled = true;
@@ -7043,7 +7166,7 @@ async function processUserCancel(mode) {
         const newPw = document.getElementById('myNewPw').value.trim();
         const newAddr = document.getElementById('myAddr').value.trim();
         const file = document.getElementById('myProof').files[0];
-        
+
         try {
             if(newPw) {
                 if(newPw.length < 6) throw new Error("비밀번호는 6자 이상이어야 합니다.");
@@ -7054,26 +7177,46 @@ async function processUserCancel(mode) {
             let updateData = { address: newAddr };
 
             if(file) {
-                const uploaded = await replaceProofImage(currentUser.uid, file, currentUser.proofUrl || '');
-                updateData.proofUrl = uploaded.url;
-                updateData.proofStoragePath = uploaded.path;
+                const oldProofUrl = currentUser.proofUrl || "";
+                const compressedFile = await compressImage(file, 600, 0.5);
+                const path = `proofs/${currentUser.uid}_proof.jpg`;
+                const ref = storage.ref().child(path);
+
+                await ref.put(compressedFile);
+                const url = await ref.getDownloadURL();
+
+                updateData.proofUrl = url;
+                updateData.proofUploadedAt = new Date();
+                updateData.proofDeletedAt = null;
                 updateData.verifStatus = "PENDING"; 
                 updateData.isCitizen = false;
-                updateData.citizenAuditTrail = firebase.firestore.FieldValue.arrayUnion(buildCitizenAuditEntry('SUBMITTED', '내 정보 수정에서 시민 인증 재신청'));
+
+                if (oldProofUrl && oldProofUrl !== url) {
+                    await deleteProofByUrl(oldProofUrl);
+                }
+
+                await appendCitizenAudit(currentUser.uid, 'REAPPLY', {
+                    name: currentUser.name || '',
+                    phone: currentUser.phone || '',
+                    address: newAddr,
+                    hasProof: true
+                });
             }
 
             await db.collection("users").doc(currentUser.uid).update(updateData);
-            
+
             currentUser.address = newAddr;
             if(updateData.proofUrl) {
                 currentUser.proofUrl = updateData.proofUrl;
+                currentUser.proofUploadedAt = updateData.proofUploadedAt;
+                currentUser.proofDeletedAt = null;
                 currentUser.verifStatus = "PENDING";
                 currentUser.isCitizen = false;
             }
 
             alert("정보가 수정되었습니다.");
             closeModal('modalMyInfo');
-            
+
         } catch(e) {
             console.error(e);
             alert("수정 실패: " + e.message);
@@ -7133,6 +7276,13 @@ function openConf() {
         btnCitizen.innerText = "📍 김해시민 인증자 목록/관리"; 
         btnCitizen.onclick = loadCitizenMembers; 
         container.appendChild(btnCitizen);
+
+        let btnCitizenCleanup = document.createElement('button');
+        btnCitizenCleanup.id = "btnCitizenCleanup"; btnCitizenCleanup.className = "btn-full";
+        btnCitizenCleanup.style.background = "#475569";
+        btnCitizenCleanup.innerText = "🧹 승인완료/거절 사진 정리";
+        btnCitizenCleanup.onclick = cleanupCitizenProofs;
+        container.appendChild(btnCitizenCleanup);
     }
     
     document.getElementById('admPhone').value = admPh;
@@ -7255,12 +7405,15 @@ function loadPendingMembers() {
 
                     ${proofContent}
 
-                    <div style="display:flex; gap:10px; margin-top:10px;">
-                        <button onclick="approveMember('${doc.id}', true)" class="btn-full" style="margin-top:0; background:#10b981; border:none;">
-                            ✅ 승인 (시민 적용)
+                    <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
+                        <button onclick="approveMember('${doc.id}', true)" class="btn-full" style="margin-top:0; background:#10b981; border:none; flex:1;">
+                            ✅ 승인 (텍스트만 보관)
                         </button>
-                        <button onclick="approveMember('${doc.id}', false)" class="btn-full" style="margin-top:0; background:#ef4444; border:none;">
-                            🚫 거절 (사유 안내 필요)
+                        <button onclick="approveMember('${doc.id}', false)" class="btn-full" style="margin-top:0; background:#ef4444; border:none; flex:1;">
+                            🚫 거절 (텍스트만 보관)
+                        </button>
+                        <button onclick="deleteCitizenProofOnly('${doc.id}')" class="btn-full" style="margin-top:0; background:#475569; border:none; flex:1;">
+                            🗑 사진만 삭제
                         </button>
                     </div>
                 </div>`;
@@ -7269,35 +7422,64 @@ function loadPendingMembers() {
         list.innerHTML = "오류 발생: " + err.message;
     });
 }
-    async function approveMember(uid, isApprove) {
-        if(!confirm("처리하시겠습니까?")) return;
-        try {
-            const userRef = db.collection("users").doc(uid);
-            const snap = await userRef.get();
-            if (!snap.exists) return alert("회원 정보를 찾을 수 없습니다.");
-            const u = snap.data() || {};
-            const note = isApprove ? '관리자 승인 완료' : '관리자 거절 처리';
 
-            await userRef.update({
+    async function deleteCitizenProofOnly(uid) {
+        if(!isAdmin) return;
+        if(!confirm("이 회원의 시민인증 사진만 삭제하고 텍스트 이력만 남기시겠습니까?")) return;
+        try {
+            const ref = db.collection("users").doc(uid);
+            const doc = await ref.get();
+            if(!doc.exists) throw new Error("회원 정보를 찾을 수 없습니다.");
+            const u = doc.data() || {};
+            if (u.proofUrl) await deleteProofByUrl(u.proofUrl);
+            await ref.update({
+                proofUrl: "",
+                proofDeletedAt: new Date()
+            });
+            await appendCitizenAudit(uid, 'PROOF_DELETED_ONLY', {
+                name: u.name || '',
+                phone: u.phone || '',
+                address: u.address || ''
+            });
+            alert("사진만 삭제되었습니다. 텍스트 이력은 유지됩니다.");
+            loadPendingMembers();
+        } catch (err) {
+            alert("사진 삭제 실패: " + err.message);
+        }
+    }
+
+    async function approveMember(uid, isApprove) {
+        if(!confirm("처리하시겠습니까?\n사진은 삭제되고 텍스트 이력만 남습니다.")) return;
+        try {
+            const ref = db.collection("users").doc(uid);
+            const doc = await ref.get();
+            if(!doc.exists) throw new Error("회원 정보를 찾을 수 없습니다.");
+            const u = doc.data() || {};
+
+            if (u.proofUrl) await deleteProofByUrl(u.proofUrl);
+
+            await ref.update({
                 isCitizen: isApprove,
                 verifStatus: isApprove ? "APPROVED" : "REJECTED",
-                citizenApprovedAt: isApprove ? new Date() : firebase.firestore.FieldValue.delete(),
-                citizenRejectedAt: isApprove ? firebase.firestore.FieldValue.delete() : new Date(),
-                citizenAuditTrail: firebase.firestore.FieldValue.arrayUnion(buildCitizenAuditEntry(isApprove ? 'APPROVED' : 'REJECTED', note)),
-                proofUrl: firebase.firestore.FieldValue.delete(),
-                proofStoragePath: firebase.firestore.FieldValue.delete()
+                proofUrl: "",
+                proofDeletedAt: new Date()
             });
 
-            await deleteStorageByUrl(u.proofUrl);
+            await appendCitizenAudit(uid, isApprove ? 'APPROVED' : 'REJECTED', {
+                name: u.name || '',
+                phone: u.phone || '',
+                address: u.address || '',
+                birth: u.birth || ''
+            });
+
             alert("처리됨");
             loadPendingMembers();
-        } catch(err) {
+        } catch (err) {
             alert("처리 실패: " + err.message);
         }
     }
-    
-    function loadConfig() {
 
+    function loadConfig() {
     db.collection("settings").doc("global").get().then(doc => {
         if(doc.exists) {
             const d = doc.data();
@@ -8319,17 +8501,18 @@ async function backupData() {
         const backupObj = {
             _meta: {
                 exportedAt: new Date().toISOString(),
-                note: 'Firestore 데이터 백업입니다. Firebase Storage 파일(증빙 이미지 등)은 포함되지 않습니다.'
+                note: "시민인증 사진(Storage 파일)은 백업되지 않으며, 텍스트 이력만 포함됩니다."
             }
         };
-        const collections = ["reservations", "recurring", "users", "posts", "settings"];
+        const collections = ["reservations", "recurring", "users", "posts", "settings", "citizen_audit"];
 
         // 모든 컬렉션 데이터 수집
         for(const colName of collections) {
             const snapshot = await db.collection(colName).get();
             backupObj[colName] = {};
             snapshot.forEach(doc => {
-                backupObj[colName][doc.id] = doc.data();
+                const raw = doc.data();
+                backupObj[colName][doc.id] = (colName === 'users') ? stripProofFieldsForBackup(raw) : raw;
             });
         }
 
@@ -9402,7 +9585,7 @@ function loadCitizenMembers() {
                           </div>
                           <div style="font-size:0.85rem; color:#475569;">📞 ${u.phone}</div>
                           <div style="font-size:0.85rem; color:#64748b;">🏠 ${u.address}</div>
-                          ${u.proofUrl ? `<a href="${u.proofUrl}" target="_blank" style="font-size:0.8rem; color:#2563eb; text-decoration:underline; display:inline-block; margin-top:4px;">[증빙 사진 보기]</a>` : ''}
+                          <div style="font-size:0.78rem; color:#64748b; margin-top:4px;">증빙 사진은 삭제되고 텍스트 이력만 보관됩니다.</div>
                       </div>
                       <button onclick="revokeCitizen('${doc.id}', '${u.name}')" 
                           style="background:#fee2e2; color:#dc2626; border:1px solid #ef4444; padding:6px 10px; border-radius:6px; font-size:0.8rem; font-weight:bold; cursor:pointer; flex-shrink:0; margin-left:10px;">
@@ -9423,17 +9606,23 @@ function loadCitizenMembers() {
 
 /* [추가] 시민 인증 취소 (박탈) 기능 */
 async function revokeCitizen(uid, name) {
-    if(!confirm(`[${name}] 회원의 김해시민 인증을 취소하시겠습니까?
-
-- 취소 후 회원은 다시 일반 요금이 적용됩니다.
-- 회원이 다시 인증 신청을 할 수 있습니다.`)) return;
+    if(!confirm(`[${name}] 회원의 김해시민 인증을 취소하시겠습니까?\n\n- 취소 후 회원은 다시 일반 요금이 적용됩니다.\n- 회원이 다시 인증 신청을 할 수 있습니다.`)) return;
 
     try {
-        await db.collection("users").doc(uid).update({ 
+        const ref = db.collection("users").doc(uid);
+        const doc = await ref.get();
+        const u = doc.exists ? (doc.data() || {}) : {};
+        if (u.proofUrl) await deleteProofByUrl(u.proofUrl);
+        await ref.update({ 
             isCitizen: false, 
             verifStatus: "NONE",
-            citizenRevokedAt: new Date(),
-            citizenAuditTrail: firebase.firestore.FieldValue.arrayUnion(buildCitizenAuditEntry('REVOKED', '관리자 인증 취소'))
+            proofUrl: "",
+            proofDeletedAt: new Date()
+        });
+        await appendCitizenAudit(uid, 'REVOKED', {
+            name: name || u.name || '',
+            phone: u.phone || '',
+            address: u.address || ''
         });
         alert("인증이 취소되었습니다."); 
         loadCitizenMembers();
