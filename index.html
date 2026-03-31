@@ -4956,18 +4956,30 @@ async function saveBook(uid) {
         }
 
         await db.runTransaction(async (transaction) => {
+            // [수정] Firestore 트랜잭션 규칙: 모든 read를 먼저 완료한 뒤 write 수행
+            // read와 write가 섞이면 "reads must be executed before all writes" 오류 발생
+
+            // 1단계: 모든 슬롯 read 먼저
+            const snapshots = [];
             for (const slot of slots) {
                 const reservationId = buildSlotLockId(currentCenter, date, slot.c, slot.t);
                 const resRef = db.collection('reservations').doc(reservationId);
                 const resSnap = await transaction.get(resRef);
+                snapshots.push({ slot, resRef, resSnap });
+            }
 
+            // 2단계: 충돌 체크 (read 결과만 사용, Firestore 접근 없음)
+            for (const { slot, resSnap } of snapshots) {
                 if (resSnap.exists) {
                     const existingData = resSnap.data() || {};
                     if (['PENDING', 'BOOKED', 'BLOCKED'].includes(existingData.status)) {
                         throw new Error(`${slot.c}코트 ${slot.t}:00 자리가 방금 다른 분의 예약으로 선점되었습니다.`);
                     }
                 }
+            }
 
+            // 3단계: 모든 write를 마지막에 일괄 처리
+            for (const { slot, resRef } of snapshots) {
                 transaction.set(resRef, {
                     center: currentCenter,
                     date,
