@@ -2737,97 +2737,87 @@ const HOLIDAYS = {
     }
 
 
-    const PROOF_AUTO_DELETE_DAYS = 30;
-    let citizenProofCleanupRunning = false;
-
-    function toMillisSafe(v) {
+    function getDateFromAny(value) {
         try {
-            if (!v) return 0;
-            if (typeof v === 'number') return v;
-            if (v.toMillis) return v.toMillis();
-            if (v.toDate) return v.toDate().getTime();
-            return new Date(v).getTime() || 0;
+            if (!value) return null;
+            if (value instanceof Date) return value;
+            if (value.toDate && typeof value.toDate === 'function') return value.toDate();
+            if (typeof value === 'string' || typeof value === 'number') {
+                const d = new Date(value);
+                return isNaN(d.getTime()) ? null : d;
+            }
+            return null;
         } catch (_) {
-            return 0;
+            return null;
         }
     }
 
-    function isProofExpired(uploadedAt, nowMs = Date.now()) {
-        const uploadedMs = toMillisSafe(uploadedAt);
-        if (!uploadedMs) return false;
-        return (nowMs - uploadedMs) >= (PROOF_AUTO_DELETE_DAYS * 24 * 60 * 60 * 1000);
-    }
+    async function cleanupCitizenProofs() {
+        if (!isAdmin) {
+            alert('관리자만 실행할 수 있습니다.');
+            return;
+        }
+        if (!confirm('승인완료/거절 상태이거나 30일 지난 시민 인증 사진을 정리하시겠습니까?')) return;
 
-    async function cleanupExpiredCitizenProofs(options = {}) {
-        const opts = Object.assign({ silent: true, force: false, onlyUid: '' }, options || {});
-        if (citizenProofCleanupRunning) return { cleaned: 0, skipped: 0 };
-        citizenProofCleanupRunning = true;
-
-        const storageKey = opts.onlyUid ? `citizenProofCleanupAt:${opts.onlyUid}` : 'citizenProofCleanupAt:global';
-        const nowMs = Date.now();
+        const btn = document.getElementById('btnCitizenCleanup');
+        const orgText = btn ? btn.innerText : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerText = '정리 중...';
+        }
 
         try {
-            if (!opts.force) {
-                const lastRun = parseInt(localStorage.getItem(storageKey) || '0', 10);
-                if (lastRun && (nowMs - lastRun) < (12 * 60 * 60 * 1000)) {
-                    return { cleaned: 0, skipped: 1 };
-                }
-            }
-
-            let snap;
-            if (opts.onlyUid) {
-                snap = await db.collection('users').doc(opts.onlyUid).get();
-                snap = { docs: snap.exists ? [snap] : [] };
-            } else {
-                snap = await db.collection('users')
-                    .where('verifStatus', 'in', ['PENDING', 'APPROVED', 'REJECTED'])
-                    .get();
-            }
-
-            let cleaned = 0;
+            const snap = await db.collection('users').get();
+            const now = Date.now();
+            const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+            let deletedCount = 0;
+            let checkedCount = 0;
 
             for (const doc of snap.docs) {
-                const u = doc.data() || {};
-                if (!u.proofUrl) continue;
-                if (!isProofExpired(u.proofUploadedAt, nowMs)) continue;
+                checkedCount++;
+                const data = doc.data() || {};
+                const proofUrl = data.proofUrl || '';
+                if (!proofUrl) continue;
 
-                const deleted = await deleteProofByUrl(u.proofUrl);
-                await doc.ref.update({
-                    proofUrl: "",
-                    proofDeletedAt: new Date(),
-                    proofAutoDeletedAt: new Date()
+                const status = String(data.verifStatus || '').toUpperCase();
+                const uploadedAt = getDateFromAny(data.proofUploadedAt) || getDateFromAny(data.joinedAt) || getDateFromAny(data.at);
+                const ageMs = uploadedAt ? (now - uploadedAt.getTime()) : 0;
+                const shouldDeleteByStatus = ['APPROVED', 'REJECTED', 'NONE'].includes(status);
+                const shouldDeleteByAge = !!uploadedAt && ageMs >= THIRTY_DAYS;
+
+                if (!shouldDeleteByStatus && !shouldDeleteByAge) continue;
+
+                const deleted = await deleteProofByUrl(proofUrl);
+                if (!deleted) continue;
+
+                await doc.ref.set({
+                    proofUrl: firebase.firestore.FieldValue.delete(),
+                    proofUploadedAt: firebase.firestore.FieldValue.delete(),
+                    proofDeletedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    proofAutoDeletedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+
+                await appendCitizenAudit(doc.id, shouldDeleteByAge ? 'AUTO_DELETE_30D' : 'DELETE_PROOF', {
+                    targetStatus: status || 'UNKNOWN',
+                    deletedBy: 'admin_cleanup',
+                    reason: shouldDeleteByAge ? 'older_than_30_days' : 'approved_or_rejected_cleanup'
                 });
-
-                await appendCitizenAudit(doc.id, 'AUTO_DELETE_30D', {
-                    name: u.name || '',
-                    phone: u.phone || '',
-                    address: u.address || '',
-                    verifStatus: u.verifStatus || '',
-                    deletedFromStorage: !!deleted
-                });
-
-                if (currentUser && currentUser.uid === doc.id) {
-                    currentUser.proofUrl = "";
-                    currentUser.proofDeletedAt = new Date();
-                }
-                cleaned++;
+                deletedCount++;
             }
 
-            localStorage.setItem(storageKey, String(nowMs));
-
-            if (!opts.silent && cleaned > 0) {
-                alert(`30일 지난 시민 인증 사진 ${cleaned}건을 자동 정리했습니다.`);
-            }
-            return { cleaned, skipped: 0 };
+            alert(`사진 정리 완료
+점검: ${checkedCount}명
+삭제: ${deletedCount}건`);
         } catch (err) {
-            console.error('30일 지난 시민 인증 사진 자동 정리 실패:', err);
-            if (!opts.silent) alert('자동 사진 정리 실패: ' + err.message);
-            return { cleaned: 0, skipped: 0, error: err };
+            console.error(err);
+            alert('사진 정리 실패: ' + (err && err.message ? err.message : err));
         } finally {
-            citizenProofCleanupRunning = false;
+            if (btn) {
+                btn.disabled = false;
+                btn.innerText = orgText || '🧹 승인완료/거절 사진 정리';
+            }
         }
     }
-
 
 
     function buildSlotLockId(center, date, court, time) {
@@ -3269,7 +3259,6 @@ auth.onAuthStateChanged(user => {
                     // === 관리자일 때 ===
                     btnSet.style.display = 'inline-block';
                     if(btnMyRes) btnMyRes.style.display = 'none';
-                    cleanupExpiredCitizenProofs({ silent: true, force: false });
                     // *UI 업데이트 호출 시 관리자 배지가 적용됨*
                 } else {
                     // === 일반 회원일 때 (관리자가 아닐 때만 실행) ===
@@ -4654,11 +4643,11 @@ function onCellClick(e) {
     else {
         if (!isAdmin && selected.length >= 5) { alert("잔여 시간이 부족합니다."); return; }
         const nextEl = document.getElementById(`c-${c}-${t+1}`);
-        const isNextAvailable = nextEl && !nextEl.classList.contains('booked') && !nextEl.classList.contains('fixed') && !nextEl.classList.contains('pending');
+        const isNextAvailable = nextEl && !nextEl.classList.contains('booked') && !nextEl.classList.contains('fixed') && !nextEl.classList.contains('pending') && !nextEl.classList.contains('blocked') && !nextEl.classList.contains('past');
         if (isNextAvailable) { addSelect(c, t); addSelect(c, t+1); } 
         else {
             const prevEl = document.getElementById(`c-${c}-${t-1}`);
-            const isPrevAvailable = prevEl && !prevEl.classList.contains('booked') && !prevEl.classList.contains('fixed') && !prevEl.classList.contains('pending');
+            const isPrevAvailable = prevEl && !prevEl.classList.contains('booked') && !prevEl.classList.contains('fixed') && !prevEl.classList.contains('pending') && !prevEl.classList.contains('blocked') && !prevEl.classList.contains('past');
             if(isPrevAvailable) { addSelect(c, t-1); addSelect(c, t); } 
             else { addSelect(c, t); }
         }
@@ -4670,6 +4659,8 @@ function addSelect(c, t) {
     if (selected.some(s => s.c === c && s.t === t)) return; // 중복 방지
     const el = document.getElementById(`c-${c}-${t}`);
     if (el) {
+        // 지난 시간은 자동 선택에도 포함되면 안 됨
+        if (el.classList.contains('past')) return;
         el.innerHTML = `<div class="orb select-orb">V</div>`;
         selected.push({c: c, t: t});
     }
@@ -4721,8 +4712,8 @@ function validateSelection() {
                     const nextEl = document.getElementById(`c-${c}-${t+1}`);
 
                     // 앞, 뒤 칸이 없는지(영업시간 밖) 또는 예약되어 있는지 확인
-                    const isPrevBlocked = !prevEl || prevEl.classList.contains('booked') || prevEl.classList.contains('fixed') || prevEl.classList.contains('pending');
-                    const isNextBlocked = !nextEl || nextEl.classList.contains('booked') || nextEl.classList.contains('fixed') || nextEl.classList.contains('pending');
+                    const isPrevBlocked = !prevEl || prevEl.classList.contains('booked') || prevEl.classList.contains('fixed') || prevEl.classList.contains('pending') || prevEl.classList.contains('blocked');
+                    const isNextBlocked = !nextEl || nextEl.classList.contains('booked') || nextEl.classList.contains('fixed') || nextEl.classList.contains('pending') || nextEl.classList.contains('blocked');
 
                     if (isPrevBlocked && isNextBlocked) {
                         // 틈새시장이므로 허용 (hasIsolated를 true로 만들지 않음 = 통과)
@@ -8492,22 +8483,23 @@ async function backupData() {
     if(!isAdmin) return;
     if(!confirm("현재 데이터베이스의 모든 내용을 파일로 저장하시겠습니까?")) return;
 
-    const btn = event.target;
-    const orgText = btn.innerText;
-    btn.innerText = "데이터 수집 중...";
-    btn.disabled = true;
+    const btn = event && event.target ? event.target : document.querySelector('#fileRestore')?.previousElementSibling;
+    const orgText = btn ? btn.innerText : '';
+    if (btn) {
+        btn.innerText = "데이터 수집 중...";
+        btn.disabled = true;
+    }
 
     try {
         const backupObj = {
             _meta: {
                 exportedAt: new Date().toISOString(),
-                note: "시민인증 사진(Storage 파일)은 백업되지 않으며, 텍스트 이력만 포함됩니다."
+                note: "시민인증 사진(Storage 파일)과 citizen_audit 로그는 백업되지 않습니다. 시민 인증 상태는 users 데이터로 복구됩니다."
             }
         };
-        const collections = ["reservations", "recurring", "users", "posts", "settings", "citizen_audit"];
+        const collections = ["reservations", "recurring", "users", "posts", "settings"];
 
-        // 모든 컬렉션 데이터 수집
-        for(const colName of collections) {
+        for (const colName of collections) {
             const snapshot = await db.collection(colName).get();
             backupObj[colName] = {};
             snapshot.forEach(doc => {
@@ -8516,11 +8508,10 @@ async function backupData() {
             });
         }
 
-        // JSON 파일로 변환 및 다운로드 트리거
         const jsonStr = JSON.stringify(backupObj, null, 2);
         const blob = new Blob([jsonStr], { type: "application/json" });
         const url = URL.createObjectURL(blob);
-        
+
         const a = document.createElement('a');
         const today = new Date().toISOString().split('T')[0];
         a.href = url;
@@ -8528,14 +8519,17 @@ async function backupData() {
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        
+        URL.revokeObjectURL(url);
+
         alert("✅ 백업 파일이 다운로드되었습니다.\nPC에 안전하게 보관하세요.");
 
     } catch(err) {
         alert("백업 실패: " + err.message);
     } finally {
-        btn.innerText = orgText;
-        btn.disabled = false;
+        if (btn) {
+            btn.innerText = orgText || '데이터 백업 (다운로드)';
+            btn.disabled = false;
+        }
     }
 }
 
