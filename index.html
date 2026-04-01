@@ -26,6 +26,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-storage-compat.js"></script>
     <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.0/kakao.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://www.google.com/recaptcha/api.js" async defer></script>
 
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" />
 
@@ -1996,14 +1997,14 @@ body.dark-mode .cal-toggle-bar {
         <div style="text-align:right; font-weight:800; color:var(--text-main); font-size:1.4rem; margin: 20px 0;">
             <span style="font-size:1rem; color:#64748b;">결제금액:</span> <span id="txtPrice" style="color:var(--primary);">0</span>원
         </div>
-        <!-- ▼▼▼ [매크로 방지] 슬라이드 확인 위젯 ▼▼▼ -->
-        <div id="slideVerifyBox" style="margin-bottom: 12px;">
-            <div id="slideTrack" style="position:relative; background:#f1f5f9; border:1px solid #cbd5e1; border-radius:10px; height:48px; overflow:hidden; user-select:none; touch-action:none;">
-                <div id="slideFill" style="position:absolute; left:0; top:0; height:100%; background:#22c55e; border-radius:10px; width:0%; pointer-events:none;"></div>
-                <div id="slideHint" style="position:absolute; left:0; right:0; top:0; bottom:0; display:flex; align-items:center; justify-content:center; font-size:0.82rem; color:#64748b; pointer-events:none; z-index:2; font-weight:500;">▶ 오른쪽으로 밀어서 본인 확인</div>
-                <div id="slideThumb" style="position:absolute; left:4px; top:4px; width:40px; height:40px; background:white; border:1px solid #cbd5e1; border-radius:8px; cursor:grab; z-index:3; display:flex; align-items:center; justify-content:center; font-size:1.1rem; font-weight:bold; color:#3b82f6; box-shadow:0 1px 3px rgba(0,0,0,0.1);">›</div>
+        <!-- ▼▼▼ [매크로 방지] Google reCAPTCHA v2 ▼▼▼ -->
+        <div id="recaptchaBox" style="margin-bottom: 12px; display: flex; justify-content: center;">
+            <div class="g-recaptcha"
+                 id="gRecaptchaWidget"
+                 data-sitekey="6LdCAaEsAAAAADbpmtL9k6r7tZzwBa_XkBavKFp9"
+                 data-callback="onRecaptchaSuccess"
+                 data-expired-callback="onRecaptchaExpired">
             </div>
-            <p id="slideVerifiedMsg" style="display:none; color:#16a34a; font-size:0.82rem; font-weight:600; text-align:center; margin:6px 0 0;">✓ 본인 확인 완료</p>
         </div>
         <!-- ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ -->
         <button class="btn-full bg-blue" id="btnDoPay" onclick="doPay()" style="opacity:0.4; pointer-events:none;">결제하기</button>
@@ -3831,13 +3832,19 @@ function openBook() {
 
     calcPay();
 
-    // ▼▼▼ [매크로 방지] 모달 열 때마다 슬라이드 초기화 ▼▼▼
+    // ▼▼▼ [매크로 방지] 모달 열 때마다 reCAPTCHA 초기화 ▼▼▼
+    const btn = document.getElementById('btnDoPay');
     if (!isAdmin) {
-        resetSlideVerify();
+        document.getElementById('recaptchaBox').style.display = 'flex';
+        btn.style.opacity = '0.4';
+        btn.style.pointerEvents = 'none';
+        // reCAPTCHA 위젯 리셋 (모달 재오픈 시 체크 초기화)
+        try {
+            if (typeof grecaptcha !== 'undefined') grecaptcha.reset();
+        } catch(e) {}
     } else {
-        // 관리자는 슬라이드 확인 없이 바로 결제 가능
-        document.getElementById('slideVerifyBox').style.display = 'none';
-        const btn = document.getElementById('btnDoPay');
+        // 관리자는 reCAPTCHA 없이 바로 결제 가능
+        document.getElementById('recaptchaBox').style.display = 'none';
         btn.style.opacity = '1';
         btn.style.pointerEvents = 'auto';
     }
@@ -4955,129 +4962,33 @@ const isRed = (new Date(date).getDay() % 6 == 0 || HOLIDAYS[date]);
         // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
     }
 
-    /* ========== [매크로 방지] 슬라이드 본인 확인 ========== */
-    let _slideVerified = false;
-    let _slideDragging = false;
-    let _slideStartX = 0;
-    let _slideStartLeft = 0;
+    /* ========== [매크로 방지] Google reCAPTCHA v2 콜백 ========== */
+    let _recaptchaToken = null;
 
-    function resetSlideVerify() {
-        _slideVerified = false;
-        const track = document.getElementById('slideTrack');
-        const thumb = document.getElementById('slideThumb');
-        const fill = document.getElementById('slideFill');
-        const hint = document.getElementById('slideHint');
-        const msg = document.getElementById('slideVerifiedMsg');
+    // reCAPTCHA 체크박스 완료 시 Google이 자동으로 호출
+    window.onRecaptchaSuccess = function(token) {
+        _recaptchaToken = token;
         const btn = document.getElementById('btnDoPay');
-
-        document.getElementById('slideVerifyBox').style.display = 'block';
-        thumb.style.left = '4px';
-        thumb.style.background = 'white';
-        thumb.style.color = '#3b82f6';
-        thumb.style.borderColor = '#cbd5e1';
-        thumb.textContent = '›';
-        fill.style.width = '0%';
-        hint.style.display = 'flex';
-        msg.style.display = 'none';
-        btn.style.opacity = '0.4';
-        btn.style.pointerEvents = 'none';
-
-        // 이벤트는 중복 방지를 위해 클론 후 교체
-        const newThumb = thumb.cloneNode(true);
-        thumb.parentNode.replaceChild(newThumb, thumb);
-
-        function getX(e) { return e.touches ? e.touches[0].clientX : e.clientX; }
-
-        newThumb.addEventListener('mousedown', e => {
-            if (_slideVerified) return;
-            _slideDragging = true;
-            _slideStartX = e.clientX;
-            _slideStartLeft = newThumb.offsetLeft;
-            e.preventDefault();
-        });
-        newThumb.addEventListener('touchstart', e => {
-            if (_slideVerified) return;
-            _slideDragging = true;
-            _slideStartX = e.touches[0].clientX;
-            _slideStartLeft = newThumb.offsetLeft;
-        }, { passive: true });
-
-        document.addEventListener('mousemove', _onSlideMove);
-        document.addEventListener('touchmove', _onSlideMove, { passive: true });
-        document.addEventListener('mouseup', _onSlideRelease);
-        document.addEventListener('touchend', _onSlideRelease);
-    }
-
-    function _onSlideMove(e) {
-        if (!_slideDragging || _slideVerified) return;
-        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        const track = document.getElementById('slideTrack');
-        const thumb = document.getElementById('slideThumb') || track.querySelector('[id^="slideThumb"], div[style*="grab"]');
-        const fill = document.getElementById('slideFill');
-        const thumbEl = track.querySelector('div[style*="z-index: 3"], div[style*="z-index:3"]') || track.lastElementChild;
-
-        const maxLeft = track.offsetWidth - 48;
-        let newLeft = _slideStartLeft + (clientX - _slideStartX);
-        newLeft = Math.max(4, Math.min(newLeft, maxLeft));
-        thumbEl.style.left = newLeft + 'px';
-
-        const pct = ((newLeft - 4) / (maxLeft - 4)) * 100;
-        fill.style.width = pct + '%';
-
-        if (pct >= 95) _onSlideSuccess();
-    }
-
-    function _onSlideRelease() {
-        if (!_slideVerified && _slideDragging) {
-            const track = document.getElementById('slideTrack');
-            const thumbEl = track ? track.lastElementChild : null;
-            const fill = document.getElementById('slideFill');
-            if (thumbEl) thumbEl.style.left = '4px';
-            if (fill) fill.style.width = '0%';
-        }
-        _slideDragging = false;
-    }
-
-    function _onSlideSuccess() {
-        _slideVerified = true;
-        _slideDragging = false;
-
-        const track = document.getElementById('slideTrack');
-        const fill = document.getElementById('slideFill');
-        const hint = document.getElementById('slideHint');
-        const msg = document.getElementById('slideVerifiedMsg');
-        const btn = document.getElementById('btnDoPay');
-        const thumbEl = track ? track.lastElementChild : null;
-
-        const maxLeft = track.offsetWidth - 48;
-        if (thumbEl) {
-            thumbEl.style.left = maxLeft + 'px';
-            thumbEl.style.background = '#16a34a';
-            thumbEl.style.color = 'white';
-            thumbEl.style.borderColor = '#16a34a';
-            thumbEl.textContent = '✓';
-            thumbEl.style.cursor = 'default';
-        }
-        fill.style.width = '100%';
-        hint.style.display = 'none';
-        msg.style.display = 'block';
         btn.style.opacity = '1';
         btn.style.pointerEvents = 'auto';
+    };
 
-        document.removeEventListener('mousemove', _onSlideMove);
-        document.removeEventListener('touchmove', _onSlideMove);
-        document.removeEventListener('mouseup', _onSlideRelease);
-        document.removeEventListener('touchend', _onSlideRelease);
-    }
-    /* ========== [매크로 방지] 슬라이드 본인 확인 끝 ========== */
+    // 토큰 만료 시 (2분 후 자동 만료) Google이 자동으로 호출
+    window.onRecaptchaExpired = function() {
+        _recaptchaToken = null;
+        const btn = document.getElementById('btnDoPay');
+        btn.style.opacity = '0.4';
+        btn.style.pointerEvents = 'none';
+    };
+    /* ========== [매크로 방지] reCAPTCHA 콜백 끝 ========== */
 
     function doPay() {
         if(isAdmin && confirm("관리자 권한으로 결제 없이 예약하시겠습니까?")) { saveBook("ADMIN"); return; }
         if(!currentUser && !isAdmin) return alert("로그인 정보가 없습니다.");
 
-        // ▼▼▼ [매크로 방지] 슬라이드 확인 안 했으면 차단 ▼▼▼
-        if (!isAdmin && !_slideVerified) {
-            alert("슬라이드를 밀어서 본인 확인을 먼저 해주세요.");
+        // ▼▼▼ [매크로 방지] reCAPTCHA 미완료 시 차단 (2중 안전장치) ▼▼▼
+        if (!isAdmin && !_recaptchaToken) {
+            alert("'나는 로봇이 아닙니다' 확인을 먼저 해주세요.");
             return;
         }
         // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
@@ -5101,9 +5012,57 @@ const isRed = (new Date(date).getDay() % 6 == 0 || HOLIDAYS[date]);
         
         if(currentPayMethod === 'TRANSFER') {
             const confirmMsg = `📅 ${date}\n${summary}\n\n💰 ${amt.toLocaleString()}원\n\n${bankName} ${bankAccount}로 입금하시겠습니까?`;
-            if(confirm(confirmMsg)) saveBook("TRANSFER");
+            if(!confirm(confirmMsg)) return;
+
+            // ▼▼▼ [매크로 방지] 서버 측 reCAPTCHA 검증 ▼▼▼
+            if (!isAdmin) {
+                try {
+                    const vRes = await fetch('/verify-recaptcha', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ token: _recaptchaToken })
+                    });
+                    const vData = await vRes.json();
+                    if (!vData.success) {
+                        alert('본인 확인에 실패했습니다. 다시 시도해주세요.');
+                        try { if (typeof grecaptcha !== 'undefined') grecaptcha.reset(); } catch(e) {}
+                        _recaptchaToken = null;
+                        document.getElementById('btnDoPay').style.opacity = '0.4';
+                        document.getElementById('btnDoPay').style.pointerEvents = 'none';
+                        return;
+                    }
+                } catch(e) {
+                    console.warn('reCAPTCHA 서버 검증 실패, 진행 허용:', e);
+                }
+            }
+            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+            saveBook("TRANSFER");
             return;
         }
+
+        // ▼▼▼ [매크로 방지] 카드결제도 서버 측 reCAPTCHA 검증 ▼▼▼
+        if (!isAdmin) {
+            try {
+                const vRes = await fetch('/verify-recaptcha', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token: _recaptchaToken })
+                });
+                const vData = await vRes.json();
+                if (!vData.success) {
+                    alert('본인 확인에 실패했습니다. 다시 시도해주세요.');
+                    try { if (typeof grecaptcha !== 'undefined') grecaptcha.reset(); } catch(e) {}
+                    _recaptchaToken = null;
+                    document.getElementById('btnDoPay').style.opacity = '0.4';
+                    document.getElementById('btnDoPay').style.pointerEvents = 'none';
+                    return;
+                }
+            } catch(e) {
+                console.warn('reCAPTCHA 서버 검증 실패, 진행 허용:', e);
+            }
+        }
+        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
         const buyerName = currentUser ? currentUser.name : "관리자";
         const buyerTel = currentUser ? currentUser.phone : admPh;
