@@ -4982,7 +4982,7 @@ const isRed = (new Date(date).getDay() % 6 == 0 || HOLIDAYS[date]);
     };
     /* ========== [매크로 방지] reCAPTCHA 콜백 끝 ========== */
 
-    function doPay() {
+    async function doPay() {
         if(isAdmin && confirm("관리자 권한으로 결제 없이 예약하시겠습니까?")) { saveBook("ADMIN"); return; }
         if(!currentUser && !isAdmin) return alert("로그인 정보가 없습니다.");
 
