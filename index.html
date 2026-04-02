@@ -4902,27 +4902,22 @@ function paint(d, id, coll) {
     function calcPay() {
         const isLocal = document.getElementById('isLocal').checked;
         const date = document.getElementById('hiddenDate').value;
-        // 수정 전: const isRed = (new Date(date).getDay()%6==0 || HOLIDAYS.includes(date));
-const isRed = (new Date(date).getDay() % 6 == 0 || HOLIDAYS[date]);
+        const isRed = isWeekendOrHoliday(date);
         let total = 0;
         let breakdown = []; // 금액 상세 내역
-        
+
         selected.forEach(s => {
-            const isNight = s.t >= 18;
-            let idx = 0;
-            if(!isRed && isNight) idx = 1;
-            if(isRed && !isNight) idx = 2;
-            if(isRed && isNight) idx = 3;
-            const price = prices[idx][isLocal?0:1];
+            const pricingInfo = getConfiguredPriceInfo(date, s.t);
+            const isNight = pricingInfo.isNight;
+            const price = getMatrixPriceBySlot(date, s.t, isLocal);
             total += price;
-            
-            // 가격 유형 표시
+
             let priceType = '';
             if (isRed && isNight) priceType = '주말야간';
             else if (isRed) priceType = '주말주간';
             else if (isNight) priceType = '평일야간';
             else priceType = '평일주간';
-            
+
             breakdown.push({
                 court: s.c,
                 time: s.t,
@@ -4930,16 +4925,13 @@ const isRed = (new Date(date).getDay() % 6 == 0 || HOLIDAYS[date]);
                 type: priceType
             });
         });
-        
-        // ▼▼▼ [개선] 금액 상세 표시 ▼▼▼
+
         let priceHTML = `<span id="txtPrice" style="color:var(--primary); font-size:1.6rem;">${total.toLocaleString()}</span>원`;
-        
-        // 할인 정보 표시
+
         if (isLocal) {
             priceHTML += `<div style="font-size:0.75rem; color:#059669; margin-top:4px;">✓ 일반 요금적용</div>`;
         }
-        
-        // 시간대별 금액 표시 (간략하게)
+
         const priceGroups = {};
         breakdown.forEach(b => {
             if (!priceGroups[b.type]) {
@@ -4947,19 +4939,21 @@ const isRed = (new Date(date).getDay() % 6 == 0 || HOLIDAYS[date]);
             }
             priceGroups[b.type].count++;
         });
-        
-        let detailStr = Object.keys(priceGroups).map(type => {
-            const g = priceGroups[type];
-            return `${type} ${g.count}시간 × ${g.price.toLocaleString()}원`;
-        }).join(' + ');
-        
-        if (Object.keys(priceGroups).length > 1) {
-            priceHTML += `<div style="font-size:0.7rem; color:#94a3b8; margin-top:6px; line-height:1.3;">${detailStr}</div>`;
-        }
-        
-        document.getElementById('txtPrice').parentElement.innerHTML = 
-            `<span style="font-size:1rem; color:#64748b;">결제금액:</span> ${priceHTML}`;
-        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+        let detailHTML = '<div style="margin-top:8px; font-size:0.75rem; color:#64748b; border-top:1px dashed #e2e8f0; padding-top:8px;">';
+        Object.entries(priceGroups).forEach(([type, info]) => {
+            detailHTML += `<div style="display:flex; justify-content:space-between; margin-bottom:2px;">
+                <span>${type} ${info.count}시간</span>
+                <span>${info.price.toLocaleString()}원 × ${info.count}</span>
+            </div>`;
+        });
+        detailHTML += '</div>';
+
+        document.getElementById('txtPrice').parentElement.innerHTML = `
+            <span style="font-size:1rem; color:#64748b;">결제금액:</span> 
+            ${priceHTML}
+            ${detailHTML}
+        `;
     }
 
     /* ========== [매크로 방지] Google reCAPTCHA v2 콜백 ========== */
@@ -6354,26 +6348,49 @@ async function deleteSeasonal(idx) {
 }
 
 // 날짜에 맞는 요금 가져오기
+async function isWeekendOrHoliday(dateStr) {
+    const dt = new Date(dateStr);
+    return dt.getDay() === 0 || dt.getDay() === 6 || !!HOLIDAYS[dateStr];
+}
+
+function getSeasonalPricingMatch(dateStr) {
+    if (!Array.isArray(window.seasonalPricings) || window.seasonalPricings.length === 0) return null;
+    return window.seasonalPricings.find(item => dateStr >= item.start && dateStr <= item.end) || null;
+}
+
+function getConfiguredPriceInfo(dateStr, time) {
+    const seasonal = getSeasonalPricingMatch(dateStr);
+    const defaultNightStart = Number.isFinite(Number(window.nightStartHour)) ? Number(window.nightStartHour) : 19;
+    const defaultDayPrice = Number.isFinite(Number(window.dayPrice)) ? Number(window.dayPrice) : 5000;
+    const defaultNightPrice = Number.isFinite(Number(window.nightPrice)) ? Number(window.nightPrice) : 10000;
+
+    const nightStart = seasonal && Number.isFinite(Number(seasonal.nightStart)) ? Number(seasonal.nightStart) : defaultNightStart;
+    const dayPrice = seasonal && Number.isFinite(Number(seasonal.dayPrice)) ? Number(seasonal.dayPrice) : defaultDayPrice;
+    const nightPrice = seasonal && Number.isFinite(Number(seasonal.nightPrice)) ? Number(seasonal.nightPrice) : defaultNightPrice;
+    const isNight = Number(time) >= nightStart;
+
+    return { nightStart, dayPrice, nightPrice, isNight, seasonal };
+}
+
+function getMatrixPriceBySlot(dateStr, time, isCitizen) {
+    const isWeekend = isWeekendOrHoliday(dateStr);
+    const pricingInfo = getConfiguredPriceInfo(dateStr, time);
+    const idx = isWeekend ? (pricingInfo.isNight ? 3 : 2) : (pricingInfo.isNight ? 1 : 0);
+    return (prices && prices[idx]) ? prices[idx][isCitizen ? 0 : 1] : 0;
+}
+
+// 날짜에 맞는 요금 가져오기
 async function getPriceForDate(dateStr, time) {
     if (!window.seasonalPricings || window.seasonalPricings.length === 0) {
         const doc = await db.collection('settings').doc('seasonalPricing').get();
         window.seasonalPricings = doc.exists ? (doc.data().list || []) : [];
     }
-    
-    const match = window.seasonalPricings.find(item => dateStr >= item.start && dateStr <= item.end);
-    
-    if (match) {
-        const isNight = time >= match.nightStart;
-        return {
-            price: isNight ? match.nightPrice : match.dayPrice,
-            isNight: isNight
-        };
-    }
-    
-    // 기본값
+
+    const pricingInfo = getConfiguredPriceInfo(dateStr, time);
     return {
-        price: time >= 19 ? 10000 : 5000,
-        isNight: time >= 19
+        price: pricingInfo.isNight ? pricingInfo.nightPrice : pricingInfo.dayPrice,
+        isNight: pricingInfo.isNight,
+        nightStart: pricingInfo.nightStart
     };
 }
 // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
@@ -6712,16 +6729,7 @@ async function loadMonthlyStats() {
 }
 // [보조] 가격 계산 함수 (재사용을 위해 함수로 분리 권장)
 function calcPrice(dateStr, time, isCitizen) {
-    const isWeekend = (new Date(dateStr).getDay() === 0 || new Date(dateStr).getDay() === 6 || HOLIDAYS[dateStr]);
-    const isNight = (time >= 18);
-    
-    let pIdx = 0;
-    if (!isWeekend && !isNight) pIdx = 0;      
-    else if (!isWeekend && isNight) pIdx = 1;  
-    else if (isWeekend && !isNight) pIdx = 2;  
-    else if (isWeekend && isNight) pIdx = 3;   
-    
-    return (prices && prices[pIdx]) ? prices[pIdx][1] : 0; 
+    return getMatrixPriceBySlot(dateStr, time, !!isCitizen);
 }
 /* [수정] 상세 내역 열기 (일반 예약 수정/삭제 기능 추가) */
 function openStatsDetail(type) {
@@ -7396,6 +7404,7 @@ function openConf() {
     document.getElementById('setBank').value = bankName || "";    
     document.getElementById('setAcc').value = bankAccount || ""; 
     document.getElementById('setPw').value = ""; 
+    loadSeasonalPricings();
 
     // ▼▼▼ [수정] 월간 통계 대시보드 - 버튼으로 토글 ▼▼▼
     let statsBtn = document.getElementById('btnToggleStats');
@@ -7616,6 +7625,7 @@ function loadPendingMembers() {
             if (d.nightPrice !== undefined) { window.nightPrice = d.nightPrice; safeSetInputValue('settingNightPrice', d.nightPrice); }
             else window.nightPrice = 10000;
 
+            loadSeasonalPricings();
             updateAdminUI();
         }
     }).catch(err => {
@@ -8753,22 +8763,10 @@ function calcRefund(resDateStr, resTime) {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
     
     // 2. 이용 요금 가져오기
-    let isWeekend = (target.getDay() === 0 || target.getDay() === 6);
-    if(typeof HOLIDAYS !== 'undefined' && HOLIDAYS[resDateStr]) isWeekend = true;
-
-    let isNight = (resTime >= 18);
-    let isCitizen = currentUser ? currentUser.isCitizen : false;
-    
-    let pIdx = 0;
-    if (!isWeekend && !isNight) pIdx = 0;      
-    else if (!isWeekend && isNight) pIdx = 1;  
-    else if (isWeekend && !isNight) pIdx = 2;  
-    else if (isWeekend && isNight) pIdx = 3;   
-    
-    let originalPrice = 0;
-    if(typeof prices !== 'undefined' && prices[pIdx]) {
-        originalPrice = prices[pIdx][isCitizen ? 0 : 1];
-    }
+    const isCitizen = currentUser ? currentUser.isCitizen : false;
+    const pricingInfo = getConfiguredPriceInfo(resDateStr, resTime);
+    const isNight = pricingInfo.isNight;
+    const originalPrice = getMatrixPriceBySlot(resDateStr, resTime, isCitizen);
     
     // 3. 환불율 결정 [수정됨]
     let rate = 0;
@@ -9078,7 +9076,7 @@ async function getReservationPrice(center, dateStr, time, court) {
         price: priceInfo.price,
         isNight: priceInfo.isNight,
         timeLabel: priceInfo.isNight ? '🌙 야간 (라이트)' : '☀️ 주간',
-        hourRange: priceInfo.isNight ? '19:00 ~ 23:59' : '07:00 ~ 18:59'
+        hourRange: priceInfo.isNight ? `${String(priceInfo.nightStart).padStart(2,'0')}:00 ~ 23:59` : `07:00 ~ ${String(Math.max(priceInfo.nightStart - 1, 7)).padStart(2,'0')}:59`
     };
     // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 }
