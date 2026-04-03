@@ -2955,6 +2955,7 @@ const HOLIDAYS = {
 
     let isAdmin = false;
     let currentUser = null; 
+    let userDocUnsubscribe = null;
     window.bookingLogs = [];
     const MACRO_LIMITS = { SHORT_MS: 10000, MID_MS: 60000, SHORT_MAX: 3, MID_MAX: 8, AUTO_BLOCK_SCORE: 30, SUSPICIOUS_SCORE: 12, COOLDOWN_MS: 1200, RANDOM_DELAY_MS: 700 };
     let viewDate = new Date();
@@ -3256,64 +3257,72 @@ auth.onAuthStateChanged(user => {
     const btnSet = document.getElementById('btnSet');
     const btnMyRes = document.getElementById('btnMyRes');
 
-    if(user) {
-        // [로그인 상태]
-        db.collection("users").doc(user.uid).get().then(doc => {
-            if(doc.exists) {
-                currentUser = doc.data();
-                currentUser.uid = user.uid;
-                
-                document.getElementById('btnOut').style.display = 'inline-block';
-                document.getElementById('btnLogin').style.display = 'none';
-                
-                // 관리자 여부 확인
-                if(currentUser.isAdmin) isAdmin = true;
-                
-                if(isAdmin) {
-                    // === 관리자일 때 ===
-                    btnSet.style.display = 'inline-block';
-                    if(btnMyRes) btnMyRes.style.display = 'none';
-                    // *UI 업데이트 호출 시 관리자 배지가 적용됨*
-                } else {
-                    // === 일반 회원일 때 (관리자가 아닐 때만 실행) ===
-                    if (btnSet) {
-                        btnSet.style.display = 'inline-block';
-                        btnSet.style.visibility = 'visible';
-                    }
-                    if(btnMyRes) btnMyRes.style.display = 'inline-block';
-                    
-                    // ▼▼▼ [수정] 알림 스케줄러 시작 (버튼 없이) ▼▼▼
-                    const enabled = localStorage.getItem('notificationEnabled') === 'true';
-                    if (enabled) {
-                        startNotificationScheduler();
-                    }
-                    // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+    if (userDocUnsubscribe) {
+        try { userDocUnsubscribe(); } catch (_) {}
+        userDocUnsubscribe = null;
+    }
 
-                    // 일반 회원용 환영 메시지
-                    const msgSpan = document.getElementById('welcomeMsg');
-                    msgSpan.innerText = currentUser.name + " 님";
-                    msgSpan.style.display = 'inline-block';
-                    
-                    setTimeout(checkUpcomingPopup, 500); 
+    if(user) {
+        // [로그인 상태] 사용자 문서를 실시간으로 구독하여 시민인증 승인값이 즉시 반영되도록 수정
+        userDocUnsubscribe = db.collection("users").doc(user.uid).onSnapshot(doc => {
+            if(!doc.exists) return;
+
+            const prevCitizen = currentUser ? !!currentUser.isCitizen : false;
+            const prevStatus = currentUser ? (currentUser.verifStatus || '') : '';
+
+            currentUser = doc.data() || {};
+            currentUser.uid = user.uid;
+            isAdmin = !!currentUser.isAdmin || localStorage.getItem('isAdm') === 'true';
+            
+            document.getElementById('btnOut').style.display = 'inline-block';
+            document.getElementById('btnLogin').style.display = 'none';
+            
+            if(isAdmin) {
+                // === 관리자일 때 ===
+                btnSet.style.display = 'inline-block';
+                if(btnMyRes) btnMyRes.style.display = 'none';
+            } else {
+                // === 일반 회원일 때 ===
+                if (btnSet) {
+                    btnSet.style.display = 'inline-block';
+                    btnSet.style.visibility = 'visible';
                 }
-                updateAdminUI(); // UI 갱신 (여기서 관리자 배지가 그려짐)
-                try {
-                    if (typeof loadWeeklyWeather === 'function') {
-                        requestAnimationFrame(() => loadWeeklyWeather());
-                    }
+                if(btnMyRes) btnMyRes.style.display = 'inline-block';
+                
+                const enabled = localStorage.getItem('notificationEnabled') === 'true';
+                if (enabled) startNotificationScheduler();
+
+                const msgSpan = document.getElementById('welcomeMsg');
+                msgSpan.innerText = currentUser.name + " 님";
+                msgSpan.style.display = 'inline-block';
+
+                if(!prevCitizen && !!currentUser.isCitizen && currentUser.verifStatus === 'APPROVED') {
                     setTimeout(() => {
-                        if (typeof scheduleLoadDB === 'function') scheduleLoadDB(80);
-                    }, 80);
-                } catch (_) {}
+                        alert('김해시민 인증이 승인되었습니다. 일반 요금이 바로 반영됩니다.');
+                        try { if (typeof calcPay === 'function') calcPay(); } catch (_) {}
+                        try { if (typeof scheduleLoadDB === 'function') scheduleLoadDB(0); } catch (_) {}
+                    }, 120);
+                } else if(prevStatus === 'PENDING' && currentUser.verifStatus === 'REJECTED') {
+                    setTimeout(() => {
+                        alert('김해시민 인증이 반려되었습니다. 설정에서 다시 신청해주세요.');
+                    }, 120);
+                }
             }
-        }).catch(err => {
-            console.error('사용자 정보 로딩 실패:', err);
+
+            updateAdminUI();
+            try {
+                if (typeof loadWeeklyWeather === 'function') requestAnimationFrame(() => loadWeeklyWeather());
+                setTimeout(() => {
+                    if (typeof scheduleLoadDB === 'function') scheduleLoadDB(80);
+                }, 80);
+            } catch (_) {}
+        }, err => {
+            console.error('사용자 정보 실시간 로딩 실패:', err);
         });
     } else {
         // [로그아웃 상태]
         currentUser = null;
         
-        // 로컬 관리자가 아니라면 메시지 숨김
         if(!localStorage.getItem('isAdm')) {
              document.getElementById('welcomeMsg').style.display = 'none';
         }
@@ -6465,6 +6474,7 @@ async function saveUserSettingsInfo() {
         
         // 김해시민 인증 파일 업로드
         if (file) {
+            const oldProofUrl = currentUser.proofUrl || "";
             const compressedFile = await compressImage(file, 600, 0.5);
             const path = `proofs/${currentUser.uid}_proof_${new Date().getTime()}.jpg`;
             const ref = storage.ref().child(path);
@@ -6473,7 +6483,14 @@ async function saveUserSettingsInfo() {
             const url = await ref.getDownloadURL();
             
             updateData.proofUrl = url;
+            updateData.proofUploadedAt = new Date();
+            updateData.proofDeletedAt = null;
+            updateData.verifStatus = "PENDING";
             updateData.isCitizen = false; // 재심사 대기
+
+            if (oldProofUrl && oldProofUrl !== url) {
+                await deleteProofByUrl(oldProofUrl);
+            }
             
             alert("김해시민 인증 서류가 업로드되었습니다. 관리자 승인을 기다려주세요.");
         }
@@ -6483,7 +6500,13 @@ async function saveUserSettingsInfo() {
         
         // 현재 사용자 정보 갱신
         currentUser.address = newAddr;
-        if (file) currentUser.isCitizen = false;
+        if (file) {
+            currentUser.proofUrl = updateData.proofUrl;
+            currentUser.proofUploadedAt = updateData.proofUploadedAt;
+            currentUser.proofDeletedAt = null;
+            currentUser.verifStatus = "PENDING";
+            currentUser.isCitizen = false;
+        }
         
         alert("정보가 저장되었습니다.");
         
@@ -7581,7 +7604,9 @@ function loadPendingMembers() {
                 isCitizen: isApprove,
                 verifStatus: isApprove ? "APPROVED" : "REJECTED",
                 proofUrl: "",
-                proofDeletedAt: new Date()
+                proofDeletedAt: new Date(),
+                approvedAt: isApprove ? new Date() : firebase.firestore.FieldValue.delete(),
+                rejectedAt: !isApprove ? new Date() : firebase.firestore.FieldValue.delete()
             });
 
             await appendCitizenAudit(uid, isApprove ? 'APPROVED' : 'REJECTED', {
