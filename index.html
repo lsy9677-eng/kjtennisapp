@@ -2846,6 +2846,24 @@ const HOLIDAYS = {
     let loadDBPending = false;
     let loadDBTimer = null;
 
+    // ── Firestore 읽기 절약을 위한 캐시 ──
+    // recurring(고정예약): 센터별로 메모리에 보관, 30분 TTL
+    const _recurringCache = {};
+    const RECURRING_TTL = 30 * 60 * 1000;
+    // reservations(날짜별 예약): 날짜+센터 키로 캐시, 3분 TTL
+    const _reservationsCache = {};
+    const RESERVATIONS_TTL = 3 * 60 * 1000;
+
+    function _invalidateRecurringCache(center) {
+        if (center) delete _recurringCache[center];
+        else Object.keys(_recurringCache).forEach(k => delete _recurringCache[k]);
+    }
+    function _invalidateReservationsCache(center, date) {
+        const prefix = (center || currentCenter) + '_';
+        if (date) delete _reservationsCache[prefix + date];
+        else Object.keys(_reservationsCache).filter(k => k.startsWith(prefix)).forEach(k => delete _reservationsCache[k]);
+    }
+
     // 매크로 모니터 컬렉션 권한이 없으면 같은 세션에서는 추가 조회를 중단
     let bookingGuardCollectionsReadable = true;
 
@@ -4833,15 +4851,31 @@ async function loadDB() {
         });
 
         const currentDayNum = new Date(date).getDay();
-        const [res, rec] = await Promise.all([
-            db.collection("reservations")
-              .where("date","==",date)
-              .where("center","==", currentCenter)
-              .get(),
-            db.collection("recurring")
-              .where("center","==", currentCenter)
-              .get()
+
+        // ── Firestore 읽기 캐시: recurring 30분, reservations 3분 TTL ──
+        const recCacheKey = currentCenter;
+        const resCacheKey = currentCenter + '_' + date;
+        const recNeedsFetch = !_recurringCache[recCacheKey] || (Date.now() - _recurringCache[recCacheKey].ts > RECURRING_TTL);
+        const resNeedsFetch = !_reservationsCache[resCacheKey] || (Date.now() - _reservationsCache[resCacheKey].ts > RESERVATIONS_TTL);
+
+        const [resSnap, recSnap] = await Promise.all([
+            resNeedsFetch ? db.collection("reservations").where("date","==",date).where("center","==",currentCenter).get() : Promise.resolve(null),
+            recNeedsFetch ? db.collection("recurring").where("center","==",currentCenter).get() : Promise.resolve(null)
         ]);
+
+        if (resSnap) {
+            const docs = []; resSnap.forEach(d => docs.push({ id: d.id, data: d.data() }));
+            _reservationsCache[resCacheKey] = { docs, ts: Date.now() };
+        }
+        if (recSnap) {
+            const docs = []; recSnap.forEach(d => docs.push({ id: d.id, data: d.data() }));
+            _recurringCache[recCacheKey] = { docs, ts: Date.now() };
+        }
+
+        const resDocs = (_reservationsCache[resCacheKey] || {}).docs || [];
+        const recDocs = (_recurringCache[recCacheKey] || {}).docs || [];
+        const res = { forEach: (fn) => resDocs.forEach(d => fn({ id: d.id, data: () => d.data })) };
+        const rec = { forEach: (fn) => recDocs.forEach(d => fn({ id: d.id, data: () => d.data })) };
 
         rec.forEach(doc => {
             const d = doc.data();
@@ -5329,6 +5363,7 @@ async function saveBook(uid) {
         }, 800);
 
         closeModal('modalBook');
+        _invalidateReservationsCache(currentCenter, date); // 예약 완료 → 캐시 무효화
         scheduleLoadDB(0);
         refreshTodayMyReservationCard(true);
 
@@ -6242,6 +6277,8 @@ async function doBlock(isRecur) {
     batch.commit().then(() => { 
         alert(isRecur ? "정기 예약(월 계약)이 설정되었습니다." : "예약 완료"); 
         closeModal('modalBook'); 
+        _invalidateReservationsCache(currentCenter); // 예약 완료 → 캐시 무효화
+        if(isRecur) _invalidateRecurringCache(currentCenter); // 정기예약 추가 → recurring 캐시 무효화
         scheduleLoadDB(0); 
     }).catch(err => alert("오류: " + err.message))
     .finally(() => {
@@ -6292,6 +6329,7 @@ function doBlockSlot() {
     batch.commit().then(() => {
         alert("처리가 완료되었습니다.");
         closeModal('modalBook');
+        _invalidateReservationsCache(currentCenter, date); // 예약 완료 → 캐시 무효화
         scheduleLoadDB(0);
         refreshTodayMyReservationCard(true);
     }).catch(err => alert("오류: " + err.message));
@@ -7271,6 +7309,7 @@ async function processAdminCancel(mode) {
         }
 
         closeModal('modalCancel');
+        _invalidateReservationsCache(currentCenter); // 취소/삭제 → 캐시 무효화
         scheduleLoadDB(0); 
 
     } catch(err) {
@@ -7835,6 +7874,7 @@ async function doBatchDelete() {
         document.getElementById('btnBatchExec').style.display = 'none';
         document.getElementById('chkBatchDel').checked = false;
         isBatchMode = false;
+        _invalidateReservationsCache(currentCenter); // 일괄삭제 → 캐시 무효화
         scheduleLoadDB(0);
     } catch(e) {
         alert('오류 발생: ' + e.message);
@@ -8147,6 +8187,7 @@ async function deleteGroupBooking(ids, collectionName) {
         });
 
         await batch.commit();
+        _invalidateRecurringCache(currentCenter); // 정기예약 삭제 → recurring 캐시 무효화
         alert("삭제되었습니다.");
         
         // 화면 새로고침
@@ -8643,9 +8684,11 @@ async function doListBatchDelete() {
             const batch = db.batch();
             recurringIds.forEach(id => batch.delete(db.collection('recurring').doc(id)));
             await batch.commit();
+            _invalidateRecurringCache(currentCenter); // 고정예약 삭제 → recurring 캐시 무효화
         }
         if (reservationIds.length) {
             await deleteReservationsWithLocksByIds(reservationIds);
+            _invalidateReservationsCache(currentCenter); // 예약 삭제 → 캐시 무효화
         }
 
         alert('일괄 삭제되었습니다.');
@@ -10035,6 +10078,7 @@ function updateRecurFee(docId) {
     db.collection("recurring").doc(docId).update({
         monthlyFee: newFee
     }).then(() => {
+        _invalidateRecurringCache(currentCenter); // 고정예약 수정 → recurring 캐시 무효화
         alert("저장되었습니다. 통계가 다시 계산됩니다.");
         loadMonthlyStats(); // 통계 새로고침
         closeModal('modalStatsDetail'); // 창 닫기 (또는 다시 열어서 갱신된 값 보여주기)
@@ -10065,6 +10109,7 @@ async function updateRecurFeeByName(name, docIdsStr) {
         });
         
         await batch.commit();
+        _invalidateRecurringCache(currentCenter); // 고정예약 수정 → recurring 캐시 무효화
         
         alert("저장되었습니다. 통계가 다시 계산됩니다.");
         loadMonthlyStats();
