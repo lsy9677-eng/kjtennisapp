@@ -5141,6 +5141,57 @@ async function validateDailyReservationLimits(meta) {
     }
 }
 
+function validateRequestedSlotPattern(slots, occupiedMap) {
+    if (isAdmin) return;
+    if (!Array.isArray(slots) || slots.length === 0) return;
+
+    const OPEN_TIME = 7;
+    const LAST_START_TIME = 21;
+    const byCourt = {};
+
+    slots.forEach(slot => {
+        const court = Number(slot.c);
+        const time = Number(slot.t);
+        if (!Number.isFinite(court) || !Number.isFinite(time)) return;
+        if (!byCourt[court]) byCourt[court] = [];
+        byCourt[court].push(time);
+    });
+
+    for (const [court, timesRaw] of Object.entries(byCourt)) {
+        const times = [...new Set(timesRaw)].sort((a, b) => a - b);
+        let block = [times[0]];
+
+        for (let i = 1; i < times.length; i++) {
+            if (times[i] === times[i - 1] + 1) {
+                block.push(times[i]);
+            } else {
+                checkRequestedBlock(court, block, occupiedMap, OPEN_TIME, LAST_START_TIME);
+                block = [times[i]];
+            }
+        }
+
+        if (block.length) {
+            checkRequestedBlock(court, block, occupiedMap, OPEN_TIME, LAST_START_TIME);
+        }
+    }
+}
+
+function checkRequestedBlock(court, block, occupiedMap, openTime, lastStartTime) {
+    if (!Array.isArray(block) || block.length === 0) return;
+    if (block.length >= 2) return;
+
+    const time = Number(block[0]);
+    const prevKey = `${court}_${time - 1}`;
+    const nextKey = `${court}_${time + 1}`;
+
+    const isPrevBlocked = (time - 1) < openTime || occupiedMap.has(prevKey);
+    const isNextBlocked = (time + 1) > lastStartTime || occupiedMap.has(nextKey);
+
+    if (isPrevBlocked && isNextBlocked) return;
+
+    throw new Error('일반 회원 예약은 기본 2시간입니다. 다만 끼어 있는 1시간이나 마지막 1시간만 예외적으로 예약할 수 있습니다.');
+}
+
 /* [수정] 예약 저장 함수 (화면 입력값 우선 사용) */
 async function saveBook(uid) {
     const date = document.getElementById('hiddenDate').value;
@@ -5226,6 +5277,8 @@ async function saveBook(uid) {
                 return;
             }
         }
+
+        validateRequestedSlotPattern(slots, occupiedMap);
 
         await db.runTransaction(async (transaction) => {
             // [수정] Firestore 트랜잭션 규칙: 모든 read를 먼저 완료한 뒤 write 수행
