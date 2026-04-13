@@ -3296,9 +3296,16 @@ auth.onAuthStateChanged(user => {
                 msgSpan.innerText = currentUser.name + " 님";
                 msgSpan.style.display = 'inline-block';
 
-                if(!prevCitizen && !!currentUser.isCitizen && currentUser.verifStatus === 'APPROVED') {
-                    setTimeout(() => {
+                if(!!currentUser.isCitizen && currentUser.verifStatus === 'APPROVED' && currentUser.citizenNoticeShown !== true) {
+                    setTimeout(async () => {
                         alert('김해시민 인증이 승인되었습니다. 일반 요금이 바로 반영됩니다.');
+                        try {
+                            await db.collection("users").doc(user.uid).update({
+                                citizenNoticeShown: true
+                            });
+                        } catch (err) {
+                            console.warn('citizenNoticeShown 저장 실패:', err);
+                        }
                         try { if (typeof calcPay === 'function') calcPay(); } catch (_) {}
                         try { if (typeof scheduleLoadDB === 'function') scheduleLoadDB(0); } catch (_) {}
                     }, 120);
@@ -6487,6 +6494,7 @@ async function saveUserSettingsInfo() {
             updateData.proofDeletedAt = null;
             updateData.verifStatus = "PENDING";
             updateData.isCitizen = false; // 재심사 대기
+            updateData.citizenNoticeShown = false;
 
             if (oldProofUrl && oldProofUrl !== url) {
                 await deleteProofByUrl(oldProofUrl);
@@ -7331,6 +7339,7 @@ async function processUserCancel(mode) {
                 updateData.proofDeletedAt = null;
                 updateData.verifStatus = "PENDING"; 
                 updateData.isCitizen = false;
+                updateData.citizenNoticeShown = false;
 
                 if (oldProofUrl && oldProofUrl !== url) {
                     await deleteProofByUrl(oldProofUrl);
@@ -7606,7 +7615,8 @@ function loadPendingMembers() {
                 proofUrl: "",
                 proofDeletedAt: new Date(),
                 approvedAt: isApprove ? new Date() : firebase.firestore.FieldValue.delete(),
-                rejectedAt: !isApprove ? new Date() : firebase.firestore.FieldValue.delete()
+                rejectedAt: !isApprove ? new Date() : firebase.firestore.FieldValue.delete(),
+                citizenNoticeShown: isApprove ? false : firebase.firestore.FieldValue.delete()
             });
 
             await appendCitizenAudit(uid, isApprove ? 'APPROVED' : 'REJECTED', {
