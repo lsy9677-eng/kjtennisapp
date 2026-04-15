@@ -3631,6 +3631,15 @@ const HOLIDAYS = {
     // reservations(날짜별 예약): 날짜+센터 키로 캐시, 3분 TTL
     const _reservationsCache = {};
     const RESERVATIONS_TTL = 3 * 60 * 1000;
+    // settings(global): 자주 다시 읽지 않도록 캐시
+    let _configCache = null;
+    let _configCacheTs = 0;
+    let _configCachePromise = null;
+    const CONFIG_TTL = 5 * 60 * 1000;
+    // 내 예약 달력 dot: 월별 캐시
+    const _myReservedDatesCache = {};
+    const MY_RESERVED_DATES_TTL = 3 * 60 * 1000;
+    let _authRefreshTimer = null;
 
     function _invalidateRecurringCache(center) {
         if (center) delete _recurringCache[center];
@@ -3640,6 +3649,12 @@ const HOLIDAYS = {
         const prefix = (center || currentCenter) + '_';
         if (date) delete _reservationsCache[prefix + date];
         else Object.keys(_reservationsCache).filter(k => k.startsWith(prefix)).forEach(k => delete _reservationsCache[k]);
+    }
+
+    function _invalidateMyReservedDatesCache(center, phone, monthStart) {
+        const prefix = `${center || currentCenter}_${phone || ''}_`;
+        if (monthStart) delete _myReservedDatesCache[prefix + monthStart];
+        else Object.keys(_myReservedDatesCache).filter(k => k.startsWith(prefix)).forEach(k => delete _myReservedDatesCache[k]);
     }
 
     // 매크로 모니터 컬렉션 권한이 없으면 같은 세션에서는 추가 조회를 중단
@@ -4114,8 +4129,9 @@ auth.onAuthStateChanged(user => {
 
             updateAdminUI();
             try {
-                if (typeof loadWeeklyWeather === 'function') requestAnimationFrame(() => loadWeeklyWeather());
-                setTimeout(() => {
+                if (_authRefreshTimer) clearTimeout(_authRefreshTimer);
+                _authRefreshTimer = setTimeout(() => {
+                    if (typeof drawCalendar === 'function') drawCalendar();
                     if (typeof scheduleLoadDB === 'function') scheduleLoadDB(80);
                 }, 80);
             } catch (_) {}
@@ -4140,9 +4156,11 @@ auth.onAuthStateChanged(user => {
         }
         updateAdminUI();
         try {
-            if (typeof loadWeeklyWeather === 'function') {
-                requestAnimationFrame(() => loadWeeklyWeather());
-            }
+            if (_authRefreshTimer) clearTimeout(_authRefreshTimer);
+            _authRefreshTimer = setTimeout(() => {
+                if (typeof drawCalendar === 'function') drawCalendar();
+                if (typeof scheduleLoadDB === 'function') scheduleLoadDB(80);
+            }, 80);
         } catch (_) {}
     }
 });
@@ -4154,10 +4172,6 @@ auth.onAuthStateChanged(user => {
         
         drawCalendar();
         drawGrid();
-        requestAnimationFrame(() => {
-            if (typeof loadWeeklyWeather === 'function') loadWeeklyWeather();
-        });
-        scheduleLoadDB(0);
         loadConfig();
         loadPosts();
  
@@ -4825,12 +4839,26 @@ function drawCalendar() {
     function mvMonth(n) { viewDate.setMonth(viewDate.getMonth() + n); drawCalendar(); }
 
 /* 달력에 내 예약 날짜 dot 표시 */
-function markMyReservedDates() {
-    if (!currentUser || isAdmin) return;
+function markMyReservedDates(forceRefresh = false) {
+    if (!currentUser || isAdmin || !currentUser.phone) return;
     const y = viewDate.getFullYear();
     const m = viewDate.getMonth();
     const startStr = `${y}-${String(m+1).padStart(2,'0')}-01`;
     const endStr   = `${y}-${String(m+1).padStart(2,'0')}-${String(new Date(y, m+1, 0).getDate()).padStart(2,'0')}`;
+    const cacheKey = `${currentCenter}_${currentUser.phone}_${startStr}`;
+    const cached = _myReservedDatesCache[cacheKey];
+
+    const applyReservedDates = (dates) => {
+        (dates || []).forEach(date => {
+            const cell = document.getElementById(`cal-day-${date}`);
+            if (cell) cell.classList.add('my-reserved');
+        });
+    };
+
+    if (!forceRefresh && cached && (Date.now() - cached.ts < MY_RESERVED_DATES_TTL)) {
+        applyReservedDates(cached.dates);
+        return;
+    }
 
     db.collection('reservations')
         .where('center', '==', currentCenter)
@@ -4839,13 +4867,16 @@ function markMyReservedDates() {
         .where('date', '<=', endStr)
         .get()
         .then(snap => {
+            const dates = [];
             snap.forEach(doc => {
-                const date = doc.data().date;
-                const cell = document.getElementById(`cal-day-${date}`);
-                if (cell) cell.classList.add('my-reserved');
+                const data = doc.data() || {};
+                if (data.status === 'CANCELED') return;
+                dates.push(data.date);
             });
+            _myReservedDatesCache[cacheKey] = { dates: [...new Set(dates)], ts: Date.now() };
+            applyReservedDates(_myReservedDatesCache[cacheKey].dates);
         })
-        .catch(() => {}); // 권한 없을 시 조용히 무시
+        .catch(() => {});
 }
 /* [수정된 함수] 지점 변경 시 실행되는 함수 */
 function changeCenter() {
@@ -6157,7 +6188,9 @@ async function saveBook(uid) {
 
         closeModal('modalBook');
         _invalidateReservationsCache(currentCenter, date); // 예약 완료 → 캐시 무효화
+        _invalidateMyReservedDatesCache(currentCenter, bkPhone);
         scheduleLoadDB(0);
+        drawCalendar();
         refreshTodayMyReservationCard(true);
 
         if(!isAdmin) {
@@ -6836,8 +6869,9 @@ isCenterOpen: document.getElementById('setOpenCenter').checked
 
         await db.collection("settings").doc("global").set(dataToSave, { merge: true });
 
+        _configCache = null; _configCacheTs = 0;
         alert("설정이 저장되었습니다.");
-        loadConfig(); closeModal('modalSet');
+        loadConfig(true); closeModal('modalSet');
 
     } catch(err) {
         alert("오류: " + err.message);
@@ -7123,7 +7157,9 @@ function doBlockSlot() {
         alert("처리가 완료되었습니다.");
         closeModal('modalBook');
         _invalidateReservationsCache(currentCenter, date); // 예약 완료 → 캐시 무효화
+        _invalidateMyReservedDatesCache(currentCenter, bkPhone);
         scheduleLoadDB(0);
+        drawCalendar();
         refreshTodayMyReservationCard(true);
     }).catch(err => alert("오류: " + err.message));
 }
@@ -8103,7 +8139,9 @@ async function processAdminCancel(mode) {
 
         closeModal('modalCancel');
         _invalidateReservationsCache(currentCenter); // 취소/삭제 → 캐시 무효화
+        _invalidateMyReservedDatesCache(currentCenter, searchPhone);
         scheduleLoadDB(0); 
+        drawCalendar();
 
     } catch(err) {
         console.error(err);
@@ -8518,41 +8556,62 @@ function loadPendingMembers() {
         }
     }
 
-    function loadConfig() {
-    db.collection("settings").doc("global").get().then(doc => {
-        if(doc.exists) {
-            const d = doc.data();
-            if(d.prices) { prices=[]; for(let i=0; i<4; i++) prices.push([d.prices[i*2], d.prices[i*2+1]]); }
-            if(d.adminPhone) admPh = d.adminPhone;
-            if(d.bankName) {
-                bankName = d.bankName; bankAccount = d.bankAccount;
-                const bankEl = document.getElementById('dispBank');
-                const accEl = document.getElementById('dispAcc');
-                if (bankEl) bankEl.innerText = bankName;
-                if (accEl) accEl.innerText = bankAccount;
-            }
-            if(d.adminPass) adminPass = d.adminPass;
+    function applyGlobalConfigDoc(doc) {
+    if(!doc || !doc.exists) return;
+    const d = doc.data();
+    if(d.prices) { prices=[]; for(let i=0; i<4; i++) prices.push([d.prices[i*2], d.prices[i*2+1]]); }
+    if(d.adminPhone) admPh = d.adminPhone;
+    if(d.bankName) {
+        bankName = d.bankName; bankAccount = d.bankAccount;
+        const bankEl = document.getElementById('dispBank');
+        const accEl = document.getElementById('dispAcc');
+        if (bankEl) bankEl.innerText = bankName;
+        if (accEl) accEl.innerText = bankAccount;
+    }
+    if(d.adminPass) adminPass = d.adminPass;
 
-            useCardPay = d.useCardPay === true;
-            safeSetChecked('setUseCard', useCardPay);
-            isCenterOpen = d.isCenterOpen === true;
-            safeSetChecked('setOpenCenter', isCenterOpen);
+    useCardPay = d.useCardPay === true;
+    safeSetChecked('setUseCard', useCardPay);
+    isCenterOpen = d.isCenterOpen === true;
+    safeSetChecked('setOpenCenter', isCenterOpen);
 
-            // 구버전 UI에 없는 입력창은 값이 있을 때도 무시하고 오류를 내지 않음
-            if (d.dayStartHour !== undefined) { window.dayStartHour = d.dayStartHour; safeSetInputValue('settingDayStart', d.dayStartHour); }
-            else window.dayStartHour = 7;
-            if (d.nightStartHour !== undefined) { window.nightStartHour = d.nightStartHour; safeSetInputValue('settingNightStart', d.nightStartHour); }
-            else window.nightStartHour = 19;
-            if (d.dayPrice !== undefined) { window.dayPrice = d.dayPrice; safeSetInputValue('settingDayPrice', d.dayPrice); }
-            else window.dayPrice = 5000;
-            if (d.nightPrice !== undefined) { window.nightPrice = d.nightPrice; safeSetInputValue('settingNightPrice', d.nightPrice); }
-            else window.nightPrice = 10000;
+    if (d.dayStartHour !== undefined) { window.dayStartHour = d.dayStartHour; safeSetInputValue('settingDayStart', d.dayStartHour); }
+    else window.dayStartHour = 7;
+    if (d.nightStartHour !== undefined) { window.nightStartHour = d.nightStartHour; safeSetInputValue('settingNightStart', d.nightStartHour); }
+    else window.nightStartHour = 19;
+    if (d.dayPrice !== undefined) { window.dayPrice = d.dayPrice; safeSetInputValue('settingDayPrice', d.dayPrice); }
+    else window.dayPrice = 5000;
+    if (d.nightPrice !== undefined) { window.nightPrice = d.nightPrice; safeSetInputValue('settingNightPrice', d.nightPrice); }
+    else window.nightPrice = 10000;
 
-            loadSeasonalPricings();
-            updateAdminUI();
-        }
+    loadSeasonalPricings();
+    updateAdminUI();
+}
+
+function loadConfig(forceRefresh = false) {
+    const isFresh = _configCache && (Date.now() - _configCacheTs < CONFIG_TTL);
+    if (!forceRefresh && isFresh) {
+        applyGlobalConfigDoc(_configCache);
+        return Promise.resolve(_configCache);
+    }
+    if (!forceRefresh && _configCachePromise) {
+        return _configCachePromise.then(doc => {
+            applyGlobalConfigDoc(doc);
+            return doc;
+        });
+    }
+
+    _configCachePromise = db.collection("settings").doc("global").get();
+    return _configCachePromise.then(doc => {
+        _configCache = doc;
+        _configCacheTs = Date.now();
+        applyGlobalConfigDoc(doc);
+        return doc;
     }).catch(err => {
         console.error('설정 불러오기 오류:', err);
+        throw err;
+    }).finally(() => {
+        _configCachePromise = null;
     });
 }
 
@@ -9482,6 +9541,7 @@ async function doListBatchDelete() {
         if (reservationIds.length) {
             await deleteReservationsWithLocksByIds(reservationIds);
             _invalidateReservationsCache(currentCenter); // 예약 삭제 → 캐시 무효화
+            _invalidateMyReservedDatesCache(currentCenter);
         }
 
         alert('일괄 삭제되었습니다.');
