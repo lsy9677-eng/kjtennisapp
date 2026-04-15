@@ -11967,7 +11967,18 @@ function getAvailableCourtsAtHour(hour){
     return courts;
   }
 
-  window.availableCourtPickerState = { hour:null, selectedCourt:null, availableCourts:[] };
+  window.availableCourtPickerState = { hour:null, selectedCourts:[], availableCourts:[], lastSelectedCourt:null, lastSelectedAt:0 };
+
+  function pickerHasCourt(state, court){
+    return !!(state && Array.isArray(state.selectedCourts) && state.selectedCourts.indexOf(court) !== -1);
+  }
+
+  function pickerSelectionText(state){
+    if(!state || !state.hour) return '선택: 없음';
+    var courts = Array.isArray(state.selectedCourts) ? state.selectedCourts.slice().sort(function(a,b){ return a-b; }) : [];
+    if(!courts.length) return '선택: 없음';
+    return '선택: ' + courts.map(function(c){ return c + '번코트'; }).join(', ') + ' (' + state.hour + ':00)';
+  }
 
   function getIntlPickerPositions(){
     return {
@@ -11995,61 +12006,100 @@ function getAvailableCourtsAtHour(hour){
     var infoEl = document.getElementById('availableCourtPickerSelectionInfo');
     var btnEl = document.getElementById('availableCourtPickerConfirmBtn');
     var overlayEl = document.getElementById('availableCourtPickerMapOverlay');
+    var listEl = document.getElementById('availableCourtPickerList');
+    var selectedCourts = Array.isArray(state.selectedCourts) ? state.selectedCourts.slice().sort(function(a,b){ return a-b; }) : [];
+
     if(infoEl){
-      if(state.selectedCourt){
-        infoEl.style.display = 'block';
-        infoEl.textContent = '선택: ' + state.selectedCourt + '번코트 (' + state.hour + ':00)';
-      } else {
-        infoEl.style.display = 'block';
-        infoEl.textContent = '선택: 없음';
-      }
+      infoEl.style.display = 'block';
+      infoEl.textContent = pickerSelectionText(state);
     }
     if(btnEl){
-      if(state.selectedCourt){
+      if(selectedCourts.length){
         btnEl.style.opacity = '1';
         btnEl.style.pointerEvents = 'auto';
-        btnEl.textContent = state.selectedCourt + '번코트 예약하기';
+        btnEl.textContent = selectedCourts.length === 1 ? (selectedCourts[0] + '번코트 예약하기') : (selectedCourts.map(function(c){ return c + '번'; }).join(', ') + ' 예약하기');
       } else {
         btnEl.style.opacity = '.45';
         btnEl.style.pointerEvents = 'none';
         btnEl.textContent = '선택한 코트 예약하기';
       }
     }
+
+    function paintHotspot(el){
+      var court = parseInt(el.getAttribute('data-court') || '0', 10);
+      var selected = pickerHasCourt(state, court);
+      var available = (state.availableCourts || []).indexOf(court) !== -1;
+      var badge = el.querySelector('[data-role="badge"]');
+      var label = el.querySelector('[data-role="label"]');
+      if(selected){
+        el.style.border = '4px solid rgba(234,179,8,0.98)';
+        el.style.background = 'rgba(250,204,21,0.28)';
+        el.style.boxShadow = '0 0 0 3px rgba(255,255,255,0.95) inset, 0 10px 20px rgba(234,179,8,0.28)';
+        if(badge) badge.style.background = 'rgba(234,179,8,0.98)';
+        if(label){ label.style.background = 'rgba(234,179,8,0.98)'; label.textContent = court + '번코트 선택됨'; }
+      } else if(available){
+        el.style.border = '3px solid rgba(34,197,94,0.95)';
+        el.style.background = 'rgba(34,197,94,0.16)';
+        el.style.boxShadow = '0 0 0 2px rgba(255,255,255,0.92) inset, 0 8px 18px rgba(34,197,94,0.18)';
+        if(badge) badge.style.background = 'rgba(34,197,94,0.98)';
+        if(label){ label.style.background = 'rgba(34,197,94,0.98)'; label.textContent = court + '번코트 선택'; }
+      } else {
+        el.style.border = '2px solid rgba(148,163,184,0.80)';
+        el.style.background = 'rgba(15,23,42,0.12)';
+        el.style.boxShadow = '0 0 0 1px rgba(255,255,255,0.35) inset';
+        if(badge) badge.style.background = 'rgba(51,65,85,0.96)';
+        if(label){ label.style.background = 'rgba(51,65,85,0.92)'; label.textContent = court + '번코트 사용중'; }
+      }
+    }
+
     if(overlayEl){
-      Array.prototype.forEach.call(overlayEl.querySelectorAll('[data-court-hotspot="1"]'), function(el){
-        var court = parseInt(el.getAttribute('data-court') || '0', 10);
-        var selected = state.selectedCourt === court;
-        var available = (state.availableCourts || []).indexOf(court) !== -1;
-        var badge = el.querySelector('[data-role="badge"]');
-        var label = el.querySelector('[data-role="label"]');
-        if(selected){
-          el.style.border = '4px solid rgba(234,179,8,0.98)';
-          el.style.background = 'rgba(250,204,21,0.28)';
-          el.style.boxShadow = '0 0 0 3px rgba(255,255,255,0.95) inset, 0 10px 20px rgba(234,179,8,0.28)';
-          if(badge) badge.style.background = 'rgba(234,179,8,0.98)';
-          if(label){ label.style.background = 'rgba(234,179,8,0.98)'; label.textContent = court + '번코트 선택됨'; }
-        } else if(available){
-          el.style.border = '3px solid rgba(34,197,94,0.95)';
-          el.style.background = 'rgba(34,197,94,0.16)';
-          el.style.boxShadow = '0 0 0 2px rgba(255,255,255,0.92) inset, 0 8px 18px rgba(34,197,94,0.18)';
-          if(badge) badge.style.background = 'rgba(34,197,94,0.98)';
-          if(label){ label.style.background = 'rgba(34,197,94,0.98)'; label.textContent = court + '번코트 선택'; }
-        }
-      });
+      Array.prototype.forEach.call(overlayEl.querySelectorAll('[data-court-hotspot="1"]'), paintHotspot);
+    }
+    if(listEl){
+      Array.prototype.forEach.call(listEl.querySelectorAll('[data-court-button="1"]'), paintHotspot);
     }
   }
 
   function selectCourtInPicker(hour, court){
-    window.availableCourtPickerState = window.availableCourtPickerState || { hour:hour, selectedCourt:null, availableCourts:[] };
-    window.availableCourtPickerState.hour = hour;
-    window.availableCourtPickerState.selectedCourt = court;
+    var nowTs = Date.now();
+    window.availableCourtPickerState = window.availableCourtPickerState || { hour:hour, selectedCourts:[], availableCourts:[], lastSelectedCourt:null, lastSelectedAt:0 };
+    var state = window.availableCourtPickerState;
+    var selectedCourts = Array.isArray(state.selectedCourts) ? state.selectedCourts : [];
+    var alreadySelected = selectedCourts.indexOf(court) !== -1;
+    var isSameCourtFastRepeat = state.hour === hour && alreadySelected && state.lastSelectedCourt === court && state.lastSelectedAt && ((nowTs - state.lastSelectedAt) <= 2000);
+
+    state.hour = hour;
+
+    if(alreadySelected){
+      if(!isSameCourtFastRepeat){
+        state.selectedCourts = selectedCourts.filter(function(item){ return item !== court; });
+      }
+    } else {
+      if(selectedCourts.length >= 2){
+        alert('같은 시간에는 최대 2코트까지만 선택할 수 있습니다.');
+        state.lastSelectedCourt = court;
+        state.lastSelectedAt = nowTs;
+        updateAvailableCourtSelectionUI();
+        return;
+      }
+      selectedCourts.push(court);
+      state.selectedCourts = selectedCourts;
+    }
+
+    state.lastSelectedCourt = court;
+    state.lastSelectedAt = nowTs;
     updateAvailableCourtSelectionUI();
+
+    if(isSameCourtFastRepeat){
+      window.confirmAvailableCourtSelection(true);
+    }
   }
 
-  window.confirmAvailableCourtSelection = function(){
+  window.confirmAvailableCourtSelection = function(skipDirectOpen){
     var state = window.availableCourtPickerState || {};
-    if(!state.hour || !state.selectedCourt) return;
-    window.selectAvailableCourt(state.hour, state.selectedCourt);
+    var selectedCourts = Array.isArray(state.selectedCourts) ? state.selectedCourts.slice().sort(function(a,b){ return a-b; }) : [];
+    if(!state.hour || !selectedCourts.length) return;
+    window.selectAvailableCourt(state.hour, selectedCourts, !!skipDirectOpen);
   };
 
   window.openAvailableCourtPicker = function(hour){
@@ -12060,7 +12110,7 @@ function getAvailableCourtsAtHour(hour){
       alert('해당 시간에 선택 가능한 코트가 없습니다.');
       return;
     }
-    window.availableCourtPickerState = { hour:hour, selectedCourt:null, availableCourts:courts.slice() };
+    window.availableCourtPickerState = { hour:hour, selectedCourts:[], availableCourts:courts.slice(), lastSelectedCourt:null, lastSelectedAt:0 };
     var titleEl = document.getElementById('availableCourtPickerTitle');
     var guideEl = document.getElementById('availableCourtPickerGuide');
     var listEl = document.getElementById('availableCourtPickerList');
@@ -12070,19 +12120,26 @@ function getAvailableCourtsAtHour(hour){
     var date = ((document.getElementById('hiddenDate') || {}).value || '');
     var positions = getPickerPositions();
     var mapSrc = getAvailableCourtMapImage();
+    var forceIntlMap = (activeCenter === '국제');
     if(titleEl) titleEl.textContent = (date ? date + ' ' : '') + hour + ':00 시간의 빈 코트입니다.';
-    if(guideEl) guideEl.innerHTML = '사진 위의 <b style="color:#16a34a;">초록 코트</b>를 선택하면 노란색으로 바뀝니다. 이후 아래 버튼을 누르면 예약 화면으로 이동합니다.';
+    if(guideEl) guideEl.innerHTML = '사진 위의 <b style="color:#16a34a;">초록 코트</b>를 누르면 선택됩니다. 같은 시간에는 <b style="color:#eab308;">최대 2코트</b>까지 선택할 수 있고, <b style="color:#eab308;">2초 안에 같은 코트</b>를 다시 누르면 바로 예약 화면으로 이동합니다.';
 
-    var canUseMap = !!(wrapEl && mapImgEl && overlayEl && positions && Object.keys(positions).length && mapSrc);
+    var canUseMap = !!(wrapEl && overlayEl && positions && Object.keys(positions).length && mapSrc);
 
-    if(mapImgEl){
-      mapImgEl.src = mapSrc;
-      mapImgEl.style.display = canUseMap ? 'block' : 'none';
-      mapImgEl.style.width = '100%';
-      mapImgEl.style.height = 'auto';
-    }
     if(wrapEl){
       wrapEl.style.display = canUseMap ? 'block' : 'none';
+      wrapEl.style.position = 'relative';
+      wrapEl.style.width = '100%';
+      wrapEl.style.minHeight = '280px';
+      wrapEl.style.aspectRatio = '720 / 750';
+      wrapEl.style.background = canUseMap ? ('#f8fafc url(' + mapSrc + ') center center / cover no-repeat') : '#f8fafc';
+      wrapEl.style.border = '1px solid #e2e8f0';
+      wrapEl.style.borderRadius = '14px';
+      wrapEl.style.overflow = 'hidden';
+    }
+    if(mapImgEl){
+      mapImgEl.src = mapSrc || '';
+      mapImgEl.style.display = 'none';
     }
     if(overlayEl){
       overlayEl.innerHTML = '';
@@ -12091,6 +12148,7 @@ function getAvailableCourtsAtHour(hour){
       overlayEl.style.inset = '0';
       overlayEl.style.zIndex = '20';
       overlayEl.style.pointerEvents = 'auto';
+      overlayEl.style.background = 'transparent';
     }
     if(listEl){
       listEl.innerHTML = '';
@@ -12099,7 +12157,7 @@ function getAvailableCourtsAtHour(hour){
     }
 
     if(canUseMap){
-      var maxCourts = (centersMap && centersMap[activeCenter] && centersMap[activeCenter].courts) || 8;
+      var maxCourts = forceIntlMap ? 8 : ((centersMap && centersMap[activeCenter] && centersMap[activeCenter].courts) || 8);
       for(var c=1;c<=maxCourts;c++){
         var pos = positions[c];
         if(!pos) continue;
@@ -12163,66 +12221,106 @@ function getAvailableCourtsAtHour(hour){
 
         hotspot.appendChild(badge);
         hotspot.appendChild(label);
-
         if(isAvailable){
           hotspot.onclick = (function(court){
             return function(){ selectCourtInPicker(hour, court); };
           })(c);
-          hotspot.onmouseenter = function(){ this.style.transform = 'scale(1.02)'; };
-          hotspot.onmouseleave = function(){ this.style.transform = 'scale(1)'; };
+          hotspot.onmouseenter = function(){ this.style.transform = 'translateY(-1px)'; };
+          hotspot.onmouseleave = function(){ this.style.transform = 'none'; };
         } else {
           hotspot.disabled = true;
+          hotspot.style.opacity = '.78';
         }
         overlayEl.appendChild(hotspot);
       }
 
-      if(activeCenter === '국제'){
+      if(forceIntlMap){
         var office = document.createElement('div');
         office.textContent = '사무실';
         office.style.position = 'absolute';
-        office.style.right = '1.2%';
-        office.style.bottom = '4.2%';
-        office.style.padding = '6px 8px';
+        office.style.right = '1.5%';
+        office.style.bottom = '8%';
+        office.style.padding = '6px 10px';
         office.style.borderRadius = '10px';
-        office.style.background = 'rgba(15,23,42,0.86)';
-        office.style.color = '#fff';
-        office.style.fontSize = '0.72rem';
-        office.style.fontWeight = '900';
-        office.style.border = '1px solid rgba(255,255,255,0.55)';
+        office.style.background = 'rgba(15,23,42,0.88)';
+        office.style.color = '#ffffff';
+        office.style.fontSize = '0.8rem';
+        office.style.fontWeight = '800';
+        office.style.boxShadow = '0 3px 10px rgba(0,0,0,0.22)';
         office.style.pointerEvents = 'none';
-        office.style.zIndex = '23';
         overlayEl.appendChild(office);
       }
+
       updateAvailableCourtSelectionUI();
     } else if(listEl){
-      listEl.innerHTML = courts.map(function(court){
-        return '<button type="button" onclick="selectAvailableCourt(' + hour + ',' + court + ')" style="flex:1 1 calc(50% - 8px); min-width:120px; border:none; background:#2563eb; color:#fff; border-radius:12px; padding:14px 10px; font-size:0.95rem; font-weight:800; cursor:pointer;">' + court + '번코트 선택</button>';
-      }).join('');
-      var infoEl = document.getElementById('availableCourtPickerSelectionInfo');
-      var btnEl = document.getElementById('availableCourtPickerConfirmBtn');
-      if(infoEl) infoEl.style.display = 'none';
-      if(btnEl){ btnEl.style.display = 'none'; }
+      courts.forEach(function(court){
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.setAttribute('data-court-button', '1');
+        btn.setAttribute('data-court', String(court));
+        btn.innerHTML = '<span data-role="badge" style="display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:999px;background:rgba(34,197,94,0.98);color:#fff;font-weight:900;font-size:.82rem;">' + court + '</span><span data-role="label">' + court + '번코트 선택</span>';
+        btn.style.flex = '1 1 calc(50% - 8px)';
+        btn.style.display = 'flex';
+        btn.style.alignItems = 'center';
+        btn.style.justifyContent = 'center';
+        btn.style.gap = '8px';
+        btn.style.border = '3px solid rgba(34,197,94,0.95)';
+        btn.style.background = 'rgba(34,197,94,0.16)';
+        btn.style.color = '#0f172a';
+        btn.style.borderRadius = '12px';
+        btn.style.padding = '14px 10px';
+        btn.style.fontSize = '0.95rem';
+        btn.style.fontWeight = '800';
+        btn.style.cursor = 'pointer';
+        btn.onclick = function(){ selectCourtInPicker(hour, court); };
+        listEl.appendChild(btn);
+      });
+      updateAvailableCourtSelectionUI();
     }
+
     openModal('modalAvailableCourts');
   };
 
-  window.selectAvailableCourt = function(hour, court){
+  window.selectAvailableCourt = function(hour, courts, skipDirectOpen){
+    var pickedCourts = Array.isArray(courts) ? courts.slice() : [courts];
+    pickedCourts = pickedCourts.filter(function(court, idx, arr){
+      return Number.isFinite(Number(court)) && arr.indexOf(court) === idx;
+    }).map(function(court){ return Number(court); }).sort(function(a,b){ return a-b; });
+    if(!pickedCourts.length){
+      alert('선택한 코트를 찾지 못했습니다.');
+      return;
+    }
+
     closeModal('modalAvailableCourts');
     closeModal('modalDailyStatus');
     goTab('res');
+
     setTimeout(function(){
-      var cell = document.getElementById('c-' + court + '-' + hour);
-      if(!cell){
-        alert('선택한 코트를 찾지 못했습니다.');
-        return;
-      }
       try{
-        onCellClick({ target: cell });
-        cell.scrollIntoView({ behavior:'smooth', block:'center', inline:'center' });
-        cell.style.animation = 'pulse 0.5s ease-in-out 2';
-        setTimeout(function(){ cell.style.animation = ''; }, 1000);
+        selected = [];
+        document.querySelectorAll('.data-cell .select-orb').forEach(function(orb){
+          var cell = orb.closest('.data-cell');
+          if(cell) cell.innerHTML = '';
+        });
+
+        pickedCourts.forEach(function(court){
+          var cell = document.getElementById('c-' + court + '-' + hour);
+          if(!cell) throw new Error('선택한 코트를 찾지 못했습니다.');
+          if(cell.classList.contains('booked') || cell.classList.contains('fixed') || cell.classList.contains('pending') || cell.classList.contains('blocked') || cell.classList.contains('past')){
+            throw new Error(court + '번코트는 지금 선택할 수 없습니다.');
+          }
+          addSelect(court, hour);
+          cell.scrollIntoView({ behavior:'smooth', block:'center', inline:'center' });
+          cell.style.animation = 'pulse 0.5s ease-in-out 2';
+          setTimeout(function(){ cell.style.animation = ''; }, 1000);
+        });
+
+        validateSelection();
+        if(skipDirectOpen && pickedCourts.length === 1){
+          openBook();
+        }
       }catch(err){
-        alert('코트 선택 연결에 실패했습니다.');
+        alert(err && err.message ? err.message : '코트 선택 연결에 실패했습니다.');
       }
     }, 120);
   };
