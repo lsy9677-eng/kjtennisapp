@@ -12074,5 +12074,77 @@ function drawScoreChart(w, l, d) {
   }
 })();
 </script>
+
+<style id="compact-gap-fix-v6">
+@media (max-width:768px){
+  body{
+    padding-bottom:112px !important;
+  }
+  #view-res.content-area.active{
+    padding-bottom:112px !important;
+    gap:0 !important;
+  }
+  #gridArea{
+    padding-top:0 !important;
+    margin-top:0 !important;
+    margin-bottom:0 !important;
+  }
+  .schedule-table{
+    padding-bottom:98px !important;
+  }
+  .footer-bar{
+    bottom:56px !important;
+    height:52px !important;
+    min-height:52px !important;
+    border-radius:18px !important;
+    padding:0 6px 0 12px !important;
+    box-shadow:0 6px 14px rgba(15,23,42,.12) !important;
+    gap:6px !important;
+  }
+  .sel-info{
+    margin:0 !important;
+    padding:0 !important;
+    font-size:0.76rem !important;
+    line-height:1.1 !important;
+  }
+  .footer-actions-inline{
+    gap:4px !important;
+    margin:0 !important;
+  }
+  .footer-mini-btn{
+    height:30px !important;
+    padding:0 8px !important;
+    border-radius:14px !important;
+    font-size:0.72rem !important;
+  }
+  .footer-info-btn{
+    width:26px !important;
+    height:26px !important;
+    font-size:0.76rem !important;
+  }
+  .footer-bar .btn-pay{
+    height:36px !important;
+    min-height:36px !important;
+    padding:0 12px !important;
+    border-radius:16px !important;
+    font-size:0.8rem !important;
+  }
+  #mobileBottomNav{
+    height:56px !important;
+    min-height:56px !important;
+    padding-bottom:env(safe-area-inset-bottom, 0px) !important;
+  }
+  #mobileBottomNav button{
+    gap:1px !important;
+    font-size:10px !important;
+    line-height:1 !important;
+    padding:2px 0 0 !important;
+  }
+  #mobileBottomNav button .icon{
+    font-size:15px !important;
+  }
+}
+</style>
+
 </body>
 </html>
