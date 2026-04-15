@@ -11313,14 +11313,18 @@ function drawScoreChart(w, l, d) {
 
 
 <div id="modalAvailableCourts" class="modal-mask">
-    <div class="modal-win" style="max-width:520px; width:min(92vw,520px);">
+    <div class="modal-win" style="max-width:560px; width:min(92vw,560px);">
         <span class="modal-close" onclick="closeModal('modalAvailableCourts')">&times;</span>
         <div class="modal-head">예약할 코트 선택</div>
         <div id="availableCourtPickerTitle" style="font-size:0.9rem; color:#475569; margin-bottom:8px;"></div>
-        <div id="availableCourtPickerGuide" style="font-size:0.8rem; color:#64748b; margin-bottom:12px; line-height:1.45;">사진 위에서 <b style="color:#2563eb;">코트 번호</b>를 누르면 예약 화면으로 이동합니다.</div>
-        <div id="availableCourtPickerMapWrap" style="position:relative; width:100%; border:1px solid #e2e8f0; border-radius:14px; overflow:hidden; background:#f8fafc;">
+        <div id="availableCourtPickerGuide" style="font-size:0.8rem; color:#64748b; margin-bottom:12px; line-height:1.45;">사진 위의 <b style="color:#2563eb;">빈 코트</b>를 먼저 선택한 뒤, 아래 버튼으로 예약 화면으로 이동합니다.</div>
+        <div id="availableCourtPickerMapWrap" style="position:relative; width:100%; border:1px solid #e2e8f0; border-radius:14px; overflow:hidden; background:#f8fafc; min-height:280px;">
             <img id="availableCourtPickerMapImg" alt="코트 선택 지도" style="display:block; width:100%; height:auto; user-select:none; pointer-events:none;">
             <div id="availableCourtPickerMapOverlay" style="position:absolute; inset:0;"></div>
+        </div>
+        <div id="availableCourtPickerSelectionInfo" style="margin-top:10px; padding:10px 12px; border-radius:12px; background:#eff6ff; color:#1d4ed8; font-size:0.85rem; font-weight:800; display:none;">선택: 없음</div>
+        <div id="availableCourtPickerActions" style="display:flex; gap:8px; margin-top:10px;">
+            <button type="button" onclick="confirmAvailableCourtSelection()" id="availableCourtPickerConfirmBtn" style="flex:1; border:none; background:#2563eb; color:#fff; border-radius:12px; padding:14px 10px; font-size:0.95rem; font-weight:800; cursor:pointer; opacity:.45; pointer-events:none;">선택한 코트 예약하기</button>
         </div>
         <div id="availableCourtPickerList" style="display:none; flex-wrap:wrap; gap:8px; margin-top:12px;"></div>
     </div>
@@ -11963,6 +11967,91 @@ function getAvailableCourtsAtHour(hour){
     return courts;
   }
 
+  window.availableCourtPickerState = { hour:null, selectedCourt:null, availableCourts:[] };
+
+  function getIntlPickerPositions(){
+    return {
+      8:[3,4,44,21],
+      7:[26,4,44,21],
+      4:[53,4,44,21],
+      3:[76,4,44,21],
+      6:[3,52,44,21],
+      5:[26,52,44,21],
+      2:[53,52,44,21],
+      1:[76,52,44,21]
+    };
+  }
+
+  function getPickerPositions(){
+    var activeCenter = getActiveCenterName();
+    if(activeCenter === '국제') return getIntlPickerPositions();
+    var centersMap = getCentersMap();
+    var centerData = (centersMap && centersMap[activeCenter]) || null;
+    return (centerData && centerData.pos) ? centerData.pos : null;
+  }
+
+  function updateAvailableCourtSelectionUI(){
+    var state = window.availableCourtPickerState || {};
+    var infoEl = document.getElementById('availableCourtPickerSelectionInfo');
+    var btnEl = document.getElementById('availableCourtPickerConfirmBtn');
+    var overlayEl = document.getElementById('availableCourtPickerMapOverlay');
+    if(infoEl){
+      if(state.selectedCourt){
+        infoEl.style.display = 'block';
+        infoEl.textContent = '선택: ' + state.selectedCourt + '번코트 (' + state.hour + ':00)';
+      } else {
+        infoEl.style.display = 'block';
+        infoEl.textContent = '선택: 없음';
+      }
+    }
+    if(btnEl){
+      if(state.selectedCourt){
+        btnEl.style.opacity = '1';
+        btnEl.style.pointerEvents = 'auto';
+        btnEl.textContent = state.selectedCourt + '번코트 예약하기';
+      } else {
+        btnEl.style.opacity = '.45';
+        btnEl.style.pointerEvents = 'none';
+        btnEl.textContent = '선택한 코트 예약하기';
+      }
+    }
+    if(overlayEl){
+      Array.prototype.forEach.call(overlayEl.querySelectorAll('[data-court-hotspot="1"]'), function(el){
+        var court = parseInt(el.getAttribute('data-court') || '0', 10);
+        var selected = state.selectedCourt === court;
+        var available = (state.availableCourts || []).indexOf(court) !== -1;
+        var badge = el.querySelector('[data-role="badge"]');
+        var label = el.querySelector('[data-role="label"]');
+        if(selected){
+          el.style.border = '4px solid rgba(234,179,8,0.98)';
+          el.style.background = 'rgba(250,204,21,0.28)';
+          el.style.boxShadow = '0 0 0 3px rgba(255,255,255,0.95) inset, 0 10px 20px rgba(234,179,8,0.28)';
+          if(badge) badge.style.background = 'rgba(234,179,8,0.98)';
+          if(label){ label.style.background = 'rgba(234,179,8,0.98)'; label.textContent = court + '번코트 선택됨'; }
+        } else if(available){
+          el.style.border = '3px solid rgba(34,197,94,0.95)';
+          el.style.background = 'rgba(34,197,94,0.16)';
+          el.style.boxShadow = '0 0 0 2px rgba(255,255,255,0.92) inset, 0 8px 18px rgba(34,197,94,0.18)';
+          if(badge) badge.style.background = 'rgba(34,197,94,0.98)';
+          if(label){ label.style.background = 'rgba(34,197,94,0.98)'; label.textContent = court + '번코트 선택'; }
+        }
+      });
+    }
+  }
+
+  function selectCourtInPicker(hour, court){
+    window.availableCourtPickerState = window.availableCourtPickerState || { hour:hour, selectedCourt:null, availableCourts:[] };
+    window.availableCourtPickerState.hour = hour;
+    window.availableCourtPickerState.selectedCourt = court;
+    updateAvailableCourtSelectionUI();
+  }
+
+  window.confirmAvailableCourtSelection = function(){
+    var state = window.availableCourtPickerState || {};
+    if(!state.hour || !state.selectedCourt) return;
+    window.selectAvailableCourt(state.hour, state.selectedCourt);
+  };
+
   window.openAvailableCourtPicker = function(hour){
     var activeCenter = getActiveCenterName();
     var centersMap = getCentersMap();
@@ -11971,6 +12060,7 @@ function getAvailableCourtsAtHour(hour){
       alert('해당 시간에 선택 가능한 코트가 없습니다.');
       return;
     }
+    window.availableCourtPickerState = { hour:hour, selectedCourt:null, availableCourts:courts.slice() };
     var titleEl = document.getElementById('availableCourtPickerTitle');
     var guideEl = document.getElementById('availableCourtPickerGuide');
     var listEl = document.getElementById('availableCourtPickerList');
@@ -11978,25 +12068,21 @@ function getAvailableCourtsAtHour(hour){
     var overlayEl = document.getElementById('availableCourtPickerMapOverlay');
     var wrapEl = document.getElementById('availableCourtPickerMapWrap');
     var date = ((document.getElementById('hiddenDate') || {}).value || '');
-    var centerData = (centersMap && centersMap[activeCenter]) || null;
-    var positions = (centerData && centerData.pos) ? centerData.pos : null;
+    var positions = getPickerPositions();
+    var mapSrc = getAvailableCourtMapImage();
     if(titleEl) titleEl.textContent = (date ? date + ' ' : '') + hour + ':00 시간의 빈 코트입니다.';
-    if(guideEl) guideEl.innerHTML = '사진 위의 <b style="color:#2563eb;">코트 번호</b>를 누르면 바로 예약 화면으로 이동합니다.';
+    if(guideEl) guideEl.innerHTML = '사진 위의 <b style="color:#16a34a;">초록 코트</b>를 선택하면 노란색으로 바뀝니다. 이후 아래 버튼을 누르면 예약 화면으로 이동합니다.';
 
-    var canUseMap = !!(wrapEl && mapImgEl && overlayEl && positions && Object.keys(positions).length);
+    var canUseMap = !!(wrapEl && mapImgEl && overlayEl && positions && Object.keys(positions).length && mapSrc);
 
     if(mapImgEl){
-      mapImgEl.src = getAvailableCourtMapImage();
-      mapImgEl.style.display = 'block';
+      mapImgEl.src = mapSrc;
+      mapImgEl.style.display = canUseMap ? 'block' : 'none';
       mapImgEl.style.width = '100%';
       mapImgEl.style.height = 'auto';
-      mapImgEl.style.pointerEvents = 'none';
-      mapImgEl.style.userSelect = 'none';
     }
     if(wrapEl){
       wrapEl.style.display = canUseMap ? 'block' : 'none';
-      wrapEl.style.position = 'relative';
-      wrapEl.style.minHeight = canUseMap ? '280px' : '0';
     }
     if(overlayEl){
       overlayEl.innerHTML = '';
@@ -12021,23 +12107,26 @@ function getAvailableCourtsAtHour(hour){
 
         var hotspot = document.createElement('button');
         hotspot.type = 'button';
+        hotspot.setAttribute('data-court-hotspot', '1');
+        hotspot.setAttribute('data-court', String(c));
         hotspot.setAttribute('aria-label', c + '번코트 ' + (isAvailable ? '선택' : '사용중'));
         hotspot.style.position = 'absolute';
         hotspot.style.top = pos[0] + '%';
         hotspot.style.left = pos[1] + '%';
         hotspot.style.width = pos[2] + '%';
         hotspot.style.height = pos[3] + '%';
-        hotspot.style.zIndex = isAvailable ? '22' : '21';
         hotspot.style.borderRadius = '14px';
-        hotspot.style.border = isAvailable ? '3px solid rgba(37,99,235,0.95)' : '2px solid rgba(148,163,184,0.80)';
-        hotspot.style.background = isAvailable ? 'rgba(37,99,235,0.18)' : 'rgba(15,23,42,0.12)';
-        hotspot.style.boxShadow = isAvailable ? '0 0 0 2px rgba(255,255,255,0.92) inset, 0 8px 18px rgba(37,99,235,0.22)' : '0 0 0 1px rgba(255,255,255,0.35) inset';
-        hotspot.style.cursor = isAvailable ? 'pointer' : 'not-allowed';
-        hotspot.style.pointerEvents = 'auto';
         hotspot.style.padding = '0';
         hotspot.style.overflow = 'visible';
+        hotspot.style.transition = 'transform .12s ease, box-shadow .12s ease, background .12s ease';
+        hotspot.style.cursor = isAvailable ? 'pointer' : 'not-allowed';
+        hotspot.style.pointerEvents = 'auto';
+        hotspot.style.border = isAvailable ? '3px solid rgba(34,197,94,0.95)' : '2px solid rgba(148,163,184,0.80)';
+        hotspot.style.background = isAvailable ? 'rgba(34,197,94,0.16)' : 'rgba(15,23,42,0.12)';
+        hotspot.style.boxShadow = isAvailable ? '0 0 0 2px rgba(255,255,255,0.92) inset, 0 8px 18px rgba(34,197,94,0.18)' : '0 0 0 1px rgba(255,255,255,0.35) inset';
 
         var badge = document.createElement('div');
+        badge.setAttribute('data-role', 'badge');
         badge.textContent = c;
         badge.style.position = 'absolute';
         badge.style.left = '8px';
@@ -12052,11 +12141,12 @@ function getAvailableCourtsAtHour(hour){
         badge.style.fontWeight = '900';
         badge.style.lineHeight = '1';
         badge.style.color = '#ffffff';
-        badge.style.background = isAvailable ? 'rgba(37,99,235,0.98)' : 'rgba(51,65,85,0.96)';
+        badge.style.background = isAvailable ? 'rgba(34,197,94,0.98)' : 'rgba(51,65,85,0.96)';
         badge.style.border = '2px solid rgba(255,255,255,0.95)';
         badge.style.boxShadow = '0 3px 8px rgba(0,0,0,0.25)';
 
         var label = document.createElement('div');
+        label.setAttribute('data-role', 'label');
         label.textContent = isAvailable ? (c + '번코트 선택') : (c + '번코트 사용중');
         label.style.position = 'absolute';
         label.style.left = '8px';
@@ -12067,7 +12157,7 @@ function getAvailableCourtsAtHour(hour){
         label.style.fontWeight = '800';
         label.style.lineHeight = '1.1';
         label.style.color = '#ffffff';
-        label.style.background = isAvailable ? 'rgba(37,99,235,0.98)' : 'rgba(51,65,85,0.92)';
+        label.style.background = isAvailable ? 'rgba(34,197,94,0.98)' : 'rgba(51,65,85,0.92)';
         label.style.boxShadow = '0 2px 6px rgba(0,0,0,0.22)';
         label.style.whiteSpace = 'nowrap';
 
@@ -12076,7 +12166,7 @@ function getAvailableCourtsAtHour(hour){
 
         if(isAvailable){
           hotspot.onclick = (function(court){
-            return function(){ selectAvailableCourt(hour, court); };
+            return function(){ selectCourtInPicker(hour, court); };
           })(c);
           hotspot.onmouseenter = function(){ this.style.transform = 'scale(1.02)'; };
           hotspot.onmouseleave = function(){ this.style.transform = 'scale(1)'; };
@@ -12103,10 +12193,15 @@ function getAvailableCourtsAtHour(hour){
         office.style.zIndex = '23';
         overlayEl.appendChild(office);
       }
+      updateAvailableCourtSelectionUI();
     } else if(listEl){
       listEl.innerHTML = courts.map(function(court){
         return '<button type="button" onclick="selectAvailableCourt(' + hour + ',' + court + ')" style="flex:1 1 calc(50% - 8px); min-width:120px; border:none; background:#2563eb; color:#fff; border-radius:12px; padding:14px 10px; font-size:0.95rem; font-weight:800; cursor:pointer;">' + court + '번코트 선택</button>';
       }).join('');
+      var infoEl = document.getElementById('availableCourtPickerSelectionInfo');
+      var btnEl = document.getElementById('availableCourtPickerConfirmBtn');
+      if(infoEl) infoEl.style.display = 'none';
+      if(btnEl){ btnEl.style.display = 'none'; }
     }
     openModal('modalAvailableCourts');
   };
