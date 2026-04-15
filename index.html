@@ -11226,9 +11226,10 @@ function drawScoreChart(w, l, d) {
 <div id="modalDailyStatus" class="modal-mask">
     <div class="modal-win" style="max-width:96vw; width:96vw; padding:14px;">
         <span class="modal-close" onclick="closeModal('modalDailyStatus')">&times;</span>
-        <div class="modal-head" style="margin-bottom:10px;">당일 코트 전체 현황</div>
+        <div class="modal-head" style="margin-bottom:8px;">당일 코트 전체 현황</div>
+        <div id="dailyStatusGuide" style="font-size:0.78rem; color:#475569; margin:-2px 0 8px 2px;">아래의 "시간(잔여코트)" 버튼을 누르면 예약 가능한 코트를 선택할 수 있습니다.</div>
         <div id="dailyStatusCapture" style="background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:10px; overflow:hidden;">
-            <div id="dailyStatusHeader" style="display:flex; justify-content:flex-start; align-items:flex-start; margin-bottom:8px; gap:8px;">
+            <div id="dailyStatusHeader" style="display:flex; justify-content:flex-start; align-items:flex-start; margin-bottom:6px; gap:8px;">
                 <div>
                     <div id="dailyStatusCenter" style="font-weight:800; color:#0f172a; line-height:1.15;">장유 국제테니스장</div>
                     <div id="dailyStatusDate" style="font-size:0.82rem; color:#64748b; margin-top:3px;"></div>
@@ -11956,8 +11957,9 @@ function drawScoreChart(w, l, d) {
     var remainingEl = document.getElementById('dailyStatusRemaining');
     if(remainingEl){
       remainingEl.innerHTML = remaining.length ? remaining.map(function(item){
-        return '<button type="button" onclick="openAvailableCourtPicker(' + item.time + ')" style="padding:6px 10px; border-radius:999px; background:#f8fafc; border:1px solid #e2e8f0; font-size:0.78rem; color:#334155; font-weight:700; cursor:pointer;">' + item.time + '시 잔여 ' + item.free + '면</button>';
-      }).join('') : '<div style="padding:8px 10px; border-radius:10px; background:#f8fafc; border:1px solid #e2e8f0; font-size:0.82rem; color:#64748b;">남은 잔여 코트가 없습니다.</div>';
+        var hh = String(item.time).padStart(2,'0');
+        return '<button type="button" class="daily-status-slot-btn" onclick="openAvailableCourtPicker(' + item.time + ')" aria-label="' + hh + '시 잔여 ' + item.free + '면">' + hh + '<span>(' + item.free + ')</span></button>';
+      }).join('') : '<div style="padding:6px 9px; border-radius:10px; background:#f8fafc; border:1px solid #e2e8f0; font-size:0.76rem; color:#64748b;">남은 잔여 코트가 없습니다.</div>';
     }
     openModal('modalDailyStatus');
     setTimeout(buildCourtBoardPreview, 60);
@@ -12032,18 +12034,30 @@ function drawScoreChart(w, l, d) {
 #dailyStatusCapture{box-shadow:none !important;}
 #dailyStatusHeader{padding-bottom:0 !important;}
 #dailyStatusCenter{font-size:0.98rem !important; max-width:170px; word-break:keep-all;}
+#dailyStatusGuide{line-height:1.25;}
 #dailyStatusPreviewViewport{margin-top:0 !important;}
 #dailyStatusRemaining .daily-status-slot-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:1px;
+  min-width:50px;
   border:1px solid #dbe2ea;
   background:#f8fafc;
   color:#334155;
   border-radius:999px;
-  padding:8px 12px;
-  font-size:0.82rem;
-  font-weight:700;
+  padding:6px 8px;
+  font-size:0.78rem;
+  font-weight:800;
   line-height:1;
   min-height:unset;
   box-shadow:none;
+  letter-spacing:-0.2px;
+}
+#dailyStatusRemaining .daily-status-slot-btn span{
+  font-size:0.76rem;
+  font-weight:700;
+  color:#64748b;
 }
 #dailyStatusRemaining .daily-status-slot-btn:hover{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8;}
 #dailyStatusRemaining{align-items:flex-start;}
@@ -12052,77 +12066,12 @@ function drawScoreChart(w, l, d) {
   #dailyStatusCapture{padding:8px !important;}
   #dailyStatusCenter{font-size:0.94rem !important; max-width:145px;}
   #dailyStatusDate{font-size:0.78rem !important;}
+  #dailyStatusGuide{font-size:0.72rem !important; margin:0 0 6px 2px !important;}
   #dailyStatusPreviewViewport{padding:2px !important;}
   #dailyStatusRemaining{gap:4px !important; margin-top:6px !important;}
-  #dailyStatusRemaining .daily-status-slot-btn{padding:7px 10px; font-size:0.78rem;}
+  #dailyStatusRemaining .daily-status-slot-btn{min-width:46px; padding:5px 7px; font-size:0.74rem;}
+  #dailyStatusRemaining .daily-status-slot-btn span{font-size:0.72rem;}
 }
 </style>
-
-<style>
-@media (max-width:768px){
-  body{padding-bottom:118px !important;}
-  #view-res.content-area.active{padding-bottom:112px !important; gap:2px !important;}
-  #calendarWrap{margin:0 4px 1px !important;}
-  #weatherBanner{margin:0 4px 1px !important; padding:4px 8px !important;}
-  #gridArea{
-    margin-left:4px !important;
-    margin-right:4px !important;
-    padding:4px 4px 2px !important;
-    min-height:auto !important;
-    height:auto !important;
-  }
-  .schedule-table{grid-template-columns:50px repeat(15, 48px) !important;}
-  .corner,.head-time{
-    height:22px !important;
-    min-height:22px !important;
-    font-size:0.64rem !important;
-    line-height:1 !important;
-  }
-  .head-court,.data-cell{
-    height:33px !important;
-    min-height:33px !important;
-  }
-  .head-court{
-    font-size:0.72rem !important;
-  }
-  .head-court span{font-size:0.6rem !important; margin-left:1px !important;}
-  .orb{
-    width:40px !important;
-    height:21px !important;
-    font-size:0.62rem !important;
-    border-radius:3px !important;
-    padding:0 2px !important;
-  }
-  .booked-orb,.fixed-orb,.pending-orb{padding-left:1px !important;}
-
-  .footer-bar{
-    height:46px !important;
-    min-height:46px !important;
-    bottom:53px !important;
-    left:4px !important;
-    right:4px !important;
-    padding:0 5px 0 10px !important;
-    border-radius:18px !important;
-    gap:5px !important;
-  }
-  .sel-info{font-size:0.74rem !important; max-width:58px !important;}
-  .footer-actions-inline{gap:4px !important; margin-right:0 !important;}
-  .footer-mini-btn{height:28px !important; padding:0 8px !important; font-size:0.68rem !important; border-radius:12px !important;}
-  .footer-info-btn{width:24px !important; height:24px !important; font-size:0.72rem !important;}
-  .btn-pay{height:34px !important; padding:0 12px !important; border-radius:14px !important; font-size:0.78rem !important;}
-
-  #mobileBottomNav{
-    height:44px !important;
-    padding-bottom:env(safe-area-inset-bottom,0px) !important;
-  }
-  #mobileBottomNav button{
-    gap:1px !important;
-    font-size:9px !important;
-    padding:1px 0 !important;
-  }
-  #mobileBottomNav button .icon{font-size:13px !important;}
-}
-</style>
-
 </body>
 </html>
