@@ -290,16 +290,6 @@
         }
         .btn-out { background: #ef4444; }
         #welcomeMsg { color: #fff; font-size: 0.75rem; font-weight: 400; margin-right: 2px; }
-        #btnSet, #btnMyRes { display: none !important; }
-        #centerSel { outline: none; }
-        @media (max-width: 768px) {
-            header { padding: 0 10px; gap: 8px; }
-            header h1 { font-size: 0.98rem; }
-            #centerSel { max-width: 150px !important; font-size: 0.82rem !important; }
-            #centerTitleText { font-size: 0.82rem !important; }
-            .header-right { gap: 4px; flex-shrink: 0; }
-            .header-btn { padding: 6px 9px; font-size: 0.72rem; }
-        }
         
         /* 햄버거 메뉴 아이템 스타일 */
         .menu-item {
@@ -2224,24 +2214,27 @@ body.dark-mode .cal-toggle-bar {
 
 </style>
 <header>
-<div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
-    <h1 style="font-size:1rem; margin:0; white-space:nowrap; flex-shrink:0;">김해시테니스협회</h1>
+<div style="display:flex; flex-direction:column; justify-content:center;">
+    <h1 style="font-size:1rem; margin-bottom:4px;">김해시테니스협회</h1>
+    
+    <span id="centerTitleText" style="display:none; color:white; font-weight:bold; font-size:0.9rem;">
+        장유국제코트
+    </span>
 
-    <div style="display:flex; align-items:center; min-width:0; gap:6px; background:rgba(255,255,255,0.08); padding:4px 8px; border-radius:999px; max-width:100%;">
-        <span style="color:#cbd5e1; font-size:0.78rem; white-space:nowrap; flex-shrink:0;">🎾</span>
-        <span id="centerTitleText" style="display:none; color:white; font-weight:bold; font-size:0.88rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-            장유국제코트
-        </span>
-        <select id="centerSel" onchange="changeCenter()" style="display:none; background:transparent; color:white; border:none; padding:0; border-radius:0; font-size:0.88rem; font-weight:bold; min-width:0; max-width:220px;">
-            <option value="국제">장유 국제테니스장 (8면)</option>
+    <select id="centerSel" onchange="changeCenter()" style="display:none; background:#334155; color:white; border:none; padding:4px; border-radius:4px; font-size:0.9rem; font-weight:bold;">
+        <option value="국제">장유 국제테니스장 (8면)</option>
+        
         </select>
-    </div>
 </div>
 <div class="header-right">
-    <span id="welcomeMsg" onclick="openSettings()" style="cursor:pointer; color:#fff; font-size:0.8rem; margin-right:4px; font-weight:bold; display:none;"></span>
+    <span id="welcomeMsg" onclick="openSettings()" style="cursor:pointer; color:#fff; font-size:0.8rem; margin-right:8px; font-weight:bold; display:none;"></span>
+    
     <button id="btnLogin" class="header-btn" onclick="openModal('modalLogin')">로그인</button>
-    <button id="btnSet" class="header-btn" onclick="openSettings()" style="display:none !important;">⚙️ <span class="hide-on-mobile">설정</span></button>
-    <button id="btnMyRes" class="header-btn" onclick="handleMyResButton()" style="display:none !important; background:#8b5cf6;">예약관리</button>
+    <button id="btnSet" class="header-btn" onclick="openSettings()" style="display:none;">
+    ⚙️ <span class="hide-on-mobile">설정</span>
+</button>
+<button id="btnMyRes" class="header-btn" onclick="handleMyResButton()" style="display:none; background:#8b5cf6;">예약관리</button>
+    
     <button id="btnOut" class="header-btn btn-out" style="display:none;" onclick="doLogout()">로그아웃</button>
 </div>
 </header>
@@ -2359,7 +2352,12 @@ body.dark-mode .cal-toggle-bar {
     </div>
 
     <div class="footer-bar">
-        <div class="sel-info">선택: <span><span id="selCnt">0</span></span>칸 (코트 별 3시간, 최대 두 코트 6시간 가능)</div>
+        <div class="sel-info">선택 <span><span id="selCnt">0</span></span>칸</div>
+        <div class="footer-actions-inline">
+            <button type="button" class="footer-info-btn" onclick="openBookingRuleInfo()" aria-label="예약 규칙 안내">i</button>
+            <button type="button" class="footer-mini-btn" onclick="openDailyStatusModal()">전체현황</button>
+            <button type="button" class="footer-mini-btn" onclick="shareDailyStatusImage()">공유</button>
+        </div>
         <button id="btnMainBook" class="btn-pay" disabled onclick="openBook()">예약하기</button>
     </div>
 </div>
@@ -11114,6 +11112,53 @@ function drawScoreChart(w, l, d) {
     });
 }
 </script>
+<div id="modalDailyStatus" class="modal-mask">
+    <div class="modal-win" style="max-width:96vw; width:96vw; padding:18px;">
+        <span class="modal-close" onclick="closeModal('modalDailyStatus')">&times;</span>
+        <div class="modal-head">당일 코트 전체 현황</div>
+        <div id="dailyStatusCapture" style="background:#fff; border:1px solid #e2e8f0; border-radius:16px; padding:14px; overflow:hidden;">
+            <div id="dailyStatusHeader" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px;">
+                <div>
+                    <div id="dailyStatusCenter" style="font-weight:800; color:#0f172a;">장유 국제테니스장</div>
+                    <div id="dailyStatusDate" style="font-size:0.85rem; color:#64748b;"></div>
+                </div>
+                <div id="dailyStatusSummary" style="font-size:0.8rem; color:#334155; text-align:right;"></div>
+            </div>
+            <div id="dailyStatusPreviewViewport" style="width:100%; overflow:hidden; border:1px solid #e2e8f0; border-radius:12px; background:#fff; padding:8px;">
+                <div id="dailyStatusPreviewStage" style="transform-origin:top left;"></div>
+            </div>
+            <div id="dailyStatusRemaining" style="margin-top:10px; display:flex; flex-wrap:wrap; gap:6px;"></div>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:14px;">
+            <button class="btn-full bg-gray" style="margin-top:0;" onclick="downloadDailyStatusImage()">이미지 저장</button>
+            <button class="btn-full bg-blue" style="margin-top:0;" onclick="shareDailyStatusImage()">공유</button>
+        </div>
+    </div>
+</div>
+
+
+<div id="modalAvailableCourts" class="modal-mask">
+    <div class="modal-win" style="max-width:360px;">
+        <span class="modal-close" onclick="closeModal('modalAvailableCourts')">&times;</span>
+        <div class="modal-head">예약할 코트 선택</div>
+        <div id="availableCourtPickerTitle" style="font-size:0.9rem; color:#475569; margin-bottom:12px;"></div>
+        <div id="availableCourtPickerList" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+    </div>
+</div>
+
+<div id="modalRuleInfo" class="modal-mask">
+    <div class="modal-win" style="max-width:360px;">
+        <span class="modal-close" onclick="closeModal('modalRuleInfo')">&times;</span>
+        <div class="modal-head">예약 규칙 안내</div>
+        <div style="font-size:0.92rem; line-height:1.6; color:#334155;">
+            <div>• 1개 코트당 최대 3시간</div>
+            <div>• 최대 2개 코트, 총 6시간</div>
+            <div>• 일반 예약은 기본 2시간</div>
+            <div>• 끼는 1시간, 마지막 1시간은 예외 가능</div>
+        </div>
+    </div>
+</div>
+
 <div id="modalForceUpdate" class="modal-mask" style="z-index: 9999; background: rgba(0,0,0,0.8);">
     <div class="modal-win" style="text-align:center;">
         <div style="font-size:3rem; margin-bottom:10px;">🚀</div>
@@ -11538,6 +11583,316 @@ function drawScoreChart(w, l, d) {
   }
 
   window.syncAdminReservationEntry = syncAdminReservationEntry;
+})();
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+
+<style>
+.footer-actions-inline{display:flex; gap:8px; margin-left:auto; margin-right:8px; align-items:center;}
+.footer-mini-btn{border:none; background:#e2e8f0; color:#334155; border-radius:16px; height:38px; padding:0 12px; font-size:0.8rem; font-weight:800; cursor:pointer; white-space:nowrap;}
+.footer-info-btn{border:none; width:32px; height:32px; border-radius:50%; background:#dbeafe; color:#1d4ed8; font-size:0.92rem; font-weight:900; cursor:pointer; flex:0 0 auto;}
+.footer-mini-btn:active,.footer-info-btn:active{transform:scale(.98);}
+@media (max-width:768px){
+  .footer-bar{gap:8px !important;}
+  .footer-actions-inline{margin-right:0; gap:6px;}
+  .footer-mini-btn{height:36px; padding:0 10px; font-size:0.74rem; border-radius:14px;}
+  .footer-info-btn{width:28px; height:28px; font-size:0.82rem;}
+  .sel-info{max-width:74px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+}
+</style>
+<script>
+(function(){
+  var appHistoryReady = false;
+  var currentAppView = 'res';
+  var modalSelector = '.modal-mask';
+
+  function getOpenModalIds(){
+    return Array.from(document.querySelectorAll(modalSelector)).filter(function(el){
+      return getComputedStyle(el).display !== 'none';
+    }).map(function(el){ return el.id; });
+  }
+
+  function getActiveView(){
+    var resView = document.getElementById('view-res');
+    var listView = document.getElementById('view-list');
+    var boardView = document.getElementById('view-board');
+    if(boardView && boardView.classList.contains('active')) return 'board';
+    if(listView && listView.classList.contains('active')) return 'list';
+    return 'res';
+  }
+
+  function pushAppState(reason){
+    try{
+      history.pushState({appNav:true, reason:reason || 'nav', view:getActiveView(), modals:getOpenModalIds()}, '', location.href);
+    }catch(e){}
+  }
+
+  function ensureAppHistory(){
+    if(appHistoryReady) return;
+    try{
+      history.replaceState({appNav:true, reason:'root', view:getActiveView(), modals:getOpenModalIds()}, '', location.href);
+      history.pushState({appNav:true, reason:'init', view:getActiveView(), modals:getOpenModalIds()}, '', location.href);
+      appHistoryReady = true;
+    }catch(e){}
+  }
+
+  function closeTopModal(){
+    var openIds = getOpenModalIds();
+    if(!openIds.length) return false;
+    var lastId = openIds[openIds.length - 1];
+    if(typeof closeModal === 'function') closeModal(lastId);
+    return true;
+  }
+
+  function handleAppBack(){
+    if(closeTopModal()) return true;
+    var active = getActiveView();
+    if(active !== 'res'){
+      if(typeof goTab === 'function') goTab('res');
+      if(typeof setMobileNavActive === 'function') setMobileNavActive('res');
+      return true;
+    }
+    return false;
+  }
+
+  var originalGoTab = window.goTab;
+  if(typeof originalGoTab === 'function'){
+    window.goTab = function(t){
+      ensureAppHistory();
+      var before = getActiveView();
+      originalGoTab(t);
+      currentAppView = getActiveView();
+      if(before !== currentAppView) pushAppState('tab:' + currentAppView);
+    };
+  }
+
+  var originalOpenModal = window.openModal;
+  if(typeof originalOpenModal === 'function'){
+    window.openModal = function(id){
+      ensureAppHistory();
+      originalOpenModal(id);
+      pushAppState('modal:' + id);
+    };
+  }
+
+  window.addEventListener('popstate', function(e){
+    if(handleAppBack()){
+      setTimeout(function(){ pushAppState('back-guard'); }, 0);
+    }
+  });
+
+  window.addEventListener('DOMContentLoaded', function(){
+    ensureAppHistory();
+    currentAppView = getActiveView();
+  });
+
+  function getSlotStatus(cell){
+    if(!cell) return '빈칸';
+    if(cell.classList.contains('blocked')) return '예약불가';
+    if(cell.classList.contains('fixed')) return '정기';
+    if(cell.classList.contains('pending')) return '가승인';
+    if(cell.classList.contains('booked')) return '예약';
+    return '빈칸';
+  }
+
+  function getStatusColor(status){
+    if(status === '예약') return '#2563eb';
+    if(status === '정기') return '#ea580c';
+    if(status === '가승인') return '#059669';
+    if(status === '예약불가') return '#64748b';
+    return '#cbd5e1';
+  }
+
+  function countRemainingCourtsByHour(maxCourts){
+    var result = [];
+    var selectedDate = ((document.getElementById('hiddenDate') || {}).value || '');
+    var today = new Date();
+    var todayStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+    var currentHour = today.getHours();
+    for(var t=7;t<22;t++){
+      if(selectedDate && selectedDate === todayStr && t < currentHour) continue;
+      if(selectedDate && selectedDate < todayStr) continue;
+      var freeCount = 0;
+      var courts = [];
+      for(var c=1;c<=maxCourts;c++){
+        var cell = document.getElementById('c-' + c + '-' + t);
+        var status = getSlotStatus(cell);
+        if(status === '빈칸'){
+          freeCount++;
+          courts.push(c);
+        }
+      }
+      if(freeCount > 0) result.push({time:t, free:freeCount, courts:courts});
+    }
+    return result;
+  }
+
+  function getAvailableCourtsAtHour(hour){
+    var maxCourts = (window.CENTERS && window.CENTERS[window.currentCenter] && window.CENTERS[window.currentCenter].courts) || 8;
+    var courts = [];
+    for(var c=1;c<=maxCourts;c++){
+      var cell = document.getElementById('c-' + c + '-' + hour);
+      if(getSlotStatus(cell) === '빈칸') courts.push(c);
+    }
+    return courts;
+  }
+
+  window.openAvailableCourtPicker = function(hour){
+    var courts = getAvailableCourtsAtHour(hour);
+    if(!courts.length){
+      alert('해당 시간에 선택 가능한 코트가 없습니다.');
+      return;
+    }
+    var titleEl = document.getElementById('availableCourtPickerTitle');
+    var listEl = document.getElementById('availableCourtPickerList');
+    var date = ((document.getElementById('hiddenDate') || {}).value || '');
+    if(titleEl) titleEl.textContent = (date ? date + ' ' : '') + hour + ':00 시간의 빈 코트입니다.';
+    if(listEl){
+      listEl.innerHTML = courts.map(function(court){
+        return '<button type="button" onclick="selectAvailableCourt(' + hour + ',' + court + ')" style="flex:1 1 calc(50% - 8px); min-width:120px; border:none; background:#2563eb; color:#fff; border-radius:12px; padding:14px 10px; font-size:0.95rem; font-weight:800; cursor:pointer;">' + court + '코트 선택</button>';
+      }).join('');
+    }
+    openModal('modalAvailableCourts');
+  };
+
+  window.selectAvailableCourt = function(hour, court){
+    closeModal('modalAvailableCourts');
+    closeModal('modalDailyStatus');
+    goTab('res');
+    setTimeout(function(){
+      var cell = document.getElementById('c-' + court + '-' + hour);
+      if(!cell){
+        alert('선택한 코트를 찾지 못했습니다.');
+        return;
+      }
+      try{
+        onCellClick({ target: cell });
+        cell.scrollIntoView({ behavior:'smooth', block:'center', inline:'center' });
+        cell.style.animation = 'pulse 0.5s ease-in-out 2';
+        setTimeout(function(){ cell.style.animation = ''; }, 1000);
+      }catch(err){
+        alert('코트 선택 연결에 실패했습니다.');
+      }
+    }, 120);
+  };
+
+  window.openBookingRuleInfo = function(){
+    openModal('modalRuleInfo');
+  };
+
+  function buildCourtBoardPreview(){
+    var source = document.getElementById('schTable');
+    var stage = document.getElementById('dailyStatusPreviewStage');
+    var viewport = document.getElementById('dailyStatusPreviewViewport');
+    if(!source || !stage || !viewport) return;
+
+    var clone = source.cloneNode(true);
+    clone.id = 'dailyStatusTableClone';
+    clone.style.paddingBottom = '0';
+    clone.style.margin = '0';
+    clone.style.boxShadow = 'none';
+    stage.innerHTML = '';
+    stage.appendChild(clone);
+
+    var sourceWidth = source.scrollWidth || 1;
+    var viewportWidth = viewport.clientWidth - 16;
+    var scale = Math.min(1, viewportWidth / sourceWidth);
+    stage.style.transform = 'scale(' + scale + ')';
+    stage.style.width = sourceWidth + 'px';
+    stage.style.height = Math.ceil((source.scrollHeight || clone.scrollHeight || 0) * scale) + 'px';
+  }
+
+  window.openDailyStatusModal = function(){
+    var maxCourts = (window.CENTERS && window.CENTERS[window.currentCenter] && window.CENTERS[window.currentCenter].courts) || 8;
+    var date = (document.getElementById('hiddenDate') || {}).value || '';
+    var dateEl = document.getElementById('dailyStatusDate');
+    var summaryEl = document.getElementById('dailyStatusSummary');
+    var centerEl = document.getElementById('dailyStatusCenter');
+    var centerName = (window.CENTERS && window.CENTERS[window.currentCenter] && window.CENTERS[window.currentCenter].name) || '장유 국제테니스장';
+    if(centerEl) centerEl.textContent = centerName;
+    if(dateEl) dateEl.textContent = date;
+    var counts = {예약:0, 정기:0, 가승인:0, 예약불가:0, 빈칸:0};
+    for(var c=1;c<=maxCourts;c++){
+      for(var t=7;t<22;t++){
+        var cell = document.getElementById('c-' + c + '-' + t);
+        var status = getSlotStatus(cell);
+        counts[status] = (counts[status]||0) + 1;
+      }
+    }
+    var remaining = countRemainingCourtsByHour(maxCourts);
+    var remainingTotal = remaining.reduce(function(sum, item){ return sum + (item.free || 0); }, 0);
+    var peakSlot = remaining.slice().sort(function(a,b){ return b.free - a.free || a.time - b.time; })[0];
+    var peakText = peakSlot ? (peakSlot.time + '시 잔여 ' + peakSlot.free + '면') : '-';
+    if(summaryEl) summaryEl.innerHTML = '예약 ' + counts['예약'] + ' · 정기 ' + counts['정기'] + ' · 가승인 ' + counts['가승인'] + ' · 불가 ' + counts['예약불가'] + '<br>잔여 ' + remainingTotal + '칸 · 최다 잔여 ' + peakText;
+    var remainingEl = document.getElementById('dailyStatusRemaining');
+    if(remainingEl){
+      remainingEl.innerHTML = remaining.length ? remaining.map(function(item){
+        return '<button type="button" onclick="openAvailableCourtPicker(' + item.time + ')" style="padding:6px 10px; border-radius:999px; background:#f8fafc; border:1px solid #e2e8f0; font-size:0.78rem; color:#334155; font-weight:700; cursor:pointer;">' + item.time + '시 잔여 ' + item.free + '면</button>';
+      }).join('') : '<div style="padding:8px 10px; border-radius:10px; background:#f8fafc; border:1px solid #e2e8f0; font-size:0.82rem; color:#64748b;">남은 잔여 코트가 없습니다.</div>';
+    }
+    openModal('modalDailyStatus');
+    setTimeout(buildCourtBoardPreview, 60);
+    setTimeout(buildCourtBoardPreview, 220);
+  };
+
+  async function captureDailyStatus(){
+    if(typeof html2canvas === 'undefined') throw new Error('이미지 캡처 준비 중입니다. 잠시 후 다시 시도해주세요.');
+    var target = document.getElementById('dailyStatusCapture');
+    if(!target) throw new Error('현황 영역을 찾지 못했습니다.');
+    buildCourtBoardPreview();
+    var scale = Math.max(3, Math.min(4, window.devicePixelRatio || 1));
+    return await html2canvas(target, {
+      backgroundColor:'#ffffff',
+      scale:scale,
+      useCORS:true,
+      logging:false,
+      imageTimeout:0,
+      allowTaint:true,
+      removeContainer:true
+    });
+  }
+
+  window.downloadDailyStatusImage = async function(){
+    try{
+      if(getOpenModalIds().indexOf('modalDailyStatus') === -1) openDailyStatusModal();
+      var canvas = await captureDailyStatus();
+      var link = document.createElement('a');
+      var date = (document.getElementById('hiddenDate') || {}).value || 'today';
+      link.download = 'court_status_' + date + '.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }catch(err){
+      alert(err.message || '이미지 저장에 실패했습니다.');
+    }
+  };
+
+  window.addEventListener('resize', function(){
+    if(getOpenModalIds().indexOf('modalDailyStatus') !== -1) setTimeout(buildCourtBoardPreview, 30);
+  });
+
+  window.shareDailyStatusImage = async function(){
+    try{
+      if(getOpenModalIds().indexOf('modalDailyStatus') === -1) openDailyStatusModal();
+      var canvas = await captureDailyStatus();
+      var date = (document.getElementById('hiddenDate') || {}).value || 'today';
+      var blob = await new Promise(function(resolve){ canvas.toBlob(resolve, 'image/png'); });
+      if(!blob) throw new Error('공유 이미지 생성에 실패했습니다.');
+      var file = new File([blob], 'court_status_' + date + '.png', {type:'image/png'});
+      if(navigator.share && navigator.canShare && navigator.canShare({files:[file]})){
+        await navigator.share({files:[file], title:'오늘 코트 현황', text:'당일 코트 전체 현황'});
+      }else{
+        var link = document.createElement('a');
+        link.download = file.name;
+        link.href = URL.createObjectURL(blob);
+        link.click();
+        setTimeout(function(){ URL.revokeObjectURL(link.href); }, 1000);
+      }
+    }catch(err){
+      if(err && err.name === 'AbortError') return;
+      alert(err.message || '공유에 실패했습니다.');
+    }
+  };
 })();
 </script>
 
