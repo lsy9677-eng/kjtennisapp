@@ -12281,6 +12281,31 @@ function getAvailableCourtsAtHour(hour){
     openModal('modalAvailableCourts');
   };
 
+  function canUsePickerSlot(court, targetHour){
+    var cell = document.getElementById('c-' + court + '-' + targetHour);
+    if(!cell) return false;
+    if(cell.classList.contains('booked') || cell.classList.contains('fixed') || cell.classList.contains('pending') || cell.classList.contains('blocked') || cell.classList.contains('past')){
+      return false;
+    }
+    return true;
+  }
+
+  function getDefaultPickerHours(court, baseHour){
+    var hours = [];
+    if(canUsePickerSlot(court, baseHour)) hours.push(baseHour);
+
+    if(hours.length && baseHour < 21 && canUsePickerSlot(court, baseHour + 1)){
+      hours.push(baseHour + 1);
+      return hours;
+    }
+
+    if(hours.length === 1 && baseHour > 7 && canUsePickerSlot(court, baseHour - 1)){
+      return [baseHour - 1, baseHour].sort(function(a,b){ return a-b; });
+    }
+
+    return hours;
+  }
+
   window.selectAvailableCourt = function(hour, courts, skipDirectOpen){
     var pickedCourts = Array.isArray(courts) ? courts.slice() : [courts];
     pickedCourts = pickedCourts.filter(function(court, idx, arr){
@@ -12303,17 +12328,27 @@ function getAvailableCourtsAtHour(hour){
           if(cell) cell.innerHTML = '';
         });
 
+        var firstAnimatedCell = null;
+
         pickedCourts.forEach(function(court){
-          var cell = document.getElementById('c-' + court + '-' + hour);
-          if(!cell) throw new Error('선택한 코트를 찾지 못했습니다.');
-          if(cell.classList.contains('booked') || cell.classList.contains('fixed') || cell.classList.contains('pending') || cell.classList.contains('blocked') || cell.classList.contains('past')){
+          var hoursToSelect = getDefaultPickerHours(court, hour);
+          if(!hoursToSelect.length){
             throw new Error(court + '번코트는 지금 선택할 수 없습니다.');
           }
-          addSelect(court, hour);
-          cell.scrollIntoView({ behavior:'smooth', block:'center', inline:'center' });
-          cell.style.animation = 'pulse 0.5s ease-in-out 2';
-          setTimeout(function(){ cell.style.animation = ''; }, 1000);
+
+          hoursToSelect.forEach(function(targetHour){
+            var cell = document.getElementById('c-' + court + '-' + targetHour);
+            if(!cell) throw new Error('선택한 코트를 찾지 못했습니다.');
+            addSelect(court, targetHour);
+            if(!firstAnimatedCell) firstAnimatedCell = cell;
+            cell.style.animation = 'pulse 0.5s ease-in-out 2';
+            setTimeout(function(){ cell.style.animation = ''; }, 1000);
+          });
         });
+
+        if(firstAnimatedCell){
+          firstAnimatedCell.scrollIntoView({ behavior:'smooth', block:'center', inline:'center' });
+        }
 
         validateSelection();
         if(skipDirectOpen && pickedCourts.length === 1){
