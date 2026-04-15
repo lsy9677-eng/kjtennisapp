@@ -17,7 +17,221 @@
         :root {
             color-scheme: light only;
         }
-    </style>
+    
+/* === 국제 테니스장 UX 개선: 모바일 하단 네비 + PC 3열 레이아웃 === */
+#mobileBottomNav{display:none;}
+#desktopSideRail{display:none;}
+.desktop-quick-card{
+  background:#ffffff;
+  border:1px solid #e2e8f0;
+  border-radius:16px;
+  padding:14px;
+  box-shadow:0 10px 24px rgba(15,23,42,.06);
+}
+.desktop-quick-title{
+  font-size:0.95rem;
+  font-weight:900;
+  color:#0f172a;
+  margin-bottom:10px;
+}
+.desktop-quick-sub{
+  font-size:0.76rem;
+  color:#64748b;
+  margin-bottom:12px;
+}
+.desktop-quick-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.desktop-quick-btn{
+  border:none;
+  background:#0f1e3a;
+  color:#fff;
+  border-radius:12px;
+  padding:12px 10px;
+  font-size:0.84rem;
+  font-weight:800;
+  cursor:pointer;
+}
+.desktop-quick-btn.alt{
+  background:#f8fafc;
+  color:#0f172a;
+  border:1px solid #cbd5e1;
+}
+.desktop-quick-btn.violet{background:#7c3aed;}
+.desktop-quick-btn.sky{background:#2563eb;}
+.desktop-summary-card{
+  background:linear-gradient(135deg,#0f1e3a 0%, #1e3a8a 100%);
+  color:#fff;
+  border-radius:16px;
+  padding:14px;
+  box-shadow:0 12px 28px rgba(30,58,138,.18);
+}
+.desktop-summary-card .sum-title{
+  font-size:0.8rem;
+  opacity:.82;
+  margin-bottom:6px;
+}
+.desktop-summary-card .sum-value{
+  font-size:1.15rem;
+  font-weight:900;
+  line-height:1.35;
+}
+.desktop-summary-card .sum-desc{
+  font-size:0.74rem;
+  opacity:.78;
+  margin-top:8px;
+}
+
+@media (max-width: 768px){
+  .tabs{
+    display:none !important;
+  }
+  body{
+    padding-bottom:150px !important;
+  }
+  #view-res.content-area.active{
+    padding-bottom:150px !important;
+  }
+  #desktopSideRail{
+    display:none !important;
+  }
+  .footer-bar{
+    bottom:76px !important;
+    left:12px !important;
+    right:12px !important;
+    width:auto !important;
+    max-width:none !important;
+    height:60px !important;
+    padding:0 8px 0 16px !important;
+    border-radius:20px !important;
+  }
+  .sel-info{
+    font-size:0.78rem !important;
+    line-height:1.3 !important;
+    padding-right:8px !important;
+  }
+  .btn-pay{
+    padding:0 18px !important;
+    height:44px !important;
+    border-radius:18px !important;
+    font-size:0.88rem !important;
+  }
+  #mobileBottomNav{
+    display:flex;
+    position:fixed;
+    left:0;
+    right:0;
+    bottom:0;
+    z-index:99999;
+    height:64px;
+    padding-bottom:env(safe-area-inset-bottom, 0px);
+    background:linear-gradient(180deg,#0b1732 0%, #0f1e3a 100%);
+    border-top:1px solid rgba(255,255,255,.12);
+    box-shadow:0 -8px 20px rgba(0,0,0,.18);
+  }
+  #mobileBottomNav button{
+    flex:1 1 25%;
+    border:none;
+    background:none;
+    color:rgba(255,255,255,.72);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:3px;
+    font-size:11px;
+    font-weight:800;
+    line-height:1.05;
+  }
+  #mobileBottomNav button .icon{
+    font-size:16px;
+    line-height:1;
+  }
+  #mobileBottomNav button.active{
+    color:#facc15;
+  }
+}
+
+@media (min-width: 1100px){
+  .tabs{
+    display:flex;
+    justify-content:center;
+    gap:12px;
+    padding:12px 18px 0;
+    border-bottom:none;
+    background:linear-gradient(180deg,#f8fafc 0%, #ffffff 100%);
+  }
+  .tab{
+    flex:0 0 auto;
+    max-width:none;
+    min-width:150px;
+    border-radius:16px 16px 0 0;
+    padding:14px 20px;
+    font-weight:900;
+    box-shadow:0 8px 20px rgba(15,23,42,.06);
+  }
+  #view-res.content-area.active{
+    display:grid !important;
+    grid-template-columns:280px minmax(680px,1fr) 320px;
+    grid-template-areas:
+      "toolbar toolbar toolbar"
+      "calendar weather side"
+      "calendar grid side"
+      "calendar footer side";
+    gap:16px;
+    align-items:start;
+    padding:14px 16px 140px;
+  }
+  #view-res #adminToolbar{
+    grid-area:toolbar;
+    margin:0;
+  }
+  #view-res #calendarWrap{
+    grid-area:calendar;
+    margin:0 !important;
+    width:auto;
+    align-self:start;
+    position:sticky;
+    top:110px;
+  }
+  #view-res #weatherBanner{
+    grid-area:weather;
+    margin:0 !important;
+    display:flex !important;
+  }
+  #desktopSideRail{
+    grid-area:side;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    position:sticky;
+    top:110px;
+  }
+  #desktopSideRail #myReservationCard{
+    display:block !important;
+    margin:0 !important;
+  }
+  #view-res #gridArea{
+    grid-area:grid;
+    margin:0 !important;
+    min-width:0;
+  }
+  #view-res .footer-bar{
+    grid-area:footer;
+    position:sticky;
+    left:auto;
+    right:auto;
+    bottom:16px;
+    width:100%;
+    max-width:none;
+    margin:0;
+    z-index:20;
+  }
+}
+
+</style>
     
     <script src="https://cdn.iamport.kr/v1/iamport.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
@@ -76,6 +290,16 @@
         }
         .btn-out { background: #ef4444; }
         #welcomeMsg { color: #fff; font-size: 0.75rem; font-weight: 400; margin-right: 2px; }
+        #btnSet, #btnMyRes { display: none !important; }
+        #centerSel { outline: none; }
+        @media (max-width: 768px) {
+            header { padding: 0 10px; gap: 8px; }
+            header h1 { font-size: 0.98rem; }
+            #centerSel { max-width: 150px !important; font-size: 0.82rem !important; }
+            #centerTitleText { font-size: 0.82rem !important; }
+            .header-right { gap: 4px; flex-shrink: 0; }
+            .header-btn { padding: 6px 9px; font-size: 0.72rem; }
+        }
         
         /* 햄버거 메뉴 아이템 스타일 */
         .menu-item {
@@ -1444,6 +1668,220 @@ body.dark-mode .cal-toggle-bar {
 }
 /* [수정] 코트 배치도 팝업이 예약창보다 위에 뜨도록 설정 */
 #modalMap { z-index: 3000 !important; }
+
+/* === 국제 테니스장 UX 개선: 모바일 하단 네비 + PC 3열 레이아웃 === */
+#mobileBottomNav{display:none;}
+#desktopSideRail{display:none;}
+.desktop-quick-card{
+  background:#ffffff;
+  border:1px solid #e2e8f0;
+  border-radius:16px;
+  padding:14px;
+  box-shadow:0 10px 24px rgba(15,23,42,.06);
+}
+.desktop-quick-title{
+  font-size:0.95rem;
+  font-weight:900;
+  color:#0f172a;
+  margin-bottom:10px;
+}
+.desktop-quick-sub{
+  font-size:0.76rem;
+  color:#64748b;
+  margin-bottom:12px;
+}
+.desktop-quick-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.desktop-quick-btn{
+  border:none;
+  background:#0f1e3a;
+  color:#fff;
+  border-radius:12px;
+  padding:12px 10px;
+  font-size:0.84rem;
+  font-weight:800;
+  cursor:pointer;
+}
+.desktop-quick-btn.alt{
+  background:#f8fafc;
+  color:#0f172a;
+  border:1px solid #cbd5e1;
+}
+.desktop-quick-btn.violet{background:#7c3aed;}
+.desktop-quick-btn.sky{background:#2563eb;}
+.desktop-summary-card{
+  background:linear-gradient(135deg,#0f1e3a 0%, #1e3a8a 100%);
+  color:#fff;
+  border-radius:16px;
+  padding:14px;
+  box-shadow:0 12px 28px rgba(30,58,138,.18);
+}
+.desktop-summary-card .sum-title{
+  font-size:0.8rem;
+  opacity:.82;
+  margin-bottom:6px;
+}
+.desktop-summary-card .sum-value{
+  font-size:1.15rem;
+  font-weight:900;
+  line-height:1.35;
+}
+.desktop-summary-card .sum-desc{
+  font-size:0.74rem;
+  opacity:.78;
+  margin-top:8px;
+}
+
+@media (max-width: 768px){
+  .tabs{
+    display:none !important;
+  }
+  body{
+    padding-bottom:150px !important;
+  }
+  #view-res.content-area.active{
+    padding-bottom:150px !important;
+  }
+  #desktopSideRail{
+    display:none !important;
+  }
+  .footer-bar{
+    bottom:76px !important;
+    left:12px !important;
+    right:12px !important;
+    width:auto !important;
+    max-width:none !important;
+    height:60px !important;
+    padding:0 8px 0 16px !important;
+    border-radius:20px !important;
+  }
+  .sel-info{
+    font-size:0.78rem !important;
+    line-height:1.3 !important;
+    padding-right:8px !important;
+  }
+  .btn-pay{
+    padding:0 18px !important;
+    height:44px !important;
+    border-radius:18px !important;
+    font-size:0.88rem !important;
+  }
+  #mobileBottomNav{
+    display:flex;
+    position:fixed;
+    left:0;
+    right:0;
+    bottom:0;
+    z-index:99999;
+    height:64px;
+    padding-bottom:env(safe-area-inset-bottom, 0px);
+    background:linear-gradient(180deg,#0b1732 0%, #0f1e3a 100%);
+    border-top:1px solid rgba(255,255,255,.12);
+    box-shadow:0 -8px 20px rgba(0,0,0,.18);
+  }
+  #mobileBottomNav button{
+    flex:1 1 25%;
+    border:none;
+    background:none;
+    color:rgba(255,255,255,.72);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:3px;
+    font-size:11px;
+    font-weight:800;
+    line-height:1.05;
+  }
+  #mobileBottomNav button .icon{
+    font-size:16px;
+    line-height:1;
+  }
+  #mobileBottomNav button.active{
+    color:#facc15;
+  }
+}
+
+@media (min-width: 1100px){
+  .tabs{
+    display:flex;
+    justify-content:center;
+    gap:12px;
+    padding:12px 18px 0;
+    border-bottom:none;
+    background:linear-gradient(180deg,#f8fafc 0%, #ffffff 100%);
+  }
+  .tab{
+    flex:0 0 auto;
+    max-width:none;
+    min-width:150px;
+    border-radius:16px 16px 0 0;
+    padding:14px 20px;
+    font-weight:900;
+    box-shadow:0 8px 20px rgba(15,23,42,.06);
+  }
+  #view-res.content-area.active{
+    display:grid !important;
+    grid-template-columns:280px minmax(680px,1fr) 320px;
+    grid-template-areas:
+      "toolbar toolbar toolbar"
+      "calendar weather side"
+      "calendar grid side"
+      "calendar footer side";
+    gap:16px;
+    align-items:start;
+    padding:14px 16px 140px;
+  }
+  #view-res #adminToolbar{
+    grid-area:toolbar;
+    margin:0;
+  }
+  #view-res #calendarWrap{
+    grid-area:calendar;
+    margin:0 !important;
+    width:auto;
+    align-self:start;
+    position:sticky;
+    top:110px;
+  }
+  #view-res #weatherBanner{
+    grid-area:weather;
+    margin:0 !important;
+    display:flex !important;
+  }
+  #desktopSideRail{
+    grid-area:side;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    position:sticky;
+    top:110px;
+  }
+  #desktopSideRail #myReservationCard{
+    display:block !important;
+    margin:0 !important;
+  }
+  #view-res #gridArea{
+    grid-area:grid;
+    margin:0 !important;
+    min-width:0;
+  }
+  #view-res .footer-bar{
+    grid-area:footer;
+    position:sticky;
+    left:auto;
+    right:auto;
+    bottom:16px;
+    width:100%;
+    max-width:none;
+    margin:0;
+    z-index:20;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -1570,29 +2008,240 @@ body.dark-mode .cal-toggle-bar {
         pointer-events: none;
     }
     /* ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ */
+
+/* === 국제 테니스장 UX 개선: 모바일 하단 네비 + PC 3열 레이아웃 === */
+#mobileBottomNav{display:none;}
+#desktopSideRail{display:none;}
+.desktop-quick-card{
+  background:#ffffff;
+  border:1px solid #e2e8f0;
+  border-radius:16px;
+  padding:14px;
+  box-shadow:0 10px 24px rgba(15,23,42,.06);
+}
+.desktop-quick-title{
+  font-size:0.95rem;
+  font-weight:900;
+  color:#0f172a;
+  margin-bottom:10px;
+}
+.desktop-quick-sub{
+  font-size:0.76rem;
+  color:#64748b;
+  margin-bottom:12px;
+}
+.desktop-quick-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.desktop-quick-btn{
+  border:none;
+  background:#0f1e3a;
+  color:#fff;
+  border-radius:12px;
+  padding:12px 10px;
+  font-size:0.84rem;
+  font-weight:800;
+  cursor:pointer;
+}
+.desktop-quick-btn.alt{
+  background:#f8fafc;
+  color:#0f172a;
+  border:1px solid #cbd5e1;
+}
+.desktop-quick-btn.violet{background:#7c3aed;}
+.desktop-quick-btn.sky{background:#2563eb;}
+.desktop-summary-card{
+  background:linear-gradient(135deg,#0f1e3a 0%, #1e3a8a 100%);
+  color:#fff;
+  border-radius:16px;
+  padding:14px;
+  box-shadow:0 12px 28px rgba(30,58,138,.18);
+}
+.desktop-summary-card .sum-title{
+  font-size:0.8rem;
+  opacity:.82;
+  margin-bottom:6px;
+}
+.desktop-summary-card .sum-value{
+  font-size:1.15rem;
+  font-weight:900;
+  line-height:1.35;
+}
+.desktop-summary-card .sum-desc{
+  font-size:0.74rem;
+  opacity:.78;
+  margin-top:8px;
+}
+
+@media (max-width: 768px){
+  .tabs{
+    display:none !important;
+  }
+  body{
+    padding-bottom:150px !important;
+  }
+  #view-res.content-area.active{
+    padding-bottom:150px !important;
+  }
+  #desktopSideRail{
+    display:none !important;
+  }
+  .footer-bar{
+    bottom:76px !important;
+    left:12px !important;
+    right:12px !important;
+    width:auto !important;
+    max-width:none !important;
+    height:60px !important;
+    padding:0 8px 0 16px !important;
+    border-radius:20px !important;
+  }
+  .sel-info{
+    font-size:0.78rem !important;
+    line-height:1.3 !important;
+    padding-right:8px !important;
+  }
+  .btn-pay{
+    padding:0 18px !important;
+    height:44px !important;
+    border-radius:18px !important;
+    font-size:0.88rem !important;
+  }
+  #mobileBottomNav{
+    display:flex;
+    position:fixed;
+    left:0;
+    right:0;
+    bottom:0;
+    z-index:99999;
+    height:64px;
+    padding-bottom:env(safe-area-inset-bottom, 0px);
+    background:linear-gradient(180deg,#0b1732 0%, #0f1e3a 100%);
+    border-top:1px solid rgba(255,255,255,.12);
+    box-shadow:0 -8px 20px rgba(0,0,0,.18);
+  }
+  #mobileBottomNav button{
+    flex:1 1 25%;
+    border:none;
+    background:none;
+    color:rgba(255,255,255,.72);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:3px;
+    font-size:11px;
+    font-weight:800;
+    line-height:1.05;
+  }
+  #mobileBottomNav button .icon{
+    font-size:16px;
+    line-height:1;
+  }
+  #mobileBottomNav button.active{
+    color:#facc15;
+  }
+}
+
+@media (min-width: 1100px){
+  .tabs{
+    display:flex;
+    justify-content:center;
+    gap:12px;
+    padding:12px 18px 0;
+    border-bottom:none;
+    background:linear-gradient(180deg,#f8fafc 0%, #ffffff 100%);
+  }
+  .tab{
+    flex:0 0 auto;
+    max-width:none;
+    min-width:150px;
+    border-radius:16px 16px 0 0;
+    padding:14px 20px;
+    font-weight:900;
+    box-shadow:0 8px 20px rgba(15,23,42,.06);
+  }
+  #view-res.content-area.active{
+    display:grid !important;
+    grid-template-columns:280px minmax(680px,1fr) 320px;
+    grid-template-areas:
+      "toolbar toolbar toolbar"
+      "calendar weather side"
+      "calendar grid side"
+      "calendar footer side";
+    gap:16px;
+    align-items:start;
+    padding:14px 16px 140px;
+  }
+  #view-res #adminToolbar{
+    grid-area:toolbar;
+    margin:0;
+  }
+  #view-res #calendarWrap{
+    grid-area:calendar;
+    margin:0 !important;
+    width:auto;
+    align-self:start;
+    position:sticky;
+    top:110px;
+  }
+  #view-res #weatherBanner{
+    grid-area:weather;
+    margin:0 !important;
+    display:flex !important;
+  }
+  #desktopSideRail{
+    grid-area:side;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    position:sticky;
+    top:110px;
+  }
+  #desktopSideRail #myReservationCard{
+    display:block !important;
+    margin:0 !important;
+  }
+  #view-res #gridArea{
+    grid-area:grid;
+    margin:0 !important;
+    min-width:0;
+  }
+  #view-res .footer-bar{
+    grid-area:footer;
+    position:sticky;
+    left:auto;
+    right:auto;
+    bottom:16px;
+    width:100%;
+    max-width:none;
+    margin:0;
+    z-index:20;
+  }
+}
+
 </style>
 <header>
-<div style="display:flex; flex-direction:column; justify-content:center;">
-    <h1 style="font-size:1rem; margin-bottom:4px;">김해시테니스협회</h1>
-    
-    <span id="centerTitleText" style="display:none; color:white; font-weight:bold; font-size:0.9rem;">
-        장유국제코트
-    </span>
+<div style="display:flex; align-items:center; gap:10px; min-width:0; flex:1;">
+    <h1 style="font-size:1rem; margin:0; white-space:nowrap; flex-shrink:0;">김해시테니스협회</h1>
 
-    <select id="centerSel" onchange="changeCenter()" style="display:none; background:#334155; color:white; border:none; padding:4px; border-radius:4px; font-size:0.9rem; font-weight:bold;">
-        <option value="국제">장유 국제테니스장 (8면)</option>
-        
+    <div style="display:flex; align-items:center; min-width:0; gap:6px; background:rgba(255,255,255,0.08); padding:4px 8px; border-radius:999px; max-width:100%;">
+        <span style="color:#cbd5e1; font-size:0.78rem; white-space:nowrap; flex-shrink:0;">🎾</span>
+        <span id="centerTitleText" style="display:none; color:white; font-weight:bold; font-size:0.88rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            장유국제코트
+        </span>
+        <select id="centerSel" onchange="changeCenter()" style="display:none; background:transparent; color:white; border:none; padding:0; border-radius:0; font-size:0.88rem; font-weight:bold; min-width:0; max-width:220px;">
+            <option value="국제">장유 국제테니스장 (8면)</option>
         </select>
+    </div>
 </div>
 <div class="header-right">
-    <span id="welcomeMsg" onclick="openSettings()" style="cursor:pointer; color:#fff; font-size:0.8rem; margin-right:8px; font-weight:bold; display:none;"></span>
-    
+    <span id="welcomeMsg" onclick="openSettings()" style="cursor:pointer; color:#fff; font-size:0.8rem; margin-right:4px; font-weight:bold; display:none;"></span>
     <button id="btnLogin" class="header-btn" onclick="openModal('modalLogin')">로그인</button>
-    <button id="btnSet" class="header-btn" onclick="openSettings()" style="display:none;">
-    ⚙️ <span class="hide-on-mobile">설정</span>
-</button>
-<button id="btnMyRes" class="header-btn" onclick="openMyResList()" style="display:none; background:#8b5cf6;">예약관리</button>
-    
+    <button id="btnSet" class="header-btn" onclick="openSettings()" style="display:none !important;">⚙️ <span class="hide-on-mobile">설정</span></button>
+    <button id="btnMyRes" class="header-btn" onclick="handleMyResButton()" style="display:none !important; background:#8b5cf6;">예약관리</button>
     <button id="btnOut" class="header-btn btn-out" style="display:none;" onclick="doLogout()">로그아웃</button>
 </div>
 </header>
@@ -1660,6 +2309,23 @@ body.dark-mode .cal-toggle-bar {
         🎾 운동하기 좋아요
     </div>
 </div>
+    <div id="desktopSideRail">
+        <div class="desktop-summary-card">
+            <div class="sum-title">국제 테니스장 예약 허브</div>
+            <div class="sum-value">예약 · 내예약 · 게시판 · 설정을 한곳에서</div>
+            <div class="sum-desc">PC에서는 우측 패널에서 자주 쓰는 기능을 바로 여는 구조로 정리했습니다.</div>
+        </div>
+        <div class="desktop-quick-card">
+            <div class="desktop-quick-title">빠른 이동</div>
+            <div class="desktop-quick-sub">예약 흐름을 끊지 않고 보조 기능만 바로 열 수 있습니다.</div>
+            <div class="desktop-quick-grid">
+                <button class="desktop-quick-btn" onclick="goTab('res')">🏠 예약</button>
+                <button class="desktop-quick-btn violet" onclick="openMyResList()">📋 내예약</button>
+                <button class="desktop-quick-btn sky" onclick="goTab('board')">💬 게시판</button>
+                <button class="desktop-quick-btn alt" onclick="openSettings()">⚙️ 설정</button>
+            </div>
+        </div>
+
     
     <!-- 내 예약 빠른 보기 카드 -->
     <div id="myReservationCard" style="margin: 8px 10px; background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%); padding: 10px 16px; border-radius: 12px; box-shadow: 0 4px 15px rgba(251, 191, 36, 0.3); display: none;">
@@ -1685,6 +2351,9 @@ body.dark-mode .cal-toggle-bar {
         </div>
     </div>
     
+    
+    </div>
+
     <div class="grid-area" id="gridArea">
         <div class="schedule-table" id="schTable"></div>
     </div>
@@ -3298,14 +3967,14 @@ auth.onAuthStateChanged(user => {
             if(isAdmin) {
                 // === 관리자일 때 ===
                 btnSet.style.display = 'inline-block';
-                if(btnMyRes) btnMyRes.style.display = 'none';
+                if(btnMyRes) { btnMyRes.style.display = 'inline-block'; btnMyRes.innerText = '예약현황'; }
             } else {
                 // === 일반 회원일 때 ===
                 if (btnSet) {
                     btnSet.style.display = 'inline-block';
                     btnSet.style.visibility = 'visible';
                 }
-                if(btnMyRes) btnMyRes.style.display = 'inline-block';
+                if(btnMyRes) { btnMyRes.style.display = 'inline-block'; btnMyRes.innerText = '예약관리'; }
                 
                 const enabled = localStorage.getItem('notificationEnabled') === 'true';
                 if (enabled) startNotificationScheduler();
@@ -3385,6 +4054,18 @@ auth.onAuthStateChanged(user => {
  
 
     // [추가] 관리자 UI 업데이트 함수
+
+/* [추가] 관리자/일반회원 공용 예약 버튼 처리 */
+function handleMyResButton() {
+    if (isAdmin) {
+        goTab('list');
+        if (typeof setMobileNavActive === 'function') setMobileNavActive('mylist');
+    } else {
+        openMyResList();
+        if (typeof setMobileNavActive === 'function') setMobileNavActive('mylist');
+    }
+}
+
 /* [수정] 권한과 설정에 따라 헤더 모습 변경 및 관리자 표시 추가 */
 /* [수정] 권한과 설정에 따라 헤더 모습 변경 및 관리자 표시 추가 (반응형 적용) */
 function updateAdminUI() {
@@ -3401,7 +4082,10 @@ function updateAdminUI() {
         msgSpan.innerHTML = `<span style="background:#ef4444; color:white; padding:4px 8px; border-radius:20px; font-size:0.75rem; vertical-align:middle; margin-right:0; box-shadow:0 2px 4px rgba(0,0,0,0.2); cursor:default;">
             👮 <span class="hide-on-mobile">관리자</span>
         </span>`;
-    } 
+        if (btnMyRes) { btnMyRes.style.display = 'inline-block'; btnMyRes.innerText = '예약현황'; }
+    } else {
+        if (btnMyRes && currentUser) { btnMyRes.style.display = 'inline-block'; btnMyRes.innerText = '예약관리'; }
+    }
 
     // 2. 지점 선택 박스 노출 여부
     if (isAdmin || isCenterOpen) {
@@ -10564,6 +11248,298 @@ function drawScoreChart(w, l, d) {
 </div>
 <!-- ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ -->
 
+
+
+
+<style id="final-ux-overrides">
+/* === 2026-04 UX final cleanup: mobile grid visibility + simpler desktop layout === */
+:root{
+  --ux-shell-gap: 14px;
+  --ux-card-radius: 18px;
+}
+
+#desktopSideRail{
+  display:none !important;
+}
+
+#view-res.content-area.active{
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+}
+
+#calendarWrap,
+#weatherBanner,
+#gridArea{
+  box-shadow: 0 8px 24px rgba(15,23,42,.06);
+}
+
+#calendarWrap{
+  border:1px solid #e2e8f0 !important;
+  border-radius:18px !important;
+  padding:10px 12px 8px !important;
+  background:#fff !important;
+}
+
+#weatherBanner{
+  border-radius:16px !important;
+  padding:10px 14px !important;
+}
+
+#gridArea{
+  background:#fff !important;
+  border:1px solid #e2e8f0 !important;
+  border-radius:18px !important;
+  padding:10px !important;
+  overflow:auto !important;
+  min-width:0;
+  min-height:360px;
+  -webkit-overflow-scrolling: touch;
+}
+
+#gridArea .schedule-table{
+  min-width:max-content !important;
+  padding-bottom:10px !important;
+}
+
+.footer-bar{
+  backdrop-filter: blur(12px);
+}
+
+@media (max-width: 768px){
+  body{
+    overflow:auto !important;
+    padding-bottom:150px !important;
+  }
+
+  #view-res.content-area.active{
+    display:flex !important;
+    flex-direction:column !important;
+    gap:10px !important;
+    padding:10px 0 150px !important;
+    min-height:auto !important;
+    height:auto !important;
+  }
+
+  #adminToolbar{
+    margin:0 10px !important;
+    border-radius:14px !important;
+    border:1px solid #e2e8f0 !important;
+  }
+
+  #calendarWrap,
+  #weatherBanner,
+  #gridArea{
+    margin-left:10px !important;
+    margin-right:10px !important;
+    width:auto !important;
+    max-width:none !important;
+  }
+
+  #calendarWrap{
+    position:relative !important;
+    top:auto !important;
+  }
+
+  #gridArea{
+    flex:0 0 auto !important;
+    min-height:420px !important;
+    max-height:none !important;
+  }
+
+  #gridArea .schedule-table{
+    padding-bottom:0 !important;
+  }
+
+  .corner{
+    min-width:56px !important;
+  }
+
+  .schedule-table{
+    grid-template-columns:56px repeat(15, 52px) !important;
+  }
+
+  .data-cell,
+  .head-court{
+    height:44px !important;
+  }
+
+  .orb{
+    width:44px !important;
+    height:28px !important;
+    font-size:0.74rem !important;
+  }
+
+  .footer-bar{
+    position:fixed !important;
+    left:10px !important;
+    right:10px !important;
+    width:auto !important;
+    max-width:none !important;
+    bottom:74px !important;
+    transform:none !important;
+    margin:0 !important;
+    border-radius:22px !important;
+    padding:0 8px 0 14px !important;
+    box-shadow:0 10px 28px rgba(15,23,42,.16) !important;
+  }
+
+  .sel-info{
+    font-size:0.78rem !important;
+  }
+
+  #mobileBottomNav{
+    z-index:100000 !important;
+  }
+}
+
+@media (min-width: 1100px){
+  .tabs{
+    padding:12px 20px 0 !important;
+    gap:10px !important;
+  }
+
+  #view-res.content-area.active{
+    display:grid !important;
+    grid-template-columns:300px minmax(0,1fr) !important;
+    grid-template-areas:
+      "toolbar toolbar"
+      "calendar weather"
+      "calendar grid"
+      "footer footer" !important;
+    gap:16px !important;
+    align-items:start !important;
+    padding:16px 20px 120px !important;
+    height:auto !important;
+  }
+
+  #desktopSideRail{
+    display:none !important;
+  }
+
+  #adminToolbar{
+    grid-area:toolbar !important;
+    width:fit-content !important;
+    min-width:280px;
+    border:1px solid #e2e8f0 !important;
+    border-radius:999px !important;
+    padding:0 12px !important;
+    box-shadow:0 6px 20px rgba(15,23,42,.06);
+  }
+
+  #calendarWrap{
+    grid-area:calendar !important;
+    position:sticky !important;
+    top:92px !important;
+    align-self:start !important;
+    margin:0 !important;
+  }
+
+  #weatherBanner{
+    grid-area:weather !important;
+    margin:0 !important;
+  }
+
+  #gridArea{
+    grid-area:grid !important;
+    margin:0 !important;
+    min-height:640px !important;
+  }
+
+  .footer-bar{
+    grid-area:footer !important;
+    position:sticky !important;
+    left:auto !important;
+    right:auto !important;
+    bottom:8px !important;
+    width:100% !important;
+    max-width:none !important;
+    transform:none !important;
+    margin:0 !important;
+  }
+
+  .sel-info{
+    font-size:0.92rem !important;
+  }
+
+  .btn-pay{
+    min-width:160px;
+  }
+
+  header{
+    padding:0 20px !important;
+  }
+
+  #centerSel{
+    min-width:220px !important;
+    max-width:280px !important;
+  }
+}
+
+@media (min-width: 1400px){
+  #view-res.content-area.active{
+    grid-template-columns:320px minmax(0,1fr) !important;
+  }
+  .schedule-table{
+    grid-template-columns:64px repeat(15, 58px) !important;
+  }
+}
+</style>
+
+<div id="mobileBottomNav" aria-label="모바일 하단 메뉴">
+    <button type="button" data-nav="res" onclick="goTab('res')"><span class="icon">🏠</span><span>예약</span></button>
+    <button type="button" id="mobileMyListBtn" data-nav="mylist" onclick="handleMyResButton()"><span class="icon">📋</span><span id="mobileMyListLabel">내예약</span></button>
+    <button type="button" data-nav="board" onclick="goTab('board')"><span class="icon">💬</span><span>게시판</span></button>
+    <button type="button" data-nav="settings" onclick="openSettings(); setMobileNavActive('settings');"><span class="icon">⚙️</span><span>설정</span></button>
+</div>
+
+<script>
+(function(){
+  window.setMobileNavActive = function(name){
+    document.querySelectorAll('#mobileBottomNav button').forEach(function(btn){
+      btn.classList.toggle('active', btn.getAttribute('data-nav') === name);
+    });
+  };
+
+  function syncMobileNav(){
+    var resView = document.getElementById('view-res');
+    var listView = document.getElementById('view-list');
+    var boardView = document.getElementById('view-board');
+    var active = 'res';
+    if(boardView && boardView.classList.contains('active')) active = 'board';
+    else if(listView && listView.classList.contains('active')) active = 'mylist';
+    else if(resView && resView.classList.contains('active')) active = 'res';
+    setMobileNavActive(active);
+  }
+
+  function syncAdminReservationEntry(){
+    var label = document.getElementById('mobileMyListLabel');
+    if(label) label.textContent = isAdmin ? '예약현황' : '내예약';
+  }
+
+  function bindTopTabs(){
+    document.querySelectorAll('.tab').forEach(function(tab){
+      tab.addEventListener('click', function(){
+        setTimeout(syncMobileNav, 30);
+        setTimeout(syncMobileNav, 180);
+      });
+    });
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){
+      bindTopTabs();
+      syncAdminReservationEntry();
+      syncMobileNav();
+    });
+  }else{
+    bindTopTabs();
+    syncAdminReservationEntry();
+    syncMobileNav();
+  }
+
+  window.syncAdminReservationEntry = syncAdminReservationEntry;
+})();
+</script>
 
 </body>
 </html>
