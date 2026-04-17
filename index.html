@@ -4198,6 +4198,8 @@ function updateAdminUI() {
     const adminTool = document.getElementById('adminToolbar');
     const msgSpan = document.getElementById('welcomeMsg'); // 환영 메시지 영역
 
+    document.body.classList.toggle('admin-mode', !!isAdmin);
+
     // 1. 관리자 표시 로직 (모바일에서는 글자 숨김)
     if (isAdmin) {
         msgSpan.style.display = 'inline-block';
@@ -11553,6 +11555,24 @@ function drawScoreChart(w, l, d) {
     margin:0 10px !important;
     border-radius:14px !important;
     border:1px solid #e2e8f0 !important;
+  }
+
+  body.admin-mode #adminToolbar{
+    display:flex !important;
+    position:sticky !important;
+    top:6px !important;
+    z-index:120 !important;
+    background:#fff !important;
+    min-height:32px !important;
+  }
+
+  body.admin-mode #view-res.content-area.active #adminToolbar{
+    order:-1 !important;
+  }
+
+  body.dark-mode.admin-mode #adminToolbar{
+    background:#1e293b !important;
+    border-color:#334155 !important;
   }
 
   #calendarWrap,
