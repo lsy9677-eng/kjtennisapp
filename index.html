@@ -3909,7 +3909,7 @@ async function doGroupApprove() {
             
             // 시간 문자열 예쁘게 만들기 (코트+시간 상세 표시)
             approvedSlots.sort((a,b) => a.time - b.time || a.court - b.court);
-            let timeStr = approvedSlots.map(s => `${s.court}코트 ${String(s.time).padStart(2,'0')}시`).join(', ');
+            let timeStr = formatCourtTimeSummary(approvedSlots);
             if(!timeStr) {
                 // fallback
                 approvedTimes.sort((a,b)=>a-b);
@@ -6068,7 +6068,7 @@ async function saveBook(uid) {
     const amt = document.getElementById('txtPrice').innerText;
     const slots = [...selected].map(s => ({ ...s })).sort((a,b) => (a.c - b.c) || (a.t - b.t));
     let timeStr = slots.map(s => `${s.t}시`).join(', ');
-    let courtTimeStr = slots.map(s => `${s.c}코트 ${s.t}시`).join(', ');
+    let courtTimeStr = formatCourtTimeSummary(slots);
     const actorUid = (auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : (currentUser && currentUser.uid ? currentUser.uid : 'guest');
 
     const attemptMeta = {
@@ -6502,6 +6502,27 @@ async function loadMacroMonitor() {
 }
 
     // [추가] 문자 발송 헬퍼 함수
+
+    function formatCourtTimeSummary(slots) {
+        if (!Array.isArray(slots) || slots.length === 0) return '';
+        const grouped = {};
+        slots.forEach(s => {
+            const court = Number(s.c ?? s.court);
+            const time = Number(s.t ?? s.time);
+            if (!Number.isFinite(court) || !Number.isFinite(time)) return;
+            if (!grouped[court]) grouped[court] = [];
+            grouped[court].push(time);
+        });
+        return Object.keys(grouped)
+            .map(Number)
+            .sort((a, b) => a - b)
+            .map(court => {
+                const times = [...new Set(grouped[court])].sort((a, b) => a - b);
+                return `${court}코트 ${times.join(',')}`;
+            })
+            .join(', ');
+    }
+
     function sendSmsToAdmin(name, phone, date, times, method, amount) {
         // 1. 보낼 메시지 내용 구성
         const msgBody = `[테니스장 예약알림]
