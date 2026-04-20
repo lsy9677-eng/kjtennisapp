@@ -6068,6 +6068,7 @@ async function saveBook(uid) {
     const amt = document.getElementById('txtPrice').innerText;
     const slots = [...selected].map(s => ({ ...s })).sort((a,b) => (a.c - b.c) || (a.t - b.t));
     let timeStr = slots.map(s => `${s.t}시`).join(', ');
+    let courtTimeStr = slots.map(s => `${s.c}코트 ${s.t}시`).join(', ');
     const actorUid = (auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : (currentUser && currentUser.uid ? currentUser.uid : 'guest');
 
     const attemptMeta = {
@@ -6198,7 +6199,7 @@ async function saveBook(uid) {
         if(!isAdmin) {
             setTimeout(() => {
                 if(confirm('가예약이 완료되었습니다.\n관리자에게 예약 내역 승인문자를 보내시겠습니까?')) {
-                    sendSmsToAdmin(bkName, bkPhone, date, timeStr, payMethod, amt);
+                    sendSmsToAdmin(bkName, bkPhone, date, courtTimeStr, payMethod, amt);
                 }
             }, 1000);
         }
@@ -6506,7 +6507,7 @@ async function loadMacroMonitor() {
         const msgBody = `[테니스장 예약알림]
 예약자: ${name}
 날짜: ${date}
-시간: ${times}
+예약: ${times}
 금액: ${amount}원
 결제: ${method}
 확인 부탁드립니다.`;
