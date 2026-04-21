@@ -6505,6 +6505,7 @@ async function loadMacroMonitor() {
 
     function formatCourtTimeSummary(slots) {
         if (!Array.isArray(slots) || slots.length === 0) return '';
+
         const grouped = {};
         slots.forEach(s => {
             const court = Number(s.c ?? s.court);
@@ -6513,13 +6514,37 @@ async function loadMacroMonitor() {
             if (!grouped[court]) grouped[court] = [];
             grouped[court].push(time);
         });
+
+        const formatCourtRanges = (times) => {
+            const uniqueTimes = [...new Set(times)].sort((a, b) => a - b);
+            if (!uniqueTimes.length) return '';
+
+            const ranges = [];
+            let start = uniqueTimes[0];
+            let prev = uniqueTimes[0];
+
+            for (let i = 1; i < uniqueTimes.length; i++) {
+                const current = uniqueTimes[i];
+                if (current === prev + 1) {
+                    prev = current;
+                    continue;
+                }
+                ranges.push([start, prev]);
+                start = current;
+                prev = current;
+            }
+            ranges.push([start, prev]);
+
+            return ranges.map(([rangeStart, rangeEnd]) => {
+                const hours = (rangeEnd - rangeStart) + 1;
+                return `${rangeStart}~${rangeEnd + 1}시 ${hours}시간`;
+            }).join(', ');
+        };
+
         return Object.keys(grouped)
             .map(Number)
             .sort((a, b) => a - b)
-            .map(court => {
-                const times = [...new Set(grouped[court])].sort((a, b) => a - b);
-                return `${court}코트 ${times.join(',')}`;
-            })
+            .map(court => `${court}코트 ${formatCourtRanges(grouped[court])}`)
             .join(', ');
     }
 
