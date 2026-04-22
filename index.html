@@ -1,8 +1,8 @@
-<!DOCTYPE html> 
-<html lang="ko"> 
+<!DOCTYPE html>
+<html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <meta name="color-scheme" content="light only"> 
+    <meta name="color-scheme" content="light only">
    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>김해시테니스협회</title>
     
@@ -10,7 +10,7 @@
     <link rel="icon" type="image/png" sizes="192x192" href="abc-192.png">
     <link rel="apple-touch-icon" href="abc-192.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"> 
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#1e293b">
 
     <style>
@@ -3525,7 +3525,7 @@ const HOLIDAYS = {
         }
 
         const name = (profile.name || existing.name || auth.currentUser.displayName || '').trim() || '네이버회원';
-        const email = (profile.email || existing.email || auth.currentUser.email || '').trim();
+        const email = (profile.email || existing.email || auth.currentUser.email || '').trim().toLowerCase();
         const address = existing.address || '';
         const birth = existing.birth || '';
         const joinedAt = existing.joinedAt || new Date();
@@ -3540,9 +3540,10 @@ const HOLIDAYS = {
             verifStatus: existing.verifStatus || 'NONE',
             isAdmin: !!existing.isAdmin,
             joinedAt: joinedAt,
-            provider: 'naver',
+            provider: existing.provider || 'naver',
             providerUid: profile.providerUid || existing.providerUid || auth.currentUser.uid,
-            socialType: 'naver'
+            socialType: 'naver',
+            socialProviders: Object.assign({}, existing.socialProviders || {}, { naver: true })
         }, { merge: true });
     }
 
