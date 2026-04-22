@@ -1984,6 +1984,15 @@ header h1{
 }
 </style>
 
+
+<style>
+.social-login-wrap{margin-top:14px;display:flex;flex-direction:column;gap:8px}
+.social-login-divider{display:flex;align-items:center;gap:10px;color:#94a3b8;font-size:0.8rem;margin:6px 0}
+.social-login-divider::before,.social-login-divider::after{content:"";flex:1;height:1px;background:#e2e8f0}
+.btn-social-naver{width:100%;border:none;border-radius:12px;padding:14px 16px;background:#03C75A;color:#fff;font-size:0.95rem;font-weight:800;cursor:pointer}
+.btn-social-naver:disabled{opacity:.6;cursor:not-allowed}
+</style>
+
 </head>
 <body>
 <div id="androidAppBanner" style="display:none; background:#f0fdf4; border-bottom:1px solid #bbf7d0; padding:12px; text-align:center; animation: slideDown 0.5s ease-out; position:relative;">
@@ -2564,6 +2573,10 @@ header h1{
             <span style="color:#cbd5e1;">|</span>
             <span style="cursor:pointer; color:var(--primary); font-weight:bold;" onclick="closeModal('modalLogin'); openModal('modalReset')">비밀번호 찾기</span>
         </div>
+        <div class="social-login-wrap">
+            <div class="social-login-divider">또는</div>
+            <button type="button" class="btn-social-naver" onclick="startNaverLogin('login')">네이버로 1초 로그인</button>
+        </div>
     </div>
 </div>
 <div id="modalJoin" class="modal-mask">
@@ -2604,6 +2617,10 @@ header h1{
         </div>
 
         <button id="btnJoin" class="btn-full bg-blue" onclick="doJoin()">가입하기</button>
+        <div class="social-login-wrap">
+            <div class="social-login-divider">또는</div>
+            <button type="button" class="btn-social-naver" onclick="startNaverLogin('join')">네이버 자동 회원가입</button>
+        </div>
     </div>
 </div>
 
@@ -3478,6 +3495,102 @@ const HOLIDAYS = {
     const db = firebase.firestore();
     const auth = firebase.auth();
     const storage = firebase.storage();
+
+
+    // ===============================
+    // NAVER Social Login (Cloudflare Pages Functions)
+    // ===============================
+    const NAVER_AUTH_BASE = window.NAVER_AUTH_BASE || '/naver-auth';
+
+    function normalizePhoneNumber(input) {
+        const digits = String(input || '').replace(/\D/g, '');
+        if (!digits) return '';
+        if (digits.length === 11) return digits.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3');
+        if (digits.length === 10) return digits.replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3');
+        return input;
+    }
+
+    async function ensureNaverUserDocument(profile = {}) {
+        if (!auth.currentUser) return;
+        const ref = db.collection('users').doc(auth.currentUser.uid);
+        const snap = await ref.get();
+        const existing = snap.exists ? (snap.data() || {}) : {};
+
+        let phone = normalizePhoneNumber(profile.phone || existing.phone || '');
+        while (!phone) {
+            const value = prompt('네이버 로그인은 완료되었습니다. 예약에 필요한 휴대폰번호를 입력해주세요.\n예: 010-1234-5678');
+            if (value === null) throw new Error('휴대폰번호 입력이 취소되어 로그인을 완료할 수 없습니다.');
+            phone = normalizePhoneNumber(value);
+            if (!phone) alert('휴대폰번호를 다시 입력해주세요.');
+        }
+
+        const name = (profile.name || existing.name || auth.currentUser.displayName || '').trim() || '네이버회원';
+        const email = (profile.email || existing.email || auth.currentUser.email || '').trim();
+        const address = existing.address || '';
+        const birth = existing.birth || '';
+        const joinedAt = existing.joinedAt || new Date();
+
+        await ref.set({
+            email: email,
+            name: name,
+            phone: phone,
+            address: address,
+            birth: birth,
+            isCitizen: !!existing.isCitizen,
+            verifStatus: existing.verifStatus || 'NONE',
+            isAdmin: !!existing.isAdmin,
+            joinedAt: joinedAt,
+            provider: 'naver',
+            providerUid: profile.providerUid || existing.providerUid || auth.currentUser.uid,
+            socialType: 'naver'
+        }, { merge: true });
+    }
+
+    function getNaverHashPayload() {
+        const raw = (location.hash || '').replace(/^#/, '');
+        if (!raw) return null;
+        const params = new URLSearchParams(raw);
+        if (!params.get('naverCustomToken')) return null;
+        return {
+            token: params.get('naverCustomToken') || '',
+            providerUid: params.get('naverUid') || '',
+            name: decodeURIComponent(params.get('naverName') || ''),
+            email: decodeURIComponent(params.get('naverEmail') || ''),
+            phone: decodeURIComponent(params.get('naverMobile') || ''),
+            mode: params.get('naverMode') || 'login'
+        };
+    }
+
+    async function completeNaverLoginFromUrl() {
+        const payload = getNaverHashPayload();
+        if (!payload || !payload.token) return;
+
+        history.replaceState(null, '', location.pathname + location.search);
+
+        try {
+            await auth.signInWithCustomToken(payload.token);
+            await ensureNaverUserDocument(payload);
+
+            closeModal('modalLogin');
+            closeModal('modalJoin');
+
+            alert(payload.mode === 'join' ? '네이버 자동 회원가입이 완료되었습니다.' : '네이버 로그인이 완료되었습니다.');
+        } catch (err) {
+            console.error('네이버 로그인 완료 실패:', err);
+            alert('네이버 로그인 처리 실패: ' + (err && err.message ? err.message : err));
+        }
+    }
+
+    function startNaverLogin(mode = 'login') {
+        const nextUrl = window.location.origin + window.location.pathname;
+        const authUrl = `${NAVER_AUTH_BASE}?action=start&mode=${encodeURIComponent(mode)}&next=${encodeURIComponent(nextUrl)}`;
+        window.location.href = authUrl;
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        completeNaverLoginFromUrl();
+    });
+
 
 
     function getStoragePathFromUrl(url) {
