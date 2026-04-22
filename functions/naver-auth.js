@@ -109,10 +109,13 @@ async function handleCallback(request, env, url) {
     throw new Error("Naver profile did not include a stable user id.");
   }
 
-  const firebaseUid = `naver:${providerUid}`;
+  const normalizedEmail = String(profile.email || "").trim().toLowerCase();
+  const existingUid = normalizedEmail ? await findExistingUserUidByEmail(env, normalizedEmail) : null;
+  const firebaseUid = existingUid || `naver:${providerUid}`;
   const customToken = await createFirebaseCustomToken(env, firebaseUid, {
     provider: "naver",
     providerUid,
+    linkedByEmail: !!existingUid,
   });
 
   const redirectParams = new URLSearchParams({
@@ -128,6 +131,78 @@ async function handleCallback(request, env, url) {
   finalUrl.hash = redirectParams.toString();
 
   return Response.redirect(finalUrl.toString(), 302);
+}
+
+async function findExistingUserUidByEmail(env, email) {
+  const accessToken = await getGoogleAccessToken(env);
+  const endpoint = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/databases/(default)/documents:runQuery`;
+  const body = {
+    structuredQuery: {
+      from: [{ collectionId: 'users' }],
+      where: {
+        fieldFilter: {
+          field: { fieldPath: 'email' },
+          op: 'EQUAL',
+          value: { stringValue: email }
+        }
+      },
+      limit: 1
+    }
+  };
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
+  });
+
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(`Failed to query existing Firebase user document: ${JSON.stringify(result)}`);
+  }
+
+  const firstDoc = Array.isArray(result)
+    ? result.find((row) => row && row.document && row.document.name)
+    : null;
+  if (!firstDoc) return null;
+
+  const docName = firstDoc.document.name || '';
+  return docName.split('/').pop() || null;
+}
+
+async function getGoogleAccessToken(env) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = { alg: 'RS256', typ: 'JWT' };
+  const payload = {
+    iss: env.FIREBASE_CLIENT_EMAIL,
+    sub: env.FIREBASE_CLIENT_EMAIL,
+    aud: 'https://oauth2.googleapis.com/token',
+    scope: 'https://www.googleapis.com/auth/datastore',
+    iat: now,
+    exp: now + 3600,
+  };
+
+  const unsigned = `${base64UrlEncodeUtf8(JSON.stringify(header))}.${base64UrlEncodeUtf8(JSON.stringify(payload))}`;
+  const signature = await signRs256(unsigned, normalizePrivateKey(env.FIREBASE_PRIVATE_KEY));
+  const assertion = `${unsigned}.${base64UrlEncode(new Uint8Array(signature))}`;
+
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion,
+    }).toString(),
+  });
+
+  const tokenJson = await response.json();
+  if (!response.ok || !tokenJson.access_token) {
+    throw new Error(`Failed to fetch Google access token: ${JSON.stringify(tokenJson)}`);
+  }
+  return tokenJson.access_token;
 }
 
 function sanitizeMobile(value) {
