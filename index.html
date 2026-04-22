@@ -12759,6 +12759,101 @@ function getAvailableCourtsAtHour(hour){
   }
   #mobileBottomNav button .icon{font-size:13px !important;}
 }
+
+/* === dark mode board/comment readability patch === */
+body.dark-mode .modal-win {
+    background: #1b2940 !important;
+    color: #f8fafc !important;
+}
+body.dark-mode .modal-close { color: #cbd5e1 !important; }
+body.dark-mode .comment-sec {
+    border-top-color: #475569 !important;
+}
+body.dark-mode .cmt-item {
+    background: #22324d !important;
+    border: 1px solid #334155 !important;
+    border-radius: 12px;
+    padding: 12px 14px !important;
+    margin-bottom: 10px;
+}
+body.dark-mode .cmt-info,
+body.dark-mode .cmt-txt,
+body.dark-mode .comment-sec label,
+body.dark-mode .comment-sec span,
+body.dark-mode .comment-sec p,
+body.dark-mode .comment-sec div {
+    color: #e5edf7 !important;
+}
+body.dark-mode .cmt-del { color: #fca5a5 !important; }
+body.dark-mode .inp-row label,
+body.dark-mode .comment-sec .inp-row label,
+body.dark-mode .board-list label,
+body.dark-mode .post-card label {
+    color: #cbd5e1 !important;
+}
+body.dark-mode .inp-row input,
+body.dark-mode .inp-row textarea,
+body.dark-mode .cmt-inp,
+body.dark-mode input[type="text"],
+body.dark-mode input[type="password"],
+body.dark-mode input[type="email"],
+body.dark-mode textarea {
+    background: #0b1220 !important;
+    color: #f8fafc !important;
+    border: 1px solid #64748b !important;
+    box-shadow: none !important;
+}
+body.dark-mode .inp-row input:focus,
+body.dark-mode .inp-row textarea:focus,
+body.dark-mode .cmt-inp:focus,
+body.dark-mode input[type="text"]:focus,
+body.dark-mode input[type="password"]:focus,
+body.dark-mode input[type="email"]:focus,
+body.dark-mode textarea:focus {
+    background: #111827 !important;
+    border-color: #60a5fa !important;
+    box-shadow: 0 0 0 2px rgba(96,165,250,.18) !important;
+    outline: none !important;
+}
+body.dark-mode ::placeholder {
+    color: #94a3b8 !important;
+    opacity: 1;
+}
+body.dark-mode .post-card,
+body.dark-mode .notice-card,
+body.dark-mode .board-filter,
+body.dark-mode .res-card {
+    background: #22324d !important;
+    color: #f8fafc !important;
+    border-color: #334155 !important;
+}
+body.dark-mode .post-card *,
+body.dark-mode .notice-card *,
+body.dark-mode .board-list *,
+body.dark-mode .modal-win * {
+    border-color: inherit;
+}
+body.dark-mode .btn-full.bg-gray { color: #fff !important; }
+body.dark-mode button[disabled],
+body.dark-mode .btn-full:disabled {
+    background: #94a3b8 !important;
+    color: #e2e8f0 !important;
+    opacity: .65 !important;
+}
+body.dark-mode .comment-sec button,
+body.dark-mode .comment-sec .btn-full,
+body.dark-mode .comment-sec .btn-sm {
+    color: #fff !important;
+}
+body.dark-mode .comment-sec [style*="background:#fff"],
+body.dark-mode .comment-sec [style*="background: #fff"],
+body.dark-mode .post-card [style*="background:#fff"],
+body.dark-mode .post-card [style*="background: #fff"] {
+    background: #22324d !important;
+    color: #f8fafc !important;
+    border-color: #334155 !important;
+}
+
 </style>
 
 </body>
