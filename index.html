@@ -1241,6 +1241,141 @@ body.dark-mode .res-card.res-theme-purple .btn-sm {
 
 /* 다크모드 대응 */
 body.dark-mode .cal-weather-temp { color: #94a3b8; }
+
+/* ▼▼▼ [다크모드 보정] 내 예약 카드 & 게시글 상세 모달 ▼▼▼ */
+
+/* ===== 1. 내 예약(나의 테니스 라이프) 카드: 인라인 배경색 오버라이드 ===== */
+/* 확정(보라) 카드 #f5f3ff -> 어두운 보라 */
+body.dark-mode #view-list > div[style*="background:#f5f3ff"],
+body.dark-mode #view-list > div[style*="background: #f5f3ff"] {
+    background-color: #2e1065 !important;
+    border-color: #6b21a8 !important;
+    color: #e9d5ff !important;
+}
+/* 가승인(민트) 카드 #ecfdf5 -> 어두운 민트 */
+body.dark-mode #view-list > div[style*="background:#ecfdf5"],
+body.dark-mode #view-list > div[style*="background: #ecfdf5"] {
+    background-color: #064e3b !important;
+    border-color: #047857 !important;
+    color: #d1fae5 !important;
+}
+/* 이용 완료(회색) 카드 #f1f5f9 -> 어두운 슬레이트 */
+body.dark-mode #view-list > div[style*="background:#f1f5f9"],
+body.dark-mode #view-list > div[style*="background: #f1f5f9"] {
+    background-color: #1e293b !important;
+    border-color: #475569 !important;
+    color: #cbd5e1 !important;
+}
+
+/* 카드 내부 날짜 글씨 (#333 -> 흰색) */
+body.dark-mode #view-list div[style*="color:#333"],
+body.dark-mode #view-list div[style*="color: #333"] {
+    color: #f1f5f9 !important;
+}
+/* 카드 내부 코트/위치 라인 (#475569 -> 밝은 회색) */
+body.dark-mode #view-list div[style*="color:#475569"],
+body.dark-mode #view-list div[style*="color: #475569"] {
+    color: #cbd5e1 !important;
+}
+/* 카드 내부 "더치페이" 안내문 (#64748b -> 부드러운 회색) */
+body.dark-mode #view-list div[style*="color:#64748b"] {
+    color: #94a3b8 !important;
+}
+/* 카드 하단 점선 구분선 색상 */
+body.dark-mode #view-list div[style*="border-top:1px dashed #cbd5e1"],
+body.dark-mode #view-list div[style*="border-top: 1px dashed #cbd5e1"] {
+    border-top-color: #475569 !important;
+}
+
+/* 🗺️ 위치 버튼 (배경:white, 테두리:#cbd5e1) */
+body.dark-mode #view-list button[style*="background:white"],
+body.dark-mode #view-list button[style*="background: white"] {
+    background-color: #0f172a !important;
+    border-color: #475569 !important;
+    color: #cbd5e1 !important;
+}
+/* 📅 달력 저장 버튼 보라 테두리 유지, 배경만 어둡게 */
+body.dark-mode #view-list button[style*="border:1px solid #8b5cf6"] {
+    background-color: #1e1b4b !important;
+    color: #c4b5fd !important;
+}
+/* 예약 취소 버튼 (빨강 테두리) */
+body.dark-mode #view-list button[style*="border:1px solid #ef4444"] {
+    background-color: #1e293b !important;
+    color: #fca5a5 !important;
+}
+
+/* 나의 테니스 라이프 상단 통계 박스(statsBox) 내부 글자 */
+body.dark-mode #statsBox {
+    color: #f1f5f9 !important;
+}
+
+/* ===== 2. 게시글 상세 모달 (#modalView) ===== */
+/* 제목 아래 구분선 */
+body.dark-mode #modalView #vTitle {
+    border-bottom-color: #334155 !important;
+    color: #f1f5f9 !important;
+}
+/* "작성자:" 라벨 */
+body.dark-mode #modalView div[style*="color:#64748b"] {
+    color: #94a3b8 !important;
+}
+/* 작성자 이름 (#333) */
+body.dark-mode #modalView #vAuthor {
+    color: #e2e8f0 !important;
+}
+/* 본문 영역 #vContent (배경 #f8fafc) */
+body.dark-mode #modalView #vContent {
+    background-color: #0f172a !important;
+    border-color: #334155 !important;
+    color: #e2e8f0 !important;
+}
+/* 첨부파일 영역 #vFileArea (배경 #f0f9ff) */
+body.dark-mode #modalView #vFileArea {
+    background-color: #172554 !important;
+    border-color: #1e40af !important;
+}
+body.dark-mode #modalView #vFileArea span[style*="color:#64748b"] {
+    color: #bfdbfe !important;
+}
+body.dark-mode #modalView #vFileLink {
+    color: #7dd3fc !important;
+}
+
+/* 댓글 입력창 묶음 .cmt-inp-wrap & input */
+body.dark-mode .cmt-inp-wrap {
+    background-color: transparent !important;
+}
+body.dark-mode .cmt-inp {
+    background-color: #0f172a !important;
+    border-color: #334155 !important;
+    color: #f1f5f9 !important;
+}
+body.dark-mode .cmt-inp::placeholder {
+    color: #64748b !important;
+}
+/* 댓글 리스트 아이템 */
+body.dark-mode .cmt-item {
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+    color: #e2e8f0 !important;
+}
+body.dark-mode .cmt-info {
+    color: #f1f5f9 !important;
+}
+body.dark-mode .cmt-txt {
+    color: #cbd5e1 !important;
+}
+body.dark-mode .cmt-del {
+    color: #fca5a5 !important;
+}
+/* 첫 댓글 안내문 (인라인) */
+body.dark-mode #commentList div[style*="color:#aaa"] {
+    color: #64748b !important;
+}
+
+/* ▲▲▲ [다크모드 보정 끝] ▲▲▲ */
+
 /* ▼▼▼ [최종 밸런스 조정] 툴바 최소화 & 달력 최적화 ▼▼▼ */
 
 /* ▼▼▼ [최종 최적화] 달력 높이 축소 & 예약판 공간 확보 ▼▼▼ */
@@ -12759,101 +12894,6 @@ function getAvailableCourtsAtHour(hour){
   }
   #mobileBottomNav button .icon{font-size:13px !important;}
 }
-
-/* === dark mode board/comment readability patch === */
-body.dark-mode .modal-win {
-    background: #1b2940 !important;
-    color: #f8fafc !important;
-}
-body.dark-mode .modal-close { color: #cbd5e1 !important; }
-body.dark-mode .comment-sec {
-    border-top-color: #475569 !important;
-}
-body.dark-mode .cmt-item {
-    background: #22324d !important;
-    border: 1px solid #334155 !important;
-    border-radius: 12px;
-    padding: 12px 14px !important;
-    margin-bottom: 10px;
-}
-body.dark-mode .cmt-info,
-body.dark-mode .cmt-txt,
-body.dark-mode .comment-sec label,
-body.dark-mode .comment-sec span,
-body.dark-mode .comment-sec p,
-body.dark-mode .comment-sec div {
-    color: #e5edf7 !important;
-}
-body.dark-mode .cmt-del { color: #fca5a5 !important; }
-body.dark-mode .inp-row label,
-body.dark-mode .comment-sec .inp-row label,
-body.dark-mode .board-list label,
-body.dark-mode .post-card label {
-    color: #cbd5e1 !important;
-}
-body.dark-mode .inp-row input,
-body.dark-mode .inp-row textarea,
-body.dark-mode .cmt-inp,
-body.dark-mode input[type="text"],
-body.dark-mode input[type="password"],
-body.dark-mode input[type="email"],
-body.dark-mode textarea {
-    background: #0b1220 !important;
-    color: #f8fafc !important;
-    border: 1px solid #64748b !important;
-    box-shadow: none !important;
-}
-body.dark-mode .inp-row input:focus,
-body.dark-mode .inp-row textarea:focus,
-body.dark-mode .cmt-inp:focus,
-body.dark-mode input[type="text"]:focus,
-body.dark-mode input[type="password"]:focus,
-body.dark-mode input[type="email"]:focus,
-body.dark-mode textarea:focus {
-    background: #111827 !important;
-    border-color: #60a5fa !important;
-    box-shadow: 0 0 0 2px rgba(96,165,250,.18) !important;
-    outline: none !important;
-}
-body.dark-mode ::placeholder {
-    color: #94a3b8 !important;
-    opacity: 1;
-}
-body.dark-mode .post-card,
-body.dark-mode .notice-card,
-body.dark-mode .board-filter,
-body.dark-mode .res-card {
-    background: #22324d !important;
-    color: #f8fafc !important;
-    border-color: #334155 !important;
-}
-body.dark-mode .post-card *,
-body.dark-mode .notice-card *,
-body.dark-mode .board-list *,
-body.dark-mode .modal-win * {
-    border-color: inherit;
-}
-body.dark-mode .btn-full.bg-gray { color: #fff !important; }
-body.dark-mode button[disabled],
-body.dark-mode .btn-full:disabled {
-    background: #94a3b8 !important;
-    color: #e2e8f0 !important;
-    opacity: .65 !important;
-}
-body.dark-mode .comment-sec button,
-body.dark-mode .comment-sec .btn-full,
-body.dark-mode .comment-sec .btn-sm {
-    color: #fff !important;
-}
-body.dark-mode .comment-sec [style*="background:#fff"],
-body.dark-mode .comment-sec [style*="background: #fff"],
-body.dark-mode .post-card [style*="background:#fff"],
-body.dark-mode .post-card [style*="background: #fff"] {
-    background: #22324d !important;
-    color: #f8fafc !important;
-    border-color: #334155 !important;
-}
-
 </style>
 
 </body>
