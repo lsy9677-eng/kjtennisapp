@@ -3552,6 +3552,7 @@ async function doBulkReserve() {
     const PORTONE_ID = "imp31773320";
     let adminPass = "1234"; 
 let currentCenter = "국제"; // 기본값
+const ADMIN_DEFAULT_NAME = "김테협"; // 관리자 예약 기본 이름
 let isCenterOpen = false;
 /* [수정] 지점별 이미지와 코트 위치 설정 */
 const CENTERS = {
@@ -4068,7 +4069,7 @@ function checkAppVersion() {
 
 // [중요] 페이지 로드 시 바로 실행되도록 호출
 // ▼▼▼ [설정] 현재 이 코드의 버전 (업데이트 할 때마다 이 숫자를 1씩 올려서 배포하세요) ▼▼▼
-const CURRENT_APP_VERSION = 4;
+const CURRENT_APP_VERSION = 5;
 checkAppVersion();
 /* [신규] 승인 모달 열기 */
 let currentApproveData = null; // 승인 처리를 위한 임시 저장소
@@ -4868,7 +4869,7 @@ function openBook() {
     const recurBox = document.getElementById('recurOptionBox');
 
     if(isAdmin) {
-        inpName.value = "김테협"; // 관리자 기본 이름
+        inpName.value = ADMIN_DEFAULT_NAME; // 관리자 기본 이름
         inpName.readOnly = false;
         inpName.style.background = "#fff";
         
@@ -6304,7 +6305,8 @@ function checkRequestedBlock(court, block, occupiedMap, openTime, lastStartTime)
 /* [수정] 예약 저장 함수 (화면 입력값 우선 사용) */
 async function saveBook(uid) {
     const date = document.getElementById('hiddenDate').value;
-    const bkName = isAdmin ? (document.getElementById('bkName').value || '관리자') : (currentUser ? currentUser.name : '회원');
+    const rawAdminName = isAdmin ? (document.getElementById("bkName").value || "").trim() : "";
+    const bkName = isAdmin ? (rawAdminName || ADMIN_DEFAULT_NAME) : (currentUser ? currentUser.name : "회원");
     const bkPhone = isAdmin ? document.getElementById('bkPhone').value : (currentUser ? currentUser.phone : '');
 
     if(!bkPhone) {
