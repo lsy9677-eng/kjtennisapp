@@ -5796,6 +5796,14 @@ function onCellClick(e) {
     const isAdjacent = courtStats[c] && (courtStats[c].includes(t-1) || courtStats[c].includes(t+1));
     if (isAdjacent) { addSelect(c, t); } 
     else {
+        const isLastOneHourSlot = (t === 21);
+        if (isLastOneHourSlot) {
+            // 마지막 타임(21~22시)은 기본 2시간 규칙의 예외로 1시간 단독 예약을 허용
+            addSelect(c, t);
+            validateSelection();
+            return;
+        }
+
         if (!isAdmin && selected.length >= 5) { alert("잔여 시간이 부족합니다."); return; }
         const nextEl = document.getElementById(`c-${c}-${t+1}`);
         const isNextAvailable = nextEl && !nextEl.classList.contains('booked') && !nextEl.classList.contains('fixed') && !nextEl.classList.contains('pending') && !nextEl.classList.contains('blocked') && !nextEl.classList.contains('past');
@@ -5860,20 +5868,25 @@ function validateSelection() {
            } else {
                 // 덩어리가 끝났을 때 크기가 2 미만(즉 1시간)이면 검사
                 if (currentBlockSize < 2) {
-                    // [수정] 1시간짜리라도, 양옆이 꽉 차서 어쩔 수 없는 '틈새'라면 허용
+                    // [수정] 1시간짜리라도, 양옆이 꽉 차서 어쩔 수 없는 '틈새'이거나
+                    // 마지막 타임(21~22시)이면 예외적으로 허용
                     const t = times[i]; // 현재 검사 중인 1시간짜리 시간
-                    
-                    const prevEl = document.getElementById(`c-${c}-${t-1}`);
-                    const nextEl = document.getElementById(`c-${c}-${t+1}`);
 
-                    // 앞, 뒤 칸이 없는지(영업시간 밖) 또는 예약되어 있는지 확인
-                    const isPrevBlocked = !prevEl || prevEl.classList.contains('booked') || prevEl.classList.contains('fixed') || prevEl.classList.contains('pending') || prevEl.classList.contains('blocked');
-                    const isNextBlocked = !nextEl || nextEl.classList.contains('booked') || nextEl.classList.contains('fixed') || nextEl.classList.contains('pending') || nextEl.classList.contains('blocked');
-
-                    if (isPrevBlocked && isNextBlocked) {
-                        // 틈새시장이므로 허용 (hasIsolated를 true로 만들지 않음 = 통과)
+                    if (t === 21) {
+                        // 마지막 타임은 1시간 단독 예약 허용
                     } else {
-                        hasIsolated = true; // 여유가 있는데 1시간만 잡은거면 차단
+                        const prevEl = document.getElementById(`c-${c}-${t-1}`);
+                        const nextEl = document.getElementById(`c-${c}-${t+1}`);
+
+                        // 앞, 뒤 칸이 없는지(영업시간 밖) 또는 예약되어 있는지 확인
+                        const isPrevBlocked = !prevEl || prevEl.classList.contains('booked') || prevEl.classList.contains('fixed') || prevEl.classList.contains('pending') || prevEl.classList.contains('blocked');
+                        const isNextBlocked = !nextEl || nextEl.classList.contains('booked') || nextEl.classList.contains('fixed') || nextEl.classList.contains('pending') || nextEl.classList.contains('blocked');
+
+                        if (isPrevBlocked && isNextBlocked) {
+                            // 틈새시장이므로 허용 (hasIsolated를 true로 만들지 않음 = 통과)
+                        } else {
+                            hasIsolated = true; // 여유가 있는데 1시간만 잡은거면 차단
+                        }
                     }
                 }
                 currentBlockSize = 1; // 리셋
@@ -6294,6 +6307,8 @@ function checkRequestedBlock(court, block, occupiedMap, openTime, lastStartTime)
     const time = Number(block[0]);
     const prevKey = `${court}_${time - 1}`;
     const nextKey = `${court}_${time + 1}`;
+
+    if (time === lastStartTime) return;
 
     const isPrevBlocked = (time - 1) < openTime || occupiedMap.has(prevKey);
     const isNextBlocked = (time + 1) > lastStartTime || occupiedMap.has(nextKey);
