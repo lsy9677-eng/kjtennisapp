@@ -13691,5 +13691,233 @@ function getAvailableCourtsAtHour(hour){
 })();
 </script>
 
+
+
+<style id="reservation-layout-absolute-final">
+/* === 예약 화면 최종 레이아웃 패치 ===
+   좁은 PC/모바일/TWA에서 코트 현황판이 하단 빈 공간을 남기지 않도록
+   현황판을 달력 아래~하단 예약바 위까지 고정 배치합니다. */
+@media (max-width: 1099px){
+  html, body{
+    height:100dvh !important;
+    overflow:hidden !important;
+  }
+  #view-res.content-area.active{
+    position:relative !important;
+    height:calc(100dvh - 52px) !important;
+    min-height:0 !important;
+    overflow:hidden !important;
+    padding:4px 0 0 !important;
+    display:flex !important;
+    flex-direction:column !important;
+  }
+  #view-res #calendarWrap.calendar-wrap{
+    flex:0 0 auto !important;
+    height:292px !important;
+    min-height:292px !important;
+    max-height:292px !important;
+    margin:0 6px !important;
+    overflow-y:auto !important;
+    border-radius:12px !important;
+  }
+  #view-res #calBody.continuous-calendar{
+    max-height:none !important;
+  }
+  #view-res #gridArea.grid-area{
+    margin:0 !important;
+    padding:4px 6px !important;
+    border-radius:12px !important;
+    border:1px solid #e2e8f0 !important;
+    background:#fff !important;
+    overflow-x:auto !important;
+    overflow-y:hidden !important;
+    min-height:0 !important;
+    z-index:18 !important;
+  }
+  #view-res #gridArea .schedule-table{
+    padding-bottom:0 !important;
+    grid-template-columns:56px repeat(15, 54px) !important;
+  }
+  #view-res .head-time,
+  #view-res .corner{
+    height:28px !important;
+    min-height:28px !important;
+  }
+}
+
+@media (max-width: 1099px) and (max-height: 820px){
+  #view-res #calendarWrap.calendar-wrap{
+    height:278px !important;
+    min-height:278px !important;
+    max-height:278px !important;
+  }
+}
+@media (max-width: 1099px) and (max-height: 760px){
+  #view-res #calendarWrap.calendar-wrap{
+    height:252px !important;
+    min-height:252px !important;
+    max-height:252px !important;
+  }
+}
+</style>
+
+<script id="reservation-layout-absolute-final-script">
+(function(){
+  function qs(sel){ return document.querySelector(sel); }
+  function qsa(sel){ return Array.prototype.slice.call(document.querySelectorAll(sel)); }
+  function isReservationActive(){
+    var view = document.getElementById('view-res');
+    return !!(view && view.classList.contains('active'));
+  }
+  function narrowMode(){
+    return Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0) < 1100;
+  }
+  function getBottomNavHeight(){
+    var nav = document.getElementById('mobileBottomNav');
+    if(!nav) return 0;
+    var r = nav.getBoundingClientRect();
+    return (r.height && r.bottom > 0) ? r.height : 0;
+  }
+  function resetGridPosition(){
+    var grid = document.getElementById('gridArea');
+    if(!grid) return;
+    ['position','left','right','top','bottom','height','minHeight','maxHeight','zIndex'].forEach(function(k){ grid.style[k]=''; });
+  }
+  function fitRowsToGrid(grid){
+    if(!grid) return;
+    var courts = qsa('#gridArea .head-court').length || 8;
+    var available = grid.clientHeight || grid.getBoundingClientRect().height || 0;
+    if(available <= 0) return;
+
+    var headH = 28;
+    var rowH = Math.floor((available - headH - 8) / courts);
+    rowH = Math.max(34, Math.min(58, rowH));
+    var orbH = Math.max(22, Math.min(32, rowH - 15));
+    var orbW = Math.max(40, Math.min(48, rowH + 1));
+    var fontSize = rowH >= 48 ? '.78rem' : (rowH >= 42 ? '.73rem' : '.68rem');
+
+    qsa('#gridArea .corner, #gridArea .head-time').forEach(function(el){
+      el.style.height = headH + 'px';
+      el.style.minHeight = headH + 'px';
+      el.style.lineHeight = headH + 'px';
+    });
+    qsa('#gridArea .head-court, #gridArea .data-cell').forEach(function(el){
+      el.style.height = rowH + 'px';
+      el.style.minHeight = rowH + 'px';
+    });
+    qsa('#gridArea .orb').forEach(function(el){
+      el.style.width = orbW + 'px';
+      el.style.height = orbH + 'px';
+      el.style.minHeight = orbH + 'px';
+      el.style.fontSize = fontSize;
+    });
+  }
+  function fitReservationLayout(){
+    var grid = document.getElementById('gridArea');
+    var calendar = document.getElementById('calendarWrap');
+    var footer = qs('#view-res .footer-bar');
+    var view = document.getElementById('view-res');
+    if(!grid || !calendar || !footer || !view || !isReservationActive()) return;
+
+    if(!narrowMode()){
+      resetGridPosition();
+      return;
+    }
+
+    // 하단바가 fixed라 레이아웃 계산에서 빠지는 문제를 우회한다.
+    var viewRect = view.getBoundingClientRect();
+    var calRect = calendar.getBoundingClientRect();
+    var footerRect = footer.getBoundingClientRect();
+    var navH = getBottomNavHeight();
+
+    var top = Math.ceil(calRect.bottom + 6);
+    var bottomLine = footerRect.top > 0 ? footerRect.top - 8 : (window.innerHeight - navH - 88);
+    var height = Math.floor(bottomLine - top);
+
+    // 현황판 높이가 부족하면 달력을 한 달이 보이는 선에서 자동 축소한다.
+    if(height < 310){
+      var currentCalH = calendar.getBoundingClientRect().height;
+      var newCalH = Math.max(238, currentCalH - (310 - height));
+      calendar.style.height = newCalH + 'px';
+      calendar.style.minHeight = newCalH + 'px';
+      calendar.style.maxHeight = newCalH + 'px';
+      calRect = calendar.getBoundingClientRect();
+      top = Math.ceil(calRect.bottom + 6);
+      bottomLine = footer.getBoundingClientRect().top - 8;
+      height = Math.floor(bottomLine - top);
+    }
+
+    if(height < 260) height = 260;
+
+    grid.style.position = 'fixed';
+    grid.style.left = Math.max(0, Math.floor(viewRect.left + 6)) + 'px';
+    grid.style.right = Math.max(0, Math.floor(window.innerWidth - viewRect.right + 6)) + 'px';
+    grid.style.top = top + 'px';
+    grid.style.bottom = Math.max(0, Math.floor(window.innerHeight - bottomLine)) + 'px';
+    grid.style.height = height + 'px';
+    grid.style.minHeight = height + 'px';
+    grid.style.maxHeight = height + 'px';
+    grid.style.overflowY = 'hidden';
+    grid.style.overflowX = 'auto';
+    grid.style.zIndex = '18';
+
+    fitRowsToGrid(grid);
+  }
+  function scheduleFit(){
+    requestAnimationFrame(fitReservationLayout);
+    setTimeout(fitReservationLayout, 50);
+    setTimeout(fitReservationLayout, 180);
+    setTimeout(fitReservationLayout, 420);
+  }
+
+  var oldDrawGrid = window.drawGrid;
+  if(typeof oldDrawGrid === 'function'){
+    window.drawGrid = function(){
+      var r = oldDrawGrid.apply(this, arguments);
+      scheduleFit();
+      return r;
+    };
+  }
+  var oldLoadDB = window.loadDB;
+  if(typeof oldLoadDB === 'function'){
+    window.loadDB = function(){
+      var r = oldLoadDB.apply(this, arguments);
+      Promise.resolve(r).finally(scheduleFit);
+      return r;
+    };
+  }
+  var oldDrawCalendar = window.drawCalendar;
+  if(typeof oldDrawCalendar === 'function'){
+    window.drawCalendar = function(){
+      var r = oldDrawCalendar.apply(this, arguments);
+      scheduleFit();
+      return r;
+    };
+  }
+  var oldGoTab = window.goTab;
+  if(typeof oldGoTab === 'function'){
+    window.goTab = function(){
+      var r = oldGoTab.apply(this, arguments);
+      scheduleFit();
+      return r;
+    };
+  }
+
+  window.addEventListener('resize', scheduleFit);
+  window.addEventListener('orientationchange', function(){ setTimeout(scheduleFit, 250); });
+  window.addEventListener('load', scheduleFit);
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scheduleFit);
+  else scheduleFit();
+
+  // 일부 WebView/TWA에서는 하단바 렌더링이 늦어져 반복 보정이 필요하다.
+  var n = 0;
+  var timer = setInterval(function(){
+    scheduleFit();
+    n++;
+    if(n > 8) clearInterval(timer);
+  }, 350);
+})();
+</script>
+
 </body>
 </html>
