@@ -2128,6 +2128,75 @@ header h1{
 .btn-social-naver:disabled{opacity:.6;cursor:not-allowed}
 </style>
 
+
+<style>
+/* === 연속 월 스크롤 달력 패치 === */
+#calBody.continuous-calendar{
+  display:block !important;
+  text-align:initial !important;
+}
+.cal-month-section{
+  margin-bottom:10px;
+  border:1px solid #e2e8f0;
+  border-radius:10px;
+  overflow:hidden;
+  background:#fff;
+}
+.cal-month-title{
+  position:sticky;
+  top:0;
+  z-index:30;
+  background:#f8fafc;
+  border-bottom:1px solid #e2e8f0;
+  padding:6px 8px;
+  font-size:0.78rem;
+  font-weight:900;
+  color:#334155;
+}
+.cal-month-grid{
+  display:grid;
+  grid-template-columns:repeat(7,1fr);
+  text-align:center;
+  gap:1px;
+}
+.cal-date.other-month{
+  color:#94a3b8 !important;
+  background:#f8fafc !important;
+}
+.cal-date.other-month .cal-date-num::after{
+  content:'월';
+  font-size:0.48rem;
+  margin-left:1px;
+  opacity:.75;
+}
+@media (max-width:768px){
+  .calendar-wrap{
+    max-height:42vh !important;
+    overflow-y:auto !important;
+    -webkit-overflow-scrolling:touch;
+  }
+  .cal-month-section{margin-bottom:8px;}
+}
+@media (min-width:769px){
+  .calendar-wrap{
+    overflow-y:auto !important;
+    -webkit-overflow-scrolling:touch;
+  }
+}
+body.dark-mode .cal-month-section{
+  background:#1e293b !important;
+  border-color:#334155 !important;
+}
+body.dark-mode .cal-month-title{
+  background:#0f172a !important;
+  border-color:#334155 !important;
+  color:#e2e8f0 !important;
+}
+html body.dark-mode .cal-date.other-month{
+  background:#0f172a !important;
+  color:#64748b !important;
+}
+</style>
 </head>
 <body>
 <div id="androidAppBanner" style="display:none; background:#f0fdf4; border-bottom:1px solid #bbf7d0; padding:12px; text-align:center; animation: slideDown 0.5s ease-out; position:relative;">
@@ -5038,56 +5107,127 @@ function toggleWeatherView() {
 }
 
 /* [수정] drawCalendar 함수: 날짜 출력 HTML 구조 단순화 (중앙 정렬 위해) */
+function getDatePartsFromStr(dateStr) {
+    const [yy, mm, dd] = String(dateStr || '').split('-').map(Number);
+    return { y: yy, m: mm, d: dd };
+}
+
+function formatDateStrLocal(dateObj) {
+    return `${dateObj.getFullYear()}-${String(dateObj.getMonth()+1).padStart(2,'0')}-${String(dateObj.getDate()).padStart(2,'0')}`;
+}
+
+function getCalendarCellHtml(cellDate, baseMonth) {
+    const dStr = formatDateStrLocal(cellDate);
+    const week = cellDate.getDay();
+    let cls = "cal-date";
+    if (cellDate.getMonth() !== baseMonth) cls += " other-month";
+
+    const curDate = document.getElementById('hiddenDate').value;
+    const now = new Date();
+    const todayStr = formatDateStrLocal(now);
+    const hName = HOLIDAYS[dStr] || "";
+
+    const targetZero = new Date(cellDate);
+    targetZero.setHours(0,0,0,0);
+    const todayZero = new Date();
+    todayZero.setHours(0,0,0,0);
+    const diffDays = (targetZero.getTime() - todayZero.getTime()) / 86400000;
+    let limitDays = (currentUser && currentUser.isCitizen) ? 13 : 6;
+
+    if(!isAdmin && diffDays > limitDays) cls += " disabled";
+    if(dStr === curDate) cls += " selected";
+    if(dStr === todayStr) cls += " today";
+    if (hName) cls += " holiday";
+    else if (week === 0) cls += " holiday-sunday";
+    else if (week === 6) cls += " sat";
+
+    const displayNum = cellDate.getMonth() === baseMonth ? cellDate.getDate() : `${cellDate.getMonth()+1}/${cellDate.getDate()}`;
+
+    return `
+        <div id="cal-day-${dStr}" class="${cls}" onclick="pickDate('${dStr}')">
+            <span class="cal-date-num">${displayNum}</span>
+            ${hName ? `<span class="holiday-name">${hName}</span>` : ''}
+            <div class="cal-weather" id="w-${dStr}"></div>
+        </div>`;
+}
+
+function renderOneCalendarMonth(year, month) {
+    const monthStart = new Date(year, month, 1);
+    const start = new Date(year, month, 1 - monthStart.getDay());
+    const lastDate = new Date(year, month + 1, 0).getDate();
+    const rows = Math.ceil((monthStart.getDay() + lastDate) / 7);
+    const totalCells = Math.max(35, rows * 7);
+
+    let html = `<section class="cal-month-section" data-y="${year}" data-m="${month}">`;
+    html += `<div class="cal-month-title">${year}. ${month + 1}</div>`;
+    html += `<div class="cal-month-grid">`;
+    html += `<div class="cal-day" style="color:#ef4444">일</div><div class="cal-day">월</div><div class="cal-day">화</div><div class="cal-day">수</div><div class="cal-day">목</div><div class="cal-day">금</div><div class="cal-day" style="color:#3b82f6">토</div>`;
+
+    for (let i = 0; i < totalCells; i++) {
+        const cellDate = new Date(start);
+        cellDate.setDate(start.getDate() + i);
+        html += getCalendarCellHtml(cellDate, month);
+    }
+
+    html += `</div></section>`;
+    return html;
+}
+
+function updateCalendarTitleFromScroll() {
+    const wrap = document.getElementById('calendarWrap');
+    const sections = Array.from(document.querySelectorAll('#calBody .cal-month-section'));
+    if (!wrap || sections.length === 0) return;
+
+    const wrapTop = wrap.getBoundingClientRect().top;
+    let best = sections[0];
+    let bestDist = Infinity;
+
+    sections.forEach(sec => {
+        const dist = Math.abs(sec.getBoundingClientRect().top - wrapTop);
+        if (dist < bestDist) { bestDist = dist; best = sec; }
+    });
+
+    const y = Number(best.dataset.y);
+    const m = Number(best.dataset.m);
+    if (Number.isFinite(y) && Number.isFinite(m)) {
+        document.getElementById('calTitle').innerText = `${y}. ${m + 1}`;
+    }
+}
+
+function setupCalendarScrollTitleUpdate() {
+    const wrap = document.getElementById('calendarWrap');
+    if (!wrap) return;
+    if (wrap._calendarScrollHandler) wrap.removeEventListener('scroll', wrap._calendarScrollHandler);
+    wrap._calendarScrollHandler = () => {
+        if (wrap._calendarScrollTimer) clearTimeout(wrap._calendarScrollTimer);
+        wrap._calendarScrollTimer = setTimeout(updateCalendarTitleFromScroll, 40);
+    };
+    wrap.addEventListener('scroll', wrap._calendarScrollHandler);
+}
+
+/* [수정] drawCalendar 함수: 현재 월부터 연속 4개월을 세로 스크롤로 표시 */
 function drawCalendar() {
     const y = viewDate.getFullYear();
     const m = viewDate.getMonth();
     document.getElementById('calTitle').innerText = `${y}. ${m+1}`;
-    
-    const firstDay = new Date(y, m, 1).getDay();
-    const lastDate = new Date(y, m+1, 0).getDate();
+
     const cal = document.getElementById('calBody');
-    
-    // 요일 헤더
-    cal.innerHTML = `<div class="cal-day" style="color:#ef4444">일</div><div class="cal-day">월</div><div class="cal-day">화</div><div class="cal-day">수</div><div class="cal-day">목</div><div class="cal-day">금</div><div class="cal-day" style="color:#3b82f6">토</div>`;
-    
-    // 빈 칸
-    for(let i=0; i<firstDay; i++) cal.innerHTML += `<div class="cal-date empty" style="cursor:default; background:#f9fafb;"></div>`;
-    
-    const curDate = document.getElementById('hiddenDate').value;
-    const now = new Date();
-    const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+    cal.classList.add('continuous-calendar');
 
-    for(let d=1; d<=lastDate; d++) {
-        const dStr = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        const targetDate = new Date(dStr);
-        const week = targetDate.getDay();
-        let cls = "cal-date";
-        
-        const hName = HOLIDAYS[dStr] || ""; 
-        const diffDays = (targetDate.setHours(0,0,0,0) - new Date().setHours(0,0,0,0)) / (86400000);
-        let limitDays = (currentUser && currentUser.isCitizen) ? 13 : 6;
-
-        if(!isAdmin && diffDays > limitDays) cls += " disabled";
-        if(dStr === curDate) cls += " selected";
-        if(dStr === todayStr) cls += " today"; 
-        if (hName) cls += " holiday";        
-        else if (week === 0) cls += " holiday-sunday"; 
-        else if (week === 6) cls += " sat";            
-
-        // ▼▼▼ [변경] 날씨/날짜 구조 단순화 ▼▼▼
-        cal.innerHTML += `
-            <div id="cal-day-${dStr}" class="${cls}" onclick="pickDate('${dStr}')">
-                <span class="cal-date-num">${d}</span>
-                ${hName ? `<span class="holiday-name">${hName}</span>` : ''}
-                <div class="cal-weather" id="w-${dStr}"></div> 
-            </div>`;
+    let html = '';
+    for (let offset = 0; offset < 4; offset++) {
+        const monthDate = new Date(y, m + offset, 1);
+        html += renderOneCalendarMonth(monthDate.getFullYear(), monthDate.getMonth());
     }
-    
-    // 날씨 데이터 로딩 및 토글 상태 유지 적용
+    cal.innerHTML = html;
+
     loadWeeklyWeather();
-    toggleWeatherView(); // 현재 체크박스 상태에 따라 즉시 반영
-    markMyReservedDates(); // 내 예약 날짜 dot 표시
-}    
+    toggleWeatherView();
+    markMyReservedDates();
+    setupCalendarScrollTitleUpdate();
+    setTimeout(updateCalendarTitleFromScroll, 0);
+}
+
 
     function mvMonth(n) { viewDate.setMonth(viewDate.getMonth() + n); drawCalendar(); }
 
@@ -5097,8 +5237,9 @@ function markMyReservedDates(forceRefresh = false) {
     const y = viewDate.getFullYear();
     const m = viewDate.getMonth();
     const startStr = `${y}-${String(m+1).padStart(2,'0')}-01`;
-    const endStr   = `${y}-${String(m+1).padStart(2,'0')}-${String(new Date(y, m+1, 0).getDate()).padStart(2,'0')}`;
-    const cacheKey = `${currentCenter}_${currentUser.phone}_${startStr}`;
+    const endDateObj = new Date(y, m + 4, 0);
+    const endStr = formatDateStrLocal(endDateObj);
+    const cacheKey = `${currentCenter}_${currentUser.phone}_${startStr}_${endStr}`;
     const cached = _myReservedDatesCache[cacheKey];
 
     const applyReservedDates = (dates) => {
@@ -5131,6 +5272,7 @@ function markMyReservedDates(forceRefresh = false) {
         })
         .catch(() => {});
 }
+
 /* [수정된 함수] 지점 변경 시 실행되는 함수 */
 function changeCenter() {
     currentCenter = document.getElementById('centerSel').value;
@@ -11453,7 +11595,12 @@ if (rainProb >= 40 || (code >= 51 && code <= 99)) {
 
 // [기존 함수 덮어쓰기] 날짜 선택 시 배너 갱신 기능 추가
 function pickDate(s) { 
-    document.getElementById('hiddenDate').value = s; 
+    document.getElementById('hiddenDate').value = s;
+    const parts = getDatePartsFromStr(s);
+    if (parts.y && parts.m) {
+        viewDate = new Date(parts.y, parts.m - 1, 1);
+        document.getElementById('calTitle').innerText = `${parts.y}. ${parts.m}`;
+    }
     drawCalendar(); 
     loadDB(); 
     updateWeatherBanner(s); // [추가됨]
