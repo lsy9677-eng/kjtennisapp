@@ -13492,5 +13492,204 @@ function getAvailableCourtsAtHour(hour){
 })();
 </script>
 
+
+
+<style id="grid-no-scroll-final-overrides">
+/* === 코트 현황판 하단 여백 제거 + 세로 스크롤 최소화 최종 패치 ===
+   폭 768px 이하만 보던 기존 보정이 PC 좁은 창/반응형 테스트에서는 안 먹을 수 있어,
+   1100px 미만 구간까지 같은 원칙으로 적용합니다. */
+@media (max-width: 1099px){
+  html, body{
+    height:100dvh !important;
+    overflow:hidden !important;
+  }
+  #view-res.content-area.active{
+    display:flex !important;
+    flex-direction:column !important;
+    height:calc(100dvh - 52px) !important;
+    min-height:0 !important;
+    overflow:hidden !important;
+    padding:4px 0 118px !important;
+    gap:4px !important;
+  }
+  #view-res #calendarWrap.calendar-wrap{
+    flex:0 0 auto !important;
+    height:268px !important;
+    min-height:268px !important;
+    max-height:268px !important;
+    margin:0 6px !important;
+    overflow-y:auto !important;
+  }
+  #view-res #weatherBanner{
+    flex:0 0 auto !important;
+    margin:0 6px !important;
+  }
+  #view-res #gridArea.grid-area{
+    flex:1 1 auto !important;
+    min-height:0 !important;
+    max-height:none !important;
+    margin:0 6px !important;
+    padding:4px 6px 4px !important;
+    overflow-x:auto !important;
+    overflow-y:hidden !important;
+    border-radius:12px !important;
+  }
+  #view-res #gridArea .schedule-table{
+    padding-bottom:0 !important;
+    grid-template-columns:54px repeat(15, 52px) !important;
+  }
+  #view-res .head-time,
+  #view-res .corner{
+    height:28px !important;
+    min-height:28px !important;
+  }
+  #view-res .head-court,
+  #view-res .data-cell{
+    height:44px !important;
+    min-height:44px !important;
+  }
+  #view-res .orb{
+    width:42px !important;
+    height:28px !important;
+    font-size:.73rem !important;
+  }
+}
+
+@media (max-width: 1099px) and (max-height: 820px){
+  #view-res #calendarWrap.calendar-wrap{
+    height:250px !important;
+    min-height:250px !important;
+    max-height:250px !important;
+  }
+}
+
+@media (max-width: 1099px) and (max-height: 760px){
+  #view-res #calendarWrap.calendar-wrap{
+    height:230px !important;
+    min-height:230px !important;
+    max-height:230px !important;
+  }
+  #view-res .head-court,
+  #view-res .data-cell{
+    height:40px !important;
+    min-height:40px !important;
+  }
+  #view-res .orb{
+    width:39px !important;
+    height:25px !important;
+    font-size:.68rem !important;
+  }
+}
+</style>
+
+<script id="grid-no-scroll-runtime-final">
+(function(){
+  function getActiveReservationView(){
+    var view = document.getElementById('view-res');
+    return view && view.classList.contains('active') ? view : null;
+  }
+
+  function countCourtRows(){
+    var rows = document.querySelectorAll('#gridArea .head-court');
+    return rows && rows.length ? rows.length : 8;
+  }
+
+  function fillCourtGrid(){
+    var view = getActiveReservationView();
+    var grid = document.getElementById('gridArea');
+    var footer = document.querySelector('#view-res .footer-bar');
+    var calendar = document.getElementById('calendarWrap');
+    if(!view || !grid || !footer) return;
+
+    var vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+    if(vw >= 1100) return; // 넓은 PC 레이아웃은 기존 PC 그리드 유지
+
+    // footer는 fixed일 수 있으므로 실제 화면 기준 위치를 사용한다.
+    var gridTop = grid.getBoundingClientRect().top;
+    var footerTop = footer.getBoundingClientRect().top;
+    var available = Math.floor(footerTop - gridTop - 4);
+
+    // 달력이 너무 커서 현황판이 작아질 경우, 한 달이 보이는 선에서 살짝 줄인다.
+    if(available < 390 && calendar){
+      var h = Math.max(228, Math.min(260, calendar.getBoundingClientRect().height - (390 - available)));
+      calendar.style.height = h + 'px';
+      calendar.style.minHeight = h + 'px';
+      calendar.style.maxHeight = h + 'px';
+      gridTop = grid.getBoundingClientRect().top;
+      footerTop = footer.getBoundingClientRect().top;
+      available = Math.floor(footerTop - gridTop - 4);
+    }
+
+    if(available < 280) return;
+
+    grid.style.height = available + 'px';
+    grid.style.minHeight = available + 'px';
+    grid.style.maxHeight = available + 'px';
+    grid.style.overflowY = 'hidden';
+    grid.style.overflowX = 'auto';
+
+    var headH = 28;
+    var courts = countCourtRows();
+    var rowH = Math.floor((available - headH - 10) / courts);
+    rowH = Math.max(36, Math.min(50, rowH));
+    var orbH = Math.max(22, Math.min(30, rowH - 16));
+
+    document.querySelectorAll('#gridArea .corner, #gridArea .head-time').forEach(function(el){
+      el.style.height = headH + 'px';
+      el.style.minHeight = headH + 'px';
+    });
+    document.querySelectorAll('#gridArea .head-court, #gridArea .data-cell').forEach(function(el){
+      el.style.height = rowH + 'px';
+      el.style.minHeight = rowH + 'px';
+    });
+    document.querySelectorAll('#gridArea .orb').forEach(function(el){
+      el.style.height = orbH + 'px';
+      el.style.minHeight = orbH + 'px';
+      el.style.width = Math.max(38, Math.min(44, rowH - 2)) + 'px';
+    });
+  }
+
+  function scheduleFill(){
+    requestAnimationFrame(fillCourtGrid);
+    setTimeout(fillCourtGrid, 60);
+    setTimeout(fillCourtGrid, 200);
+    setTimeout(fillCourtGrid, 500);
+  }
+
+  var oldDrawGrid = window.drawGrid;
+  if(typeof oldDrawGrid === 'function'){
+    window.drawGrid = function(){
+      var r = oldDrawGrid.apply(this, arguments);
+      scheduleFill();
+      return r;
+    };
+  }
+
+  var oldLoadDB = window.loadDB;
+  if(typeof oldLoadDB === 'function'){
+    window.loadDB = function(){
+      var r = oldLoadDB.apply(this, arguments);
+      Promise.resolve(r).finally(scheduleFill);
+      return r;
+    };
+  }
+
+  var oldGoTab = window.goTab;
+  if(typeof oldGoTab === 'function'){
+    window.goTab = function(){
+      var r = oldGoTab.apply(this, arguments);
+      scheduleFill();
+      return r;
+    };
+  }
+
+  window.addEventListener('resize', scheduleFill);
+  window.addEventListener('orientationchange', function(){ setTimeout(scheduleFill, 250); });
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scheduleFill);
+  else scheduleFill();
+  window.addEventListener('load', scheduleFill);
+})();
+</script>
+
 </body>
 </html>
