@@ -13150,5 +13150,60 @@ function getAvailableCourtsAtHour(hour){
 }
 </style>
 
+
+
+<style>
+/* === 달력 축소 + 코트 현황판 확대 패치 === */
+/* 스크롤 달력이므로 달력 표시 높이를 줄이고 예약 현황판 영역을 더 확보 */
+#calendarWrap.calendar-wrap{
+  max-height:28vh !important;
+  overflow-y:auto !important;
+  -webkit-overflow-scrolling:touch;
+  padding-top:3px !important;
+  padding-bottom:0 !important;
+}
+#calBody .cal-month-section{
+  margin-bottom:6px !important;
+}
+#calBody .cal-month-title{
+  padding:4px 8px !important;
+  font-size:0.74rem !important;
+}
+#calBody .cal-date{
+  min-height:28px !important;
+}
+#gridArea.grid-area{
+  flex:1 1 auto !important;
+  min-height:0 !important;
+}
+@media (max-width:768px){
+  #calendarWrap.calendar-wrap{
+    max-height:24vh !important;
+    margin-bottom:2px !important;
+  }
+  #calBody .cal-date{
+    min-height:26px !important;
+  }
+  #calBody .cal-date-num{
+    font-size:0.8rem !important;
+  }
+  #weatherBanner{
+    display:none !important;
+  }
+}
+@media (min-width:769px) and (max-width:1099px){
+  #calendarWrap.calendar-wrap{
+    height:auto !important;
+    max-height:30vh !important;
+  }
+}
+@media (min-width:1100px){
+  #view-res #calendarWrap{
+    max-height:calc(100vh - 190px) !important;
+    overflow-y:auto !important;
+  }
+}
+</style>
+
 </body>
 </html>
