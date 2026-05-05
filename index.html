@@ -11593,17 +11593,24 @@ if (rainProb >= 40 || (code >= 51 && code <= 99)) {
 }
 }
 
-// [기존 함수 덮어쓰기] 날짜 선택 시 배너 갱신 기능 추가
+// [수정] 연속 스크롤 달력에서는 날짜 클릭 시 스크롤 위치를 유지하고 예약판만 갱신
 function pickDate(s) { 
-    document.getElementById('hiddenDate').value = s;
+    const hidden = document.getElementById('hiddenDate');
+    hidden.value = s;
+
     const parts = getDatePartsFromStr(s);
     if (parts.y && parts.m) {
+        // 다음/이전 버튼 기준 월은 선택한 월로 갱신하되, 달력은 다시 그리지 않아 현재 스크롤 위치를 유지한다.
         viewDate = new Date(parts.y, parts.m - 1, 1);
         document.getElementById('calTitle').innerText = `${parts.y}. ${parts.m}`;
     }
-    drawCalendar(); 
+
+    document.querySelectorAll('.cal-date.selected').forEach(el => el.classList.remove('selected'));
+    const pickedCell = document.getElementById(`cal-day-${s}`);
+    if (pickedCell) pickedCell.classList.add('selected');
+
     loadDB(); 
-    updateWeatherBanner(s); // [추가됨]
+    updateWeatherBanner(s);
 }
 /* [신규] 전적 관리 시스템 (차트 및 기록) */
 let scoreChart = null;
