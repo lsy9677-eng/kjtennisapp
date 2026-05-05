@@ -2224,6 +2224,14 @@ html body.dark-mode .cal-date.other-month{
   -webkit-overflow-scrolling:touch;
 }
 </style>
+
+<style>
+/* 달력 접기 기능 제거: 연속 스크롤 달력 전용 */
+.cal-toggle-bar{display:none !important;}
+.calendar-wrap.folded{max-height:unset !important; overflow-y:auto !important;}
+.calendar-wrap.folded .cal-head,
+.calendar-wrap.folded #calBody{display:block !important;}
+</style>
 </head>
 <body>
 <div id="androidAppBanner" style="display:none; background:#f0fdf4; border-bottom:1px solid #bbf7d0; padding:12px; text-align:center; animation: slideDown 0.5s ease-out; position:relative;">
@@ -2630,9 +2638,6 @@ html body.dark-mode .cal-date.other-month{
         <div class="cal-grid" id="calBody"></div>
         <input type="date" id="hiddenDate">
 
-        <div class="cal-toggle-bar" onclick="toggleCalendar()" title="달력 접기/펼치기">
-            <span id="calToggleIcon">▲</span>
-        </div>
     </div>
     
 <div id="weatherBanner" style="display:none; background:#fff; margin:6px 10px 0; padding:8px 12px; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.05); border:1px solid #e2e8f0; align-items:center; justify-content:space-between;">
@@ -11068,24 +11073,8 @@ function applyWeatherToCalendar(data) {
         `;
     }
 }
-/* ▼▼▼ [복구] 달력 접기/펼치기 기능 함수 ▼▼▼ */
-function toggleCalendar() {
-    const wrap = document.getElementById('calendarWrap');
-    const icon = document.getElementById('calToggleIcon');
-    if(!wrap || !icon) return;
-
-    const isFolded = wrap.classList.toggle('folded');
-    const calBody = document.getElementById('calBody');
-    const calHead = wrap.querySelector('.cal-head');
-
-    // CSS가 캐시/우선순위에 밀려도 반드시 접히도록 인라인으로 한 번 더 제어한다.
-    if (calBody) calBody.style.display = isFolded ? 'none' : '';
-    if (calHead) calHead.style.display = isFolded ? 'none' : '';
-    wrap.style.maxHeight = isFolded ? '20px' : '';
-    wrap.style.overflowY = isFolded ? 'hidden' : 'auto';
-
-    icon.innerText = isFolded ? '▼ 달력 펼치기' : '▲';
-}
+/* 달력 접기 기능 제거: 연속 스크롤 달력과 충돌 방지를 위해 비활성화 */
+function toggleCalendar() { return; }
 /* ▼▼▼ [추가] 이름으로 예약 검색 함수 ▼▼▼ */
 function loadNameRes() {
     if(!isAdmin) return alert("관리자 권한이 필요합니다.");
