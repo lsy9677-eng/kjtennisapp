@@ -14033,5 +14033,119 @@ function getAvailableCourtsAtHour(hour){
 })();
 </script>
 
+
+
+<style id="reservation-layout-adaptive-balanced-patch">
+/* 현황판 높이 밸런스 보정: 구조는 유지하고, 작은 화면에서 과하게 커진 현황판만 살짝 줄임 */
+@media (max-width: 1099px){
+  #view-res #gridArea.grid-area{
+    overflow-x:auto !important;
+    overflow-y:auto !important;
+    -webkit-overflow-scrolling:touch !important;
+    overscroll-behavior:contain !important;
+  }
+}
+</style>
+<script id="reservation-layout-adaptive-balanced-script">
+(function(){
+  function qsa(sel){ return Array.prototype.slice.call(document.querySelectorAll(sel)); }
+  function scheduleBalanced(){
+    requestAnimationFrame(applyBalancedGridLayout);
+    setTimeout(applyBalancedGridLayout, 80);
+    setTimeout(applyBalancedGridLayout, 260);
+    setTimeout(applyBalancedGridLayout, 520);
+  }
+  function applyBalancedGridLayout(){
+    var grid = document.getElementById('gridArea');
+    var calendar = document.getElementById('calendarWrap');
+    var footer = document.querySelector('#view-res .footer-bar');
+    var view = document.getElementById('view-res');
+    if(!grid || !calendar || !footer || !view || !view.classList.contains('active')) return;
+
+    var vw = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+    if(vw >= 1100) return;
+
+    var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    var viewRect = view.getBoundingClientRect();
+    var calRect = calendar.getBoundingClientRect();
+    var footerRect = footer.getBoundingClientRect();
+
+    var top = Math.ceil(calRect.bottom + 6);
+    var trim = Math.round(Math.max(28, Math.min(54, vh * 0.055))); // 기존보다 약 10~15% 줄이는 여유값
+    var bottomLine = footerRect.top > 0 ? footerRect.top - 8 - trim : (vh - 96 - trim);
+    var height = Math.floor(bottomLine - top);
+
+    // 현황판이 너무 작아지면 달력을 한 달 표시 가능한 선에서만 자동 축소
+    if(height < 230){
+      var currentCalH = calendar.getBoundingClientRect().height;
+      var newCalH = Math.max(238, currentCalH - (230 - height));
+      calendar.style.height = newCalH + 'px';
+      calendar.style.minHeight = newCalH + 'px';
+      calendar.style.maxHeight = newCalH + 'px';
+      calRect = calendar.getBoundingClientRect();
+      top = Math.ceil(calRect.bottom + 6);
+      footerRect = footer.getBoundingClientRect();
+      bottomLine = footerRect.top > 0 ? footerRect.top - 8 - trim : (vh - 96 - trim);
+      height = Math.floor(bottomLine - top);
+    }
+    if(height < 210) height = 210;
+
+    grid.style.position = 'fixed';
+    grid.style.left = Math.max(0, Math.floor(viewRect.left + 6)) + 'px';
+    grid.style.right = Math.max(0, Math.floor(window.innerWidth - viewRect.right + 6)) + 'px';
+    grid.style.top = top + 'px';
+    grid.style.bottom = Math.max(0, Math.floor(vh - bottomLine)) + 'px';
+    grid.style.height = height + 'px';
+    grid.style.minHeight = height + 'px';
+    grid.style.maxHeight = height + 'px';
+    grid.style.overflowX = 'auto';
+    grid.style.overflowY = 'auto';
+    grid.style.zIndex = '18';
+
+    var courts = qsa('#gridArea .head-court').length || 8;
+    var headH = 28;
+    var rowH = Math.floor((height - headH - 8) / courts);
+    rowH = Math.max(38, Math.min(52, rowH));
+    var orbH = Math.max(23, Math.min(30, rowH - 14));
+    var orbW = Math.max(40, Math.min(48, rowH + 2));
+    var fontSize = rowH >= 46 ? '.76rem' : '.70rem';
+
+    qsa('#gridArea .corner, #gridArea .head-time').forEach(function(el){
+      el.style.height = headH + 'px';
+      el.style.minHeight = headH + 'px';
+      el.style.lineHeight = headH + 'px';
+    });
+    qsa('#gridArea .head-court, #gridArea .data-cell').forEach(function(el){
+      el.style.height = rowH + 'px';
+      el.style.minHeight = rowH + 'px';
+    });
+    qsa('#gridArea .orb').forEach(function(el){
+      el.style.width = orbW + 'px';
+      el.style.height = orbH + 'px';
+      el.style.minHeight = orbH + 'px';
+      el.style.fontSize = fontSize;
+    });
+  }
+
+  window.addEventListener('resize', scheduleBalanced);
+  window.addEventListener('orientationchange', function(){ setTimeout(scheduleBalanced, 250); });
+  window.addEventListener('load', scheduleBalanced);
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scheduleBalanced);
+  else scheduleBalanced();
+
+  ['drawGrid','loadDB','drawCalendar','goTab'].forEach(function(name){
+    var oldFn = window[name];
+    if(typeof oldFn !== 'function' || oldFn.__balancedWrapped) return;
+    var wrapped = function(){
+      var r = oldFn.apply(this, arguments);
+      Promise.resolve(r).finally(scheduleBalanced);
+      return r;
+    };
+    wrapped.__balancedWrapped = true;
+    window[name] = wrapped;
+  });
+})();
+</script>
+
 </body>
 </html>
