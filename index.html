@@ -2197,6 +2197,33 @@ html body.dark-mode .cal-date.other-month{
   color:#64748b !important;
 }
 </style>
+
+<style>
+/* === 연속 달력 보완 패치: 접기 복구 + 무한 확장 === */
+.calendar-wrap.folded{
+  max-height:20px !important;
+  overflow:hidden !important;
+  padding-top:0 !important;
+  padding-bottom:0 !important;
+}
+.calendar-wrap.folded .cal-head,
+.calendar-wrap.folded #calBody{
+  display:none !important;
+}
+.calendar-wrap.folded .cal-toggle-bar{
+  display:block !important;
+  height:20px !important;
+  line-height:18px !important;
+  margin-top:0 !important;
+}
+#calBody.continuous-calendar{
+  display:block !important;
+}
+.calendar-wrap:not(.folded){
+  overflow-y:auto !important;
+  -webkit-overflow-scrolling:touch;
+}
+</style>
 </head>
 <body>
 <div id="androidAppBanner" style="display:none; background:#f0fdf4; border-bottom:1px solid #bbf7d0; padding:12px; text-align:center; animation: slideDown 0.5s ease-out; position:relative;">
@@ -3541,6 +3568,8 @@ html body.dark-mode .cal-date.other-month{
     </div>
 </div>
 <script>
+/* [달력 패치] drawCalendar가 초기 실행될 때도 접근 가능하도록 전역 var로 먼저 선언 */
+var calendarMonthsToRender = 4;
 /* [수정] 단체 대관 실행 (금액 설정 기능 추가) */
 async function doBulkReserve() {
     if(!isAdmin) return;
@@ -5107,6 +5136,8 @@ function toggleWeatherView() {
 }
 
 /* [수정] drawCalendar 함수: 날짜 출력 HTML 구조 단순화 (중앙 정렬 위해) */
+calendarMonthsToRender = calendarMonthsToRender || 4;
+
 function getDatePartsFromStr(dateStr) {
     const [yy, mm, dd] = String(dateStr || '').split('-').map(Number);
     return { y: yy, m: mm, d: dd };
@@ -5117,10 +5148,15 @@ function formatDateStrLocal(dateObj) {
 }
 
 function getCalendarCellHtml(cellDate, baseMonth) {
+    // 연속 월 스크롤에서는 각 월 섹션에 해당 월 날짜만 표시한다.
+    // 이전/다음 달 날짜는 클릭 가능한 날짜로 만들지 않고 빈 칸으로 둔다.
+    if (cellDate.getMonth() !== baseMonth) {
+        return `<div class="cal-date empty"></div>`;
+    }
+
     const dStr = formatDateStrLocal(cellDate);
     const week = cellDate.getDay();
     let cls = "cal-date";
-    if (cellDate.getMonth() !== baseMonth) cls += " other-month";
 
     const curDate = document.getElementById('hiddenDate').value;
     const now = new Date();
@@ -5141,11 +5177,9 @@ function getCalendarCellHtml(cellDate, baseMonth) {
     else if (week === 0) cls += " holiday-sunday";
     else if (week === 6) cls += " sat";
 
-    const displayNum = cellDate.getMonth() === baseMonth ? cellDate.getDate() : `${cellDate.getMonth()+1}/${cellDate.getDate()}`;
-
     return `
         <div id="cal-day-${dStr}" class="${cls}" onclick="pickDate('${dStr}')">
-            <span class="cal-date-num">${displayNum}</span>
+            <span class="cal-date-num">${cellDate.getDate()}</span>
             ${hName ? `<span class="holiday-name">${hName}</span>` : ''}
             <div class="cal-weather" id="w-${dStr}"></div>
         </div>`;
@@ -5194,19 +5228,43 @@ function updateCalendarTitleFromScroll() {
     }
 }
 
+function ensureMoreCalendarMonthsOnScroll() {
+    const wrap = document.getElementById('calendarWrap');
+    if (!wrap || wrap.classList.contains('folded')) return;
+    if (wrap._calendarAppending) return;
+
+    const remain = wrap.scrollHeight - (wrap.scrollTop + wrap.clientHeight);
+    if (remain > 260) return;
+
+    wrap._calendarAppending = true;
+    calendarMonthsToRender += 2;
+    drawCalendar(true);
+
+    setTimeout(() => {
+        if (wrap) wrap._calendarAppending = false;
+    }, 120);
+}
+
 function setupCalendarScrollTitleUpdate() {
     const wrap = document.getElementById('calendarWrap');
     if (!wrap) return;
     if (wrap._calendarScrollHandler) wrap.removeEventListener('scroll', wrap._calendarScrollHandler);
     wrap._calendarScrollHandler = () => {
         if (wrap._calendarScrollTimer) clearTimeout(wrap._calendarScrollTimer);
-        wrap._calendarScrollTimer = setTimeout(updateCalendarTitleFromScroll, 40);
+        wrap._calendarScrollTimer = setTimeout(() => {
+            updateCalendarTitleFromScroll();
+            ensureMoreCalendarMonthsOnScroll();
+        }, 40);
     };
     wrap.addEventListener('scroll', wrap._calendarScrollHandler);
 }
 
-/* [수정] drawCalendar 함수: 현재 월부터 연속 4개월을 세로 스크롤로 표시 */
-function drawCalendar() {
+/* [수정] drawCalendar 함수: 현재 월부터 연속 월을 세로 스크롤로 표시 */
+function drawCalendar(preserveScroll = false) {
+    if (!Number.isFinite(Number(calendarMonthsToRender)) || Number(calendarMonthsToRender) < 1) calendarMonthsToRender = 4;
+    const wrap = document.getElementById('calendarWrap');
+    const prevScrollTop = wrap ? wrap.scrollTop : 0;
+
     const y = viewDate.getFullYear();
     const m = viewDate.getMonth();
     document.getElementById('calTitle').innerText = `${y}. ${m+1}`;
@@ -5215,7 +5273,7 @@ function drawCalendar() {
     cal.classList.add('continuous-calendar');
 
     let html = '';
-    for (let offset = 0; offset < 4; offset++) {
+    for (let offset = 0; offset < calendarMonthsToRender; offset++) {
         const monthDate = new Date(y, m + offset, 1);
         html += renderOneCalendarMonth(monthDate.getFullYear(), monthDate.getMonth());
     }
@@ -5225,11 +5283,38 @@ function drawCalendar() {
     toggleWeatherView();
     markMyReservedDates();
     setupCalendarScrollTitleUpdate();
-    setTimeout(updateCalendarTitleFromScroll, 0);
+
+    if (preserveScroll && wrap) {
+        requestAnimationFrame(() => {
+            wrap.scrollTop = prevScrollTop;
+            updateCalendarTitleFromScroll();
+        });
+    } else {
+        setTimeout(updateCalendarTitleFromScroll, 0);
+    }
+}
+
+function ensureMoreCalendarMonthsForDate(dateStr) {
+    const parts = getDatePartsFromStr(dateStr);
+    if (!parts.y || !parts.m) return;
+
+    const selectedMonthIndex = parts.y * 12 + (parts.m - 1);
+    const baseMonthIndex = viewDate.getFullYear() * 12 + viewDate.getMonth();
+    const offset = selectedMonthIndex - baseMonthIndex;
+
+    // 마지막으로 표시된 달 또는 그 직전 달을 클릭하면 다음 2개월을 자동으로 추가한다.
+    if (offset >= calendarMonthsToRender - 2) {
+        calendarMonthsToRender += 2;
+        drawCalendar(true);
+    }
 }
 
 
-    function mvMonth(n) { viewDate.setMonth(viewDate.getMonth() + n); drawCalendar(); }
+    function mvMonth(n) {
+        viewDate.setMonth(viewDate.getMonth() + n);
+        calendarMonthsToRender = 4;
+        drawCalendar();
+    }
 
 /* 달력에 내 예약 날짜 dot 표시 */
 function markMyReservedDates(forceRefresh = false) {
@@ -5237,7 +5322,7 @@ function markMyReservedDates(forceRefresh = false) {
     const y = viewDate.getFullYear();
     const m = viewDate.getMonth();
     const startStr = `${y}-${String(m+1).padStart(2,'0')}-01`;
-    const endDateObj = new Date(y, m + 4, 0);
+    const endDateObj = new Date(y, m + calendarMonthsToRender, 0);
     const endStr = formatDateStrLocal(endDateObj);
     const cacheKey = `${currentCenter}_${currentUser.phone}_${startStr}_${endStr}`;
     const cached = _myReservedDatesCache[cacheKey];
@@ -10987,19 +11072,19 @@ function applyWeatherToCalendar(data) {
 function toggleCalendar() {
     const wrap = document.getElementById('calendarWrap');
     const icon = document.getElementById('calToggleIcon');
-    
-    // 안전장치: 요소가 없으면 실행 중단
-    if(!wrap || !icon) return; 
+    if(!wrap || !icon) return;
 
-    // 클래스 토글 (folded 클래스가 있으면 접히고, 없으면 펼쳐짐)
-    wrap.classList.toggle('folded');
-    
-    // 상태에 따라 아이콘과 글자 변경
-    if(wrap.classList.contains('folded')) {
-        icon.innerText = "▼ 달력 펼치기"; // 접혔을 때 보여줄 텍스트
-    } else {
-        icon.innerText = "▲"; // 펼쳐졌을 때 보여줄 아이콘
-    }
+    const isFolded = wrap.classList.toggle('folded');
+    const calBody = document.getElementById('calBody');
+    const calHead = wrap.querySelector('.cal-head');
+
+    // CSS가 캐시/우선순위에 밀려도 반드시 접히도록 인라인으로 한 번 더 제어한다.
+    if (calBody) calBody.style.display = isFolded ? 'none' : '';
+    if (calHead) calHead.style.display = isFolded ? 'none' : '';
+    wrap.style.maxHeight = isFolded ? '20px' : '';
+    wrap.style.overflowY = isFolded ? 'hidden' : 'auto';
+
+    icon.innerText = isFolded ? '▼ 달력 펼치기' : '▲';
 }
 /* ▼▼▼ [추가] 이름으로 예약 검색 함수 ▼▼▼ */
 function loadNameRes() {
@@ -11600,8 +11685,8 @@ function pickDate(s) {
 
     const parts = getDatePartsFromStr(s);
     if (parts.y && parts.m) {
-        // 다음/이전 버튼 기준 월은 선택한 월로 갱신하되, 달력은 다시 그리지 않아 현재 스크롤 위치를 유지한다.
-        viewDate = new Date(parts.y, parts.m - 1, 1);
+        // 상단 표시는 선택한 날짜 기준으로 바꾸되, viewDate는 현재 연속 달력의 시작 월로 유지한다.
+        // 이렇게 해야 클릭할 때 달력이 위로 튀지 않고, 아래 달들이 계속 이어진다.
         document.getElementById('calTitle').innerText = `${parts.y}. ${parts.m}`;
     }
 
@@ -11609,6 +11694,7 @@ function pickDate(s) {
     const pickedCell = document.getElementById(`cal-day-${s}`);
     if (pickedCell) pickedCell.classList.add('selected');
 
+    ensureMoreCalendarMonthsForDate(s);
     loadDB(); 
     updateWeatherBanner(s);
 }
