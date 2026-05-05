@@ -13919,5 +13919,119 @@ function getAvailableCourtsAtHour(hour){
 })();
 </script>
 
+
+
+<style id="reservation-layout-final-internal-scroll-patch">
+/* 최종 보정: 페이지 전체가 아니라 코트 현황판 내부에서만 세로 스크롤 허용 */
+@media (max-width: 1099px){
+  #view-res #gridArea.grid-area{
+    overflow-x:auto !important;
+    overflow-y:auto !important;
+    -webkit-overflow-scrolling:touch !important;
+    overscroll-behavior:contain !important;
+  }
+  #view-res #gridArea .schedule-table{
+    min-height:max-content !important;
+    height:auto !important;
+    padding-bottom:8px !important;
+  }
+}
+</style>
+
+<script id="reservation-layout-internal-scroll-final-patch">
+(function(){
+  function qsa(sel){ return Array.prototype.slice.call(document.querySelectorAll(sel)); }
+  function fitGridInternalScroll(){
+    var grid = document.getElementById('gridArea');
+    var calendar = document.getElementById('calendarWrap');
+    var footer = document.querySelector('#view-res .footer-bar');
+    var view = document.getElementById('view-res');
+    if(!grid || !calendar || !footer || !view || !view.classList.contains('active')) return;
+
+    var narrow = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0) < 1100;
+    if(!narrow) return;
+
+    var viewRect = view.getBoundingClientRect();
+    var calRect = calendar.getBoundingClientRect();
+    var footerRect = footer.getBoundingClientRect();
+    var top = Math.ceil(calRect.bottom + 6);
+    var bottomLine = footerRect.top > 0 ? footerRect.top - 8 : (window.innerHeight - 96);
+    var height = Math.floor(bottomLine - top);
+
+    if(height < 260){
+      var currentCalH = calendar.getBoundingClientRect().height;
+      var newCalH = Math.max(238, currentCalH - (260 - height));
+      calendar.style.height = newCalH + 'px';
+      calendar.style.minHeight = newCalH + 'px';
+      calendar.style.maxHeight = newCalH + 'px';
+      calRect = calendar.getBoundingClientRect();
+      top = Math.ceil(calRect.bottom + 6);
+      footerRect = footer.getBoundingClientRect();
+      bottomLine = footerRect.top > 0 ? footerRect.top - 8 : (window.innerHeight - 96);
+      height = Math.floor(bottomLine - top);
+    }
+    if(height < 220) height = 220;
+
+    grid.style.position = 'fixed';
+    grid.style.left = Math.max(0, Math.floor(viewRect.left + 6)) + 'px';
+    grid.style.right = Math.max(0, Math.floor(window.innerWidth - viewRect.right + 6)) + 'px';
+    grid.style.top = top + 'px';
+    grid.style.bottom = Math.max(0, Math.floor(window.innerHeight - bottomLine)) + 'px';
+    grid.style.height = height + 'px';
+    grid.style.minHeight = height + 'px';
+    grid.style.maxHeight = height + 'px';
+    grid.style.overflowX = 'auto';
+    grid.style.overflowY = 'auto';
+    grid.style.webkitOverflowScrolling = 'touch';
+
+    var courts = qsa('#gridArea .head-court').length || 8;
+    var headH = 28;
+    var rowH = Math.floor((height - headH - 8) / courts);
+    rowH = Math.max(40, Math.min(56, rowH));
+    var orbH = Math.max(24, Math.min(32, rowH - 14));
+    var orbW = Math.max(42, Math.min(50, rowH + 3));
+    var fontSize = rowH >= 48 ? '.78rem' : '.72rem';
+
+    qsa('#gridArea .corner, #gridArea .head-time').forEach(function(el){
+      el.style.height = headH + 'px';
+      el.style.minHeight = headH + 'px';
+      el.style.lineHeight = headH + 'px';
+    });
+    qsa('#gridArea .head-court, #gridArea .data-cell').forEach(function(el){
+      el.style.height = rowH + 'px';
+      el.style.minHeight = rowH + 'px';
+    });
+    qsa('#gridArea .orb').forEach(function(el){
+      el.style.width = orbW + 'px';
+      el.style.height = orbH + 'px';
+      el.style.minHeight = orbH + 'px';
+      el.style.fontSize = fontSize;
+    });
+  }
+  function schedule(){
+    requestAnimationFrame(fitGridInternalScroll);
+    setTimeout(fitGridInternalScroll, 80);
+    setTimeout(fitGridInternalScroll, 250);
+  }
+  window.addEventListener('resize', schedule);
+  window.addEventListener('orientationchange', function(){ setTimeout(schedule, 250); });
+  window.addEventListener('load', schedule);
+  document.addEventListener('DOMContentLoaded', schedule);
+  var oldDrawGrid = window.drawGrid;
+  if(typeof oldDrawGrid === 'function'){
+    window.drawGrid = function(){ var r = oldDrawGrid.apply(this, arguments); schedule(); return r; };
+  }
+  var oldLoadDB = window.loadDB;
+  if(typeof oldLoadDB === 'function'){
+    window.loadDB = function(){ var r = oldLoadDB.apply(this, arguments); Promise.resolve(r).finally(schedule); return r; };
+  }
+  var oldDrawCalendar = window.drawCalendar;
+  if(typeof oldDrawCalendar === 'function'){
+    window.drawCalendar = function(){ var r = oldDrawCalendar.apply(this, arguments); schedule(); return r; };
+  }
+  schedule();
+})();
+</script>
+
 </body>
 </html>
