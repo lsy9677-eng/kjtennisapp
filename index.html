@@ -2690,6 +2690,7 @@ html body.dark-mode .cal-date.other-month{
                     </label>
                     <span style="font-size:0.8rem; font-weight:normal;">⛅</span>
                 </div>
+                <button type="button" id="btnCalendarFold" class="calendar-fold-btn" onclick="toggleCalendar()" title="달력 접기/펼치기">달력접기</button>
             </div>
 
             <button class="cal-nav" onclick="mvMonth(1)">&#62;</button>
@@ -11133,8 +11134,48 @@ function applyWeatherToCalendar(data) {
         `;
     }
 }
-/* 달력 접기 기능 제거: 연속 스크롤 달력과 충돌 방지를 위해 비활성화 */
-function toggleCalendar() { return; }
+/* 달력 접기/펼치기: 월 표시/날씨 토글 옆 버튼에서 사용 */
+function toggleCalendar() {
+    const wrap = document.getElementById('calendarWrap');
+    const btn = document.getElementById('btnCalendarFold');
+    const grid = document.getElementById('gridArea');
+    if (!wrap) return;
+
+    const folded = wrap.classList.toggle('folded');
+
+    if (folded) {
+        // 기존 CSS에 min-height:258px 같은 !important 보정이 남아 있어도
+        // 접었을 때는 달력 영역을 실제로 34px만 차지하게 강제한다.
+        wrap.style.setProperty('height', '34px', 'important');
+        wrap.style.setProperty('min-height', '34px', 'important');
+        wrap.style.setProperty('max-height', '34px', 'important');
+        wrap.style.setProperty('flex', '0 0 34px', 'important');
+        wrap.style.setProperty('overflow', 'hidden', 'important');
+        if (grid) {
+            grid.style.setProperty('flex', '1 1 auto', 'important');
+            grid.style.setProperty('min-height', '0', 'important');
+            grid.style.setProperty('overflow-y', 'auto', 'important');
+        }
+    } else {
+        // 펼칠 때는 인라인 강제를 제거해서 기존 연속 달력 스크롤 설정으로 복귀
+        ['height','min-height','max-height','flex','overflow'].forEach(p => wrap.style.removeProperty(p));
+        if (grid) {
+            grid.style.removeProperty('flex');
+            grid.style.removeProperty('min-height');
+            grid.style.removeProperty('overflow-y');
+        }
+    }
+
+    if (btn) btn.innerText = folded ? '달력펼치기' : '달력접기';
+
+    setTimeout(() => {
+        try {
+            if (typeof updateCalendarTitleFromScroll === 'function') updateCalendarTitleFromScroll();
+            if (typeof autoScroll === 'function') autoScroll();
+        } catch(e) {}
+    }, 60);
+}
+function toggleCourtBoard() { toggleCalendar(); }
 /* ▼▼▼ [추가] 이름으로 예약 검색 함수 ▼▼▼ */
 function loadNameRes() {
     if(!isAdmin) return alert("관리자 권한이 필요합니다.");
@@ -13318,6 +13359,177 @@ function getAvailableCourtsAtHour(hour){
   #gridArea .orb{
     height:19px !important;
     font-size:0.58rem !important;
+  }
+}
+</style>
+
+
+
+<style id="calendar-fold-and-small-phone-scroll-final">
+/* === 달력 접기 복구 + 작은 폰 7/8코트 세로 스크롤 보정 === */
+.calendar-fold-btn{
+  margin-left:6px;
+  height:22px;
+  padding:0 8px;
+  border:1px solid #cbd5e1;
+  background:#f8fafc;
+  color:#475569;
+  border-radius:999px;
+  font-size:0.72rem;
+  font-weight:800;
+  line-height:20px;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.calendar-fold-btn:active{transform:scale(.98);}
+body.dark-mode .calendar-fold-btn{
+  background:#334155 !important;
+  border-color:#475569 !important;
+  color:#e2e8f0 !important;
+}
+
+/* 기존에 달력 접기를 제거하던 CSS를 마지막에서 확실히 무효화 */
+.cal-toggle-bar{display:none !important;}
+#calendarWrap.folded{
+  min-height:34px !important;
+  max-height:36px !important;
+  height:36px !important;
+  overflow:hidden !important;
+  padding-top:2px !important;
+  padding-bottom:0 !important;
+}
+#calendarWrap.folded .cal-head{
+  display:flex !important;
+  margin-bottom:0 !important;
+}
+#calendarWrap.folded #calBody,
+#calendarWrap.folded .cal-grid,
+#calendarWrap.folded .cal-month-section{
+  display:none !important;
+}
+#calendarWrap.folded + #weatherBanner{
+  margin-top:2px !important;
+}
+
+@media (max-width:768px){
+  #view-res.content-area.active{
+    display:flex !important;
+    flex-direction:column !important;
+    height:calc(100dvh - 52px) !important;
+    min-height:0 !important;
+    overflow:hidden !important;
+    padding:4px 0 102px !important;
+  }
+  #calendarWrap{
+    flex:0 0 auto !important;
+    max-height:34vh !important;
+    min-height:0 !important;
+    overflow-y:auto !important;
+    -webkit-overflow-scrolling:touch;
+  }
+  #calBody.continuous-calendar{
+    max-height:calc(34vh - 30px) !important;
+    overflow-y:auto !important;
+    -webkit-overflow-scrolling:touch;
+  }
+  #calendarWrap.folded{
+    flex:0 0 34px !important;
+    min-height:34px !important;
+    max-height:34px !important;
+    height:34px !important;
+  }
+  #calendarWrap.folded #calBody.continuous-calendar{
+    display:none !important;
+  }
+  #weatherBanner{
+    flex:0 0 auto !important;
+  }
+  #gridArea{
+    flex:1 1 auto !important;
+    min-height:168px !important;
+    height:auto !important;
+    max-height:none !important;
+    margin:0 4px !important;
+    padding:3px 4px 2px !important;
+    overflow-x:auto !important;
+    overflow-y:auto !important;
+    -webkit-overflow-scrolling:touch !important;
+    overscroll-behavior:contain;
+  }
+  #gridArea .schedule-table{
+    padding-bottom:14px !important;
+    grid-template-columns:50px repeat(15,48px) !important;
+  }
+  #gridArea .head-court,
+  #gridArea .data-cell{
+    height:31px !important;
+    min-height:31px !important;
+  }
+  #gridArea .corner,
+  #gridArea .head-time{
+    height:22px !important;
+    min-height:22px !important;
+  }
+}
+
+@media (max-width:390px){
+  #calendarWrap{max-height:32vh !important;}
+  #calBody.continuous-calendar{max-height:calc(32vh - 30px) !important;}
+  #calendarWrap.folded{max-height:34px !important;}
+  #gridArea{
+    min-height:150px !important;
+    overflow-y:auto !important;
+  }
+  #gridArea .head-court,
+  #gridArea .data-cell{
+    height:30px !important;
+    min-height:30px !important;
+  }
+  .calendar-fold-btn{
+    padding:0 6px;
+    font-size:0.68rem;
+  }
+}
+</style>
+
+<style id="calendar-fold-no-blank-final-fix">
+/* === 달력 접기 시 빈공간 제거 최종 보정 ===
+   기존 #view-res #calendarWrap.calendar-wrap min-height 보정보다 더 강하게 적용 */
+#view-res #calendarWrap.calendar-wrap.folded{
+  height:34px !important;
+  min-height:34px !important;
+  max-height:34px !important;
+  flex:0 0 34px !important;
+  overflow:hidden !important;
+  padding-top:2px !important;
+  padding-bottom:0 !important;
+}
+#view-res #calendarWrap.calendar-wrap.folded .cal-head{
+  display:flex !important;
+  min-height:28px !important;
+  margin-bottom:0 !important;
+}
+#view-res #calendarWrap.calendar-wrap.folded #calBody,
+#view-res #calendarWrap.calendar-wrap.folded .cal-grid,
+#view-res #calendarWrap.calendar-wrap.folded .cal-month-section{
+  display:none !important;
+}
+#view-res.content-area.active:has(#calendarWrap.folded) #gridArea{
+  flex:1 1 auto !important;
+  min-height:0 !important;
+  overflow-y:auto !important;
+}
+@media (max-width:768px){
+  #view-res.content-area.active:has(#calendarWrap.folded){
+    height:calc(100dvh - 52px) !important;
+    overflow:hidden !important;
+  }
+  #view-res.content-area.active:has(#calendarWrap.folded) #gridArea{
+    flex:1 1 auto !important;
+    min-height:0 !important;
+    max-height:none !important;
+    overflow-y:auto !important;
+    -webkit-overflow-scrolling:touch !important;
   }
 }
 </style>
