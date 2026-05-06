@@ -2292,6 +2292,21 @@ html body.dark-mode .cal-date.other-month{
 }
 </style>
 
+
+
+<style>
+/* === 첫 번째 달 내부 월 제목 숨김 ===
+   상단 calTitle(예: 2026.5)이 이미 있으므로 달력 내부의 첫 월 제목은 숨기고,
+   스크롤로 이어지는 다음 달 제목은 그대로 표시합니다. */
+#view-res #calBody .cal-month-section:first-child .cal-month-title{
+  display:none !important;
+}
+#view-res #calBody .cal-month-section:first-child{
+  border-top-left-radius:10px !important;
+  border-top-right-radius:10px !important;
+}
+</style>
+
 </head>
 <body>
 <div id="androidAppBanner" style="display:none; background:#f0fdf4; border-bottom:1px solid #bbf7d0; padding:12px; text-align:center; animation: slideDown 0.5s ease-out; position:relative;">
@@ -2665,16 +2680,7 @@ html body.dark-mode .cal-date.other-month{
     <div class="tab" onclick="goTab('board')">게시판</div>
 </div>
 <div id="view-res" class="content-area active">
-    <div id="adminToolbar" class="admin-toolbar">
-        <label class="switch-label">
-            <label class="toggle-switch">
-                <input type="checkbox" id="chkBatchDel" onchange="toggleBatchMode()">
-                <span class="slider"></span>
-            </label>
-            <span style="color:var(--danger)">🗑️ 일괄 취소 모드</span>
-        </label>
-        <button id="btnBatchExec" class="btn-sm bg-red" style="display:none;" onclick="doBatchDelete()">삭제 실행</button>
-    </div>
+    <div id="adminToolbar" class="admin-toolbar admin-toolbar-legacy-hidden" aria-hidden="true"></div>
 
 <div class="calendar-wrap" id="calendarWrap">
         <div class="cal-head">
@@ -2691,6 +2697,14 @@ html body.dark-mode .cal-date.other-month{
                     <span style="font-size:0.8rem; font-weight:normal;">⛅</span>
                 </div>
                 <button type="button" id="btnCalendarFold" class="calendar-fold-btn" onclick="toggleCalendar()" title="달력 접기/펼치기">달력접기</button>
+                <div id="inlineBatchControls" class="inline-batch-controls" title="관리자 일괄 취소 모드">
+                    <label class="inline-batch-toggle">
+                        <input type="checkbox" id="chkBatchDel" onchange="toggleBatchMode()">
+                        <span class="inline-batch-knob"></span>
+                        <span class="inline-batch-text">일괄취소</span>
+                    </label>
+                    <button id="btnBatchExec" class="inline-batch-exec" style="display:none;" onclick="doBatchDelete()">삭제</button>
+                </div>
             </div>
 
             <button class="cal-nav" onclick="mvMonth(1)">&#62;</button>
@@ -4641,13 +4655,17 @@ function updateAdminUI() {
         }
     }
 
-    // 3. 탭 메뉴 및 툴바 노출 여부 (관리자 전용)
+    // 3. 탭 메뉴 노출 여부 (관리자 전용)
+    // 일괄취소 컨트롤은 달력 헤더 옆 inlineBatchControls로 이동했으므로
+    // 기존 adminToolbar는 관리자 로그인 상태에서도 공간을 차지하지 않게 항상 숨깁니다.
     if (isAdmin) {
         tabList.style.display = 'flex';
-        adminTool.style.display = 'flex';
     } else {
         tabList.style.display = 'none';
+    }
+    if (adminTool) {
         adminTool.style.display = 'none';
+        adminTool.setAttribute('aria-hidden', 'true');
     }
 }
 function goTab(t) {
@@ -9302,11 +9320,11 @@ async function savePriceSettings() {
     function toggleBatchMode() {
         isBatchMode = document.getElementById('chkBatchDel').checked;
         deleteQueue = []; 
-        document.getElementById('btnBatchExec').style.display = 'none';
+        const btnBatchExec = document.getElementById('btnBatchExec');
+        if (btnBatchExec) btnBatchExec.style.display = 'none';
         
         document.querySelectorAll('.delete-select').forEach(el => el.classList.remove('delete-select'));
-        
-        if(isBatchMode) alert("삭제할 예약을 터치하여 여러 개 선택하세요.");
+        // 안내 팝업 제거: 버튼 ON/OFF만 조용히 전환합니다.
     }
 
    /* [수정] 일괄 삭제 실행 (정기 대관은 날짜만 제외, 일반 예약은 삭제) */
@@ -13533,6 +13551,290 @@ body.dark-mode .calendar-fold-btn{
   }
 }
 </style>
+
+
+
+<style id="calendar-fold-and-inline-admin-final">
+/* 관리자 일괄취소 기존 상단 바는 공간을 차지하지 않도록 완전히 숨김 */
+#adminToolbar.admin-toolbar-legacy-hidden{
+  display:none !important;
+  height:0 !important;
+  min-height:0 !important;
+  padding:0 !important;
+  margin:0 !important;
+  border:0 !important;
+  overflow:hidden !important;
+}
+
+/* 달력 접기 버튼: 월 표시/날씨 토글 옆 입체형 */
+.calendar-fold-btn{
+  margin-left:6px !important;
+  height:24px !important;
+  padding:0 10px !important;
+  border:1px solid rgba(29,78,216,.35) !important;
+  background:linear-gradient(180deg,#60a5fa 0%,#2563eb 52%,#1d4ed8 100%) !important;
+  color:#fff !important;
+  border-radius:999px !important;
+  font-size:0.72rem !important;
+  font-weight:900 !important;
+  line-height:22px !important;
+  cursor:pointer !important;
+  white-space:nowrap !important;
+  box-shadow:0 2px 0 #1e40af, 0 7px 14px rgba(37,99,235,.25), inset 0 1px 0 rgba(255,255,255,.45) !important;
+  text-shadow:0 1px 1px rgba(15,23,42,.28) !important;
+}
+.calendar-fold-btn:active{
+  transform:translateY(1px) scale(.99) !important;
+  box-shadow:0 1px 0 #1e40af, 0 3px 8px rgba(37,99,235,.22), inset 0 1px 0 rgba(255,255,255,.25) !important;
+}
+#calendarWrap.folded .calendar-fold-btn{
+  background:linear-gradient(180deg,#fbbf24 0%,#f59e0b 55%,#d97706 100%) !important;
+  border-color:rgba(180,83,9,.42) !important;
+  box-shadow:0 2px 0 #b45309, 0 7px 14px rgba(245,158,11,.24), inset 0 1px 0 rgba(255,255,255,.45) !important;
+}
+body.dark-mode .calendar-fold-btn{
+  background:linear-gradient(180deg,#3b82f6 0%,#1d4ed8 60%,#1e40af 100%) !important;
+  border-color:#60a5fa !important;
+  color:#fff !important;
+}
+body.dark-mode #calendarWrap.folded .calendar-fold-btn{
+  background:linear-gradient(180deg,#f59e0b 0%,#d97706 60%,#92400e 100%) !important;
+  border-color:#fbbf24 !important;
+}
+
+/* 관리자 전용 일괄 취소 컨트롤: 달력 접기 버튼 옆 */
+.inline-batch-controls{
+  display:none;
+  align-items:center;
+  gap:4px;
+  margin-left:4px;
+  white-space:nowrap;
+}
+body.admin-mode .inline-batch-controls{
+  display:inline-flex !important;
+}
+.inline-batch-toggle{
+  height:24px;
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:0 7px 0 4px;
+  border-radius:999px;
+  border:1px solid #fecaca;
+  background:linear-gradient(180deg,#fff7f7 0%,#fee2e2 100%);
+  color:#b91c1c;
+  font-size:0.68rem;
+  font-weight:900;
+  cursor:pointer;
+  box-shadow:0 2px 0 #fecaca, 0 5px 10px rgba(239,68,68,.12), inset 0 1px 0 rgba(255,255,255,.7);
+}
+.inline-batch-toggle input{display:none;}
+.inline-batch-knob{
+  width:18px;
+  height:18px;
+  border-radius:50%;
+  background:#fff;
+  border:1px solid #fca5a5;
+  box-shadow:inset 0 1px 1px rgba(0,0,0,.08);
+  position:relative;
+  flex:0 0 auto;
+}
+.inline-batch-toggle input:checked + .inline-batch-knob{
+  background:#ef4444;
+  border-color:#dc2626;
+}
+.inline-batch-toggle input:checked + .inline-batch-knob::after{
+  content:'✓';
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:#fff;
+  font-size:0.7rem;
+  font-weight:900;
+}
+.inline-batch-toggle:has(input:checked){
+  background:linear-gradient(180deg,#ef4444 0%,#dc2626 100%);
+  color:#fff;
+  border-color:#b91c1c;
+  box-shadow:0 2px 0 #991b1b, 0 6px 12px rgba(220,38,38,.22), inset 0 1px 0 rgba(255,255,255,.25);
+}
+.inline-batch-exec{
+  height:24px;
+  padding:0 8px;
+  border:none;
+  border-radius:999px;
+  background:#991b1b;
+  color:#fff;
+  font-size:0.68rem;
+  font-weight:900;
+  cursor:pointer;
+  box-shadow:0 2px 0 #7f1d1d, 0 5px 10px rgba(153,27,27,.18);
+}
+body.dark-mode .inline-batch-toggle{
+  background:linear-gradient(180deg,#7f1d1d 0%,#450a0a 100%);
+  border-color:#991b1b;
+  color:#fecaca;
+  box-shadow:0 2px 0 #450a0a, inset 0 1px 0 rgba(255,255,255,.12);
+}
+body.dark-mode .inline-batch-toggle:has(input:checked){
+  background:linear-gradient(180deg,#ef4444 0%,#991b1b 100%);
+  color:#fff;
+}
+
+@media (max-width:430px){
+  .calendar-fold-btn{
+    height:23px !important;
+    padding:0 8px !important;
+    font-size:0.66rem !important;
+    margin-left:4px !important;
+  }
+  .inline-batch-toggle{
+    height:23px;
+    padding:0 6px 0 3px;
+    font-size:0.62rem;
+    gap:3px;
+  }
+  .inline-batch-knob{width:17px;height:17px;}
+  .inline-batch-exec{height:23px;padding:0 7px;font-size:0.62rem;}
+}
+@media (max-width:370px){
+  .inline-batch-text{display:none;}
+  .inline-batch-toggle{padding-right:3px;}
+  .calendar-fold-btn{padding:0 7px !important;}
+}
+</style>
+
+
+<style id="admin-batch-cleanup-compact-final">
+/* === 관리자 일괄취소 이동 후 남는 빈공간 제거 최종 패치 === */
+#adminToolbar,
+#adminToolbar.admin-toolbar,
+#adminToolbar.admin-toolbar-legacy-hidden{
+  display:none !important;
+  visibility:hidden !important;
+  height:0 !important;
+  min-height:0 !important;
+  max-height:0 !important;
+  padding:0 !important;
+  margin:0 !important;
+  border:0 !important;
+  overflow:hidden !important;
+}
+
+/* PC 3열 레이아웃에서 기존 toolbar 행 자체를 제거해서 첫 줄 빈 공간/gap이 남지 않게 처리 */
+@media (min-width:1100px){
+  #view-res.content-area.active{
+    grid-template-areas:
+      "calendar weather side"
+      "calendar grid side"
+      "calendar footer side" !important;
+    align-items:start !important;
+  }
+}
+
+/* 태블릿/좁은 PC 구간에서도 absolute adminToolbar가 공간 또는 클릭영역을 만들지 않게 차단 */
+@media (min-width:769px) and (max-width:1099px){
+  #view-res #adminToolbar{
+    display:none !important;
+    pointer-events:none !important;
+  }
+}
+</style>
+
+
+
+<style id="admin-general-spacing-match-final">
+/* === 관리자/일반 로그인 예약화면 상단 공간 동일화 최종 패치 ===
+   예전 관리자 툴바(#adminToolbar)가 모바일에서 sticky/flex로 살아나며
+   달력 위에 32px 정도 빈공간을 만들던 문제를 완전히 차단합니다. */
+body.admin-mode #view-res.content-area.active > #adminToolbar,
+body.admin-mode #view-res.content-area.active > #adminToolbar.admin-toolbar,
+body.admin-mode #view-res.content-area.active > #adminToolbar.admin-toolbar-legacy-hidden,
+#view-res.content-area.active > #adminToolbar,
+#adminToolbar{
+  display:none !important;
+  visibility:hidden !important;
+  position:absolute !important;
+  left:-99999px !important;
+  top:-99999px !important;
+  width:0 !important;
+  height:0 !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  max-width:0 !important;
+  max-height:0 !important;
+  flex:0 0 0 !important;
+  order:999 !important;
+  padding:0 !important;
+  margin:0 !important;
+  border:0 !important;
+  overflow:hidden !important;
+  pointer-events:none !important;
+}
+
+/* 모바일/좁은 PC에서 관리자 상태라도 예약화면 간격을 일반 로그인과 동일하게 고정 */
+@media (max-width:768px){
+  #view-res.content-area.active,
+  body.admin-mode #view-res.content-area.active{
+    gap:4px !important;
+    padding-top:4px !important;
+  }
+  #view-res.content-area.active > #calendarWrap.calendar-wrap,
+  body.admin-mode #view-res.content-area.active > #calendarWrap.calendar-wrap{
+    margin-top:0 !important;
+  }
+}
+
+/* 768~1099px 구간의 과거 absolute/sticky 관리자 툴바도 완전히 제거 */
+@media (min-width:769px) and (max-width:1099px){
+  body.admin-mode #view-res.content-area.active > #adminToolbar{
+    display:none !important;
+    position:absolute !important;
+    left:-99999px !important;
+    top:-99999px !important;
+  }
+}
+</style>
+
+<script id="admin-toolbar-hard-disable-final">
+(function(){
+  function killLegacyAdminToolbar(){
+    var el = document.getElementById('adminToolbar');
+    if(!el) return;
+    el.classList.add('admin-toolbar-legacy-hidden');
+    el.setAttribute('aria-hidden','true');
+    el.style.setProperty('display','none','important');
+    el.style.setProperty('visibility','hidden','important');
+    el.style.setProperty('position','absolute','important');
+    el.style.setProperty('left','-99999px','important');
+    el.style.setProperty('top','-99999px','important');
+    el.style.setProperty('width','0','important');
+    el.style.setProperty('height','0','important');
+    el.style.setProperty('min-height','0','important');
+    el.style.setProperty('max-height','0','important');
+    el.style.setProperty('padding','0','important');
+    el.style.setProperty('margin','0','important');
+    el.style.setProperty('border','0','important');
+    el.style.setProperty('overflow','hidden','important');
+    el.style.setProperty('pointer-events','none','important');
+  }
+  window.killLegacyAdminToolbar = killLegacyAdminToolbar;
+  document.addEventListener('DOMContentLoaded', killLegacyAdminToolbar);
+  window.addEventListener('load', killLegacyAdminToolbar);
+  var oldUpdate = window.updateAdminUI;
+  if(typeof oldUpdate === 'function'){
+    window.updateAdminUI = function(){
+      var r = oldUpdate.apply(this, arguments);
+      killLegacyAdminToolbar();
+      return r;
+    };
+  }
+  setTimeout(killLegacyAdminToolbar, 50);
+  setTimeout(killLegacyAdminToolbar, 300);
+})();
+</script>
 
 </body>
 </html>
