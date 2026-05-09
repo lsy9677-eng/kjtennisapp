@@ -2330,31 +2330,40 @@ body.dark-mode .weather-banner-link:hover{
 
 
 <style>
-/* === 게시판 하단 날짜 가림/FAB 위치 안정화 패치 === */
+/* === 게시판 하단 날짜 가림/FAB 위치 안정화 최종 패치 === */
 #view-board {
     min-height: 0 !important;
 }
 #view-board .board-list {
-    padding-bottom: 170px !important;
-    scroll-padding-bottom: 170px !important;
+    padding-bottom: 210px !important;
+    scroll-padding-bottom: 210px !important;
+}
+#view-board .post-card {
+    padding-right: 86px !important; /* 우측 날짜/제목이 + 버튼 밑으로 들어가지 않게 확보 */
 }
 #view-board .post-card:last-child {
-    margin-bottom: 120px !important;
+    margin-bottom: 145px !important;
 }
 #view-board .fab-btn {
-    bottom: calc(92px + env(safe-area-inset-bottom, 0px)) !important;
-    right: 22px !important;
+    bottom: calc(74px + env(safe-area-inset-bottom, 0px)) !important; /* 하단 네비 바로 위로 내려 겹침 최소화 */
+    right: 18px !important;
     left: auto !important;
     margin-left: 0 !important;
     z-index: 9999 !important;
 }
 @media (max-width: 768px) {
     #view-board .fab-btn {
-        bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
-        right: 20px !important;
+        bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
+        right: 18px !important;
+        width: 54px !important;
+        height: 54px !important;
     }
     #view-board .board-list {
-        padding-bottom: 185px !important;
+        padding-bottom: 225px !important;
+        scroll-padding-bottom: 225px !important;
+    }
+    #view-board .post-card {
+        padding-right: 82px !important;
     }
 }
 </style>
@@ -8567,7 +8576,7 @@ function openCancel(el) {
     document.getElementById('dtContact').value = phone;
     
     window.cancelTarget = { 
-        id: id, coll: coll, name: name, phone: phone, date: date, time: time, status: status
+        id: id, coll: coll, name: name, phone: phone, date: date, time: time, court: parseInt(el.dataset.c), status: status
     };
     
     const btnApproveGroup = document.getElementById('adminApproveBtns');
@@ -10950,72 +10959,111 @@ async function getAdminPhoneNumber() {
     return "010-0000-0000"; // 최후의 수단
 }
 /* [수정] 나의 예약 일괄 취소 (상태별 분기 처리) */
+async function getLatestMyReservationItem(item) {
+    try {
+        const ref = db.collection('reservations').doc(item.id);
+        const doc = await ref.get();
+        if (doc.exists) {
+            const d = doc.data() || {};
+            return {
+                id: doc.id,
+                date: d.date || item.date,
+                time: d.time !== undefined ? Number(d.time) : Number(item.time),
+                court: d.court !== undefined ? Number(d.court) : (item.court !== undefined ? Number(item.court) : null),
+                status: d.status || item.status || 'UNKNOWN',
+                name: d.name || (currentUser ? currentUser.name : '회원'),
+                phone: d.phone || (currentUser ? currentUser.phone : '')
+            };
+        }
+    } catch(e) {
+        console.warn('내 예약 최신 상태 확인 실패:', e);
+    }
+    return {
+        id: item.id,
+        date: item.date,
+        time: Number(item.time),
+        court: item.court !== undefined ? Number(item.court) : null,
+        status: item.status || 'UNKNOWN',
+        name: currentUser ? currentUser.name : '회원',
+        phone: currentUser ? currentUser.phone : ''
+    };
+}
+
+function buildCancelDetailText(targets) {
+    return (targets || [])
+        .slice()
+        .sort((a,b) => String(a.date || '').localeCompare(String(b.date || '')) || (Number(a.time || 0) - Number(b.time || 0)) || (Number(a.court || 0) - Number(b.court || 0)))
+        .map(t => {
+            const courtText = t.court ? `${t.court}코트 ` : '';
+            return `- ${t.date} ${courtText}${t.time}:00`;
+        })
+        .join('\n');
+}
+
+/* [최종 수정] 나의 예약 일괄 취소: 버튼/캐시 상태가 아니라 DB 최신 status 기준으로 분기 */
 async function cancelSelectedMyRes() {
     const checked = document.querySelectorAll('.chk-my-res:checked');
     if(checked.length === 0) return alert("취소할 내역을 선택해주세요.");
 
-    // 선택된 항목들의 정보 수집
-    let targets = [];
-    let hasBooked = false;
+    let targets = Array.from(checked).map(el => ({
+        id: el.value,
+        date: el.dataset.date,
+        time: parseInt(el.dataset.time),
+        court: el.dataset.court ? parseInt(el.dataset.court) : null,
+        status: el.dataset.status
+    }));
 
-    checked.forEach(el => {
-        const status = el.dataset.status;
-        if(status === 'BOOKED') hasBooked = true;
-        
-        targets.push({
-            id: el.value,
-            date: el.dataset.date,
-            time: parseInt(el.dataset.time),
-            status: status
-        });
-    });
+    targets = await Promise.all(targets.map(getLatestMyReservationItem));
+    targets = targets.filter(t => t && t.id && t.status !== 'CANCELED');
 
-    // 분기 처리
+    if(targets.length === 0) return alert('취소할 내역이 없습니다.');
+
+    const hasBooked = targets.some(t => t.status === 'BOOKED' || t.status === 'FIXED');
+    const allPending = targets.every(t => t.status === 'PENDING');
+
     if (hasBooked) {
-        // [확정 포함] -> 환불 팝업 -> 게시판
         openRefundPopup(targets);
-    } else {
-        // [전부 가승인] -> 관리자 문자
-        if(!confirm(`선택한 ${checked.length}건(가승인)에 대해 취소 요청 문자를 보내시겠습니까?`)) return;
-
-        const adminPhone = await getAdminPhoneNumber();
-        const userName = currentUser ? currentUser.name : "회원";
-        
-        let msgList = "";
-        targets.forEach((t, idx) => {
-            msgList += `${idx+1}. ${t.date} ${t.time}시\n`;
-        });
-
-        const msgBody = `[가승인 일괄 취소 요청]\n신청자: ${userName}\n총 ${targets.length}건 취소 요청합니다.\n\n${msgList}\n처리 부탁드립니다.`;
-        
-        const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
-        location.href = `sms:${adminPhone}${isIOS ? '&' : '?'}body=${encodeURIComponent(msgBody)}`;
-    }
-}
-// [수정] 3. 개별 취소 (가승인은 문자, 확정은 환불팝업)
-async function cancelMyRes(id, date, time, status) {
-    // (1) 가승인(PENDING) 상태라면 -> 문자 발송
-    if (status === 'PENDING') {
-        if(!confirm("가승인 상태의 예약입니다.\n관리자에게 취소 요청 문자를 보내시겠습니까?")) return;
-
-        // ★ DB에서 최신 관리자 번호 가져오기
-        const adminPhone = await getAdminPhoneNumber();
-
-        // 문자 내용
-        const msgBody = `[가승인 취소 요청]\n\n신청자: ${currentUser ? currentUser.name : '회원'}\n예약일: ${date}\n시간: ${time}:00\n\n이 예약을 취소해 주세요.`;
-        
-        // 문자 앱 실행
-        const userAgent = navigator.userAgent.toLowerCase();
-        const isIOS = /iphone|ipad|ipod/.test(userAgent);
-        const separator = isIOS ? '&' : '?';
-        
-        location.href = `sms:${adminPhone}${separator}body=${encodeURIComponent(msgBody)}`;
         return;
     }
 
-    // (2) 예약 확정(BOOKED) 상태라면 -> 기존 환불 팝업 띄우기
-    openRefundPopup([{ id: id, date: date, time: time }]);
-}// 5. 환불 팝업 띄우기 (공통)
+    if (!allPending) {
+        alert('예약 상태를 확인할 수 없습니다. 새로고침 후 다시 시도해주세요.');
+        if (typeof openMyResList === 'function') openMyResList();
+        return;
+    }
+
+    if(!confirm(`선택한 ${targets.length}건은 가승인(입금 대기) 상태입니다.\n관리자에게 가승인 취소 요청 문자를 보내시겠습니까?`)) return;
+
+    const adminPhone = await getAdminPhoneNumber();
+    const userName = currentUser ? currentUser.name : "회원";
+    const msgBody = `[가승인 일괄 취소 요청]\n신청자: ${userName}\n총 ${targets.length}건 취소 요청합니다.\n\n${buildCancelDetailText(targets)}\n\n위 가승인 예약을 취소해 주세요.`;
+    const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+    location.href = `sms:${adminPhone}${isIOS ? '&' : '?'}body=${encodeURIComponent(msgBody)}`;
+}
+// [수정] 3. 개별 취소 (가승인은 문자, 확정은 환불팝업)
+// [최종 수정] 개별 취소: 승인 이후에는 무조건 환불/게시판 취소 신청으로 분기
+async function cancelMyRes(id, date, time, status, court) {
+    const target = await getLatestMyReservationItem({ id, date, time, status, court });
+
+    if (target.status === 'BOOKED' || target.status === 'FIXED') {
+        openRefundPopup([target]);
+        return;
+    }
+
+    if (target.status !== 'PENDING') {
+        alert('예약 상태를 확인할 수 없습니다. 새로고침 후 다시 시도해주세요.');
+        if (typeof openMyResList === 'function') openMyResList();
+        return;
+    }
+
+    if(!confirm("가승인(입금 대기) 상태의 예약입니다.\n관리자에게 가승인 취소 요청 문자를 보내시겠습니까?")) return;
+
+    const adminPhone = await getAdminPhoneNumber();
+    const msgBody = `[가승인 취소 요청]\n\n신청자: ${currentUser ? currentUser.name : '회원'}\n${buildCancelDetailText([target])}\n\n위 가승인 예약을 취소해 주세요.`;
+    const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+    location.href = `sms:${adminPhone}${isIOS ? '&' : '?'}body=${encodeURIComponent(msgBody)}`;
+}
+// 5. 환불 팝업 띄우기 (공통)
 function openRefundPopup(targets) {
     tempCancelTargets = targets; // 전역 변수에 저장
     
@@ -11038,7 +11086,7 @@ function openRefundPopup(targets) {
     
     if(targets.length === 1) {
         const t = targets[0];
-        document.getElementById('rfDate').innerText = `${t.date} ${t.time}:00`;
+        document.getElementById('rfDate').innerText = `${t.date} ${t.court ? t.court + '코트 ' : ''}${t.time}:00`;
         document.getElementById('rfDday').innerText = (t.dDay === 0) ? "당일" : `${t.dDay}일 전`;
     } else {
         document.getElementById('rfDate').innerText = `${targets[0].date} 등 총 ${targets.length}건`;
@@ -11083,7 +11131,7 @@ function moveToCancelBoard() {
     // 취소 대상 내역 텍스트 생성
     let detailsTxt = "";
     tempCancelTargets.forEach(t => {
-        detailsTxt += `- ${t.date} ${t.time}:00 (환불예정: ${t.refundAmt.toLocaleString()}원)\n`;
+        detailsTxt += `- ${t.date} ${t.court ? t.court + '코트 ' : ''}${t.time}:00 (환불예정: ${t.refundAmt.toLocaleString()}원)\n`;
     });
 
     const content = `[예약 취소 요청]
