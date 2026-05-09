@@ -2327,6 +2327,38 @@ body.dark-mode .weather-banner-link:hover{
   box-shadow:0 4px 14px rgba(96,165,250,.18) !important;
 }
 </style>
+
+
+<style>
+/* === 게시판 하단 날짜 가림/FAB 위치 안정화 패치 === */
+#view-board {
+    min-height: 0 !important;
+}
+#view-board .board-list {
+    padding-bottom: 170px !important;
+    scroll-padding-bottom: 170px !important;
+}
+#view-board .post-card:last-child {
+    margin-bottom: 120px !important;
+}
+#view-board .fab-btn {
+    bottom: calc(92px + env(safe-area-inset-bottom, 0px)) !important;
+    right: 22px !important;
+    left: auto !important;
+    margin-left: 0 !important;
+    z-index: 9999 !important;
+}
+@media (max-width: 768px) {
+    #view-board .fab-btn {
+        bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important;
+        right: 20px !important;
+    }
+    #view-board .board-list {
+        padding-bottom: 185px !important;
+    }
+}
+</style>
+
 </head>
 <body>
 <div id="androidAppBanner" style="display:none; background:#f0fdf4; border-bottom:1px solid #bbf7d0; padding:12px; text-align:center; animation: slideDown 0.5s ease-out; position:relative;">
@@ -8810,66 +8842,116 @@ async function processUserCancel(mode) {
     const target = window.cancelTarget;
     let targetList = [];
 
+    if (!target || !target.id) {
+        alert("선택된 예약 정보가 없습니다.");
+        return;
+    }
+
+    // 최신 DB 상태를 기준으로 판단해야 승인 후에도 가승인 취소 문자로 잘못 나가지 않습니다.
+    async function getLatestReservationStatus(item) {
+        try {
+            const ref = db.collection(item.coll || 'reservations').doc(item.id);
+            const doc = await ref.get();
+            if (doc.exists) {
+                const d = doc.data() || {};
+                return {
+                    id: doc.id,
+                    coll: item.coll || 'reservations',
+                    date: d.date || item.date,
+                    time: d.time !== undefined ? d.time : item.time,
+                    court: d.court !== undefined ? d.court : item.court,
+                    status: d.status || item.status || 'BOOKED',
+                    name: d.name || target.name || (currentUser ? currentUser.name : '회원'),
+                    phone: d.phone || target.phone || (currentUser ? currentUser.phone : '')
+                };
+            }
+        } catch (e) {
+            console.warn('예약 최신 상태 확인 실패:', e);
+        }
+        return {
+            ...item,
+            status: item.status || target.status || 'UNKNOWN',
+            name: target.name || (currentUser ? currentUser.name : '회원'),
+            phone: target.phone || (currentUser ? currentUser.phone : '')
+        };
+    }
+
     // 1. 취소 대상 목록 확보
-    // 'TIME' 또는 예전 호환용 'ONE' 모두 1건 취소로 처리
     if (mode === 'TIME' || mode === 'ONE') {
-        targetList.push({
+        targetList.push(await getLatestReservationStatus({
             id: target.id,
+            coll: target.coll || 'reservations',
             date: target.date,
             time: target.time,
+            court: target.court,
             status: target.status
-        });
-
-        // target.status가 비어있다면 DB에서 다시 확인하는 안전장치
-        if (!target.status) {
-            try {
-                const doc = await db.collection(target.coll).doc(target.id).get();
-                if (doc.exists) targetList[0].status = doc.data().status;
-            } catch (e) {}
-        }
+        }));
 
     } else if (mode === 'DAY' || mode === 'ALL') {
-        // '오늘 전체 취소' 또는 '전체 취소'인 경우 DB에서 조회
         const snap = await db.collection("reservations")
             .where("date", "==", target.date)
             .where("phone", "==", target.phone)
             .where("center", "==", currentCenter)
             .get();
 
+        const latestPromises = [];
         snap.forEach(doc => {
-            const d = doc.data();
-            targetList.push({ id: doc.id, date: d.date, time: d.time, status: d.status });
+            const d = doc.data() || {};
+            latestPromises.push(getLatestReservationStatus({
+                id: doc.id,
+                coll: 'reservations',
+                date: d.date,
+                time: d.time,
+                court: d.court,
+                status: d.status
+            }));
         });
+        targetList = await Promise.all(latestPromises);
     } else {
         alert("취소 방식이 올바르지 않습니다.");
         return;
     }
 
+    // 삭제/취소된 문서 등은 제외
+    targetList = targetList.filter(item => item && item.id && item.status !== 'CANCELED');
+
     if (targetList.length === 0) return alert("취소할 내역이 없습니다.");
     closeModal('modalCancel');
 
-    // 2. 상태 확인 (하나라도 '확정(BOOKED)'된 게 있으면 환불 게시판으로 보냄)
-    // PENDING(가승인)만 있을 때만 문자로 보냄
-    const hasBooked = targetList.some(item => item.status === 'BOOKED');
+    // 2. 최신 상태 기준 분기
+    const hasBooked = targetList.some(item => item.status === 'BOOKED' || item.status === 'FIXED');
+    const allPending = targetList.every(item => item.status === 'PENDING');
 
     if (hasBooked) {
-        // [확정 포함] -> 환불 규정 팝업 -> 게시판 이동
+        // 승인/확정 이후: 환불 규정 확인 후 게시판 취소 신청으로 이동
         openRefundPopup(targetList);
-    } else {
-        // [전부 가승인] -> 관리자에게 문자 발송
-        if (!confirm("가승인(입금 대기) 상태의 예약입니다.\n관리자에게 취소 요청 문자를 보내시겠습니까?")) return;
-
-        const adminPhone = await getAdminPhoneNumber();
-        const userName = currentUser ? currentUser.name : "회원";
-
-        let details = "";
-        targetList.forEach(t => details += `- ${t.date} ${t.time}:00\n`);
-
-        const msgBody = `[가승인 취소 요청]\n신청자: ${userName}\n\n${details}\n위 예약을 취소해 주세요.`;
-
-        const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
-        location.href = `sms:${adminPhone}${isIOS ? '&' : '?'}body=${encodeURIComponent(msgBody)}`;
+        return;
     }
+
+    if (!allPending) {
+        alert("예약 상태를 확인할 수 없습니다. 새로고침 후 다시 시도해주세요.");
+        scheduleLoadDB(0);
+        return;
+    }
+
+    // 3. 가승인 상태만 문자 취소 요청
+    if (!confirm("가승인(입금 대기) 상태의 예약입니다.\n관리자에게 가승인 취소 요청 문자를 보내시겠습니까?")) return;
+
+    const adminPhone = await getAdminPhoneNumber();
+    const userName = currentUser ? currentUser.name : "회원";
+
+    let details = "";
+    targetList
+        .sort((a, b) => (a.time || 0) - (b.time || 0))
+        .forEach(t => {
+            const courtText = t.court ? `${t.court}코트 ` : '';
+            details += `- ${t.date} ${courtText}${t.time}:00\n`;
+        });
+
+    const msgBody = `[가승인 취소 요청]\n신청자: ${userName}\n\n${details}\n위 가승인 예약을 취소해 주세요.`;
+
+    const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
+    location.href = `sms:${adminPhone}${isIOS ? '&' : '?'}body=${encodeURIComponent(msgBody)}`;
 }
    function openMyInfo() {
         if(!currentUser) return;
