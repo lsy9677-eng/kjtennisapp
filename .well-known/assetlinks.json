@@ -1,11 +1,13 @@
 [
   {
-    "relation": ["delegate_permission/common.handle_all_urls"],
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
     "target": {
       "namespace": "android_app",
-      "package_name": "dev.pages.tenniskj_app.twa",
+      "package_name": "com.tenniskj.app",
       "sha256_cert_fingerprints": [
-        "C3:F2:27:DF:73:69:08:79:DB:64:57:2D:55:02:C5:5C:D5:9F:68:C4:AC:EA:D5:81:C7:DA:82:B8:B0:5C:09:27"
+        "32:BF:93:62:31:E8:B1:9B:96:E7:D4:38:B2:6E:BF:28:11:49:48:9F:63:FF:3E:EA:77:59:18:B8:17:06:4A:10"
       ]
     }
   }
