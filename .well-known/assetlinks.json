@@ -1,14 +1,8 @@
-[
-  {
-    "relation": [
-      "delegate_permission/common.handle_all_urls"
-    ],
-    "target": {
-      "namespace": "android_app",
-      "package_name": "dev.pages.tenniskj_app.two",
-      "sha256_cert_fingerprints": [
-        "C3:F2:27:DF:73:69:08:79:DB:64:57:2D:55:02:C5:5C:D5:9F:68:C4:AC:EA:D5:81:C7:DA:82:B8:B0:5C:09:27"
-      ]
-    }
-  }
-]
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.tenniskj.app",
+        "sha256_cert_fingerprints": ["01:9B:38:F3:C2:E5:63:E6:F7:A1:00:15:F7:42:FB:C4:28:96:0D:4D:02:FE:EC:9D:CA:06:08:0B:9A:0C:07:88"]
+      }
+    }]
