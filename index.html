@@ -4192,6 +4192,43 @@ const HOLIDAYS = {
         return conflict;
     }
 
+
+    function recurringRuleMatchesDate(rule, dateStr) {
+        const dayNum = new Date(dateStr).getDay();
+        if (!rule) return false;
+        if (rule.startDate && dateStr < rule.startDate) return false;
+        if (rule.endDate && dateStr > rule.endDate) return false;
+        if (Array.isArray(rule.weekDays) && !rule.weekDays.includes(dayNum)) return false;
+        if (rule.excludeHoliday === true && HOLIDAYS[dateStr]) return false;
+        if (Array.isArray(rule.exceptionDates) && rule.exceptionDates.includes(dateStr)) return false;
+        return true;
+    }
+
+    async function addRecurringOccupiedSlotsToMap(center, dateStr, occupiedMap) {
+        // 화면에는 정기예약이 막힌 칸으로 보이지만, 기존 저장 검증은 reservations 컬렉션만 보고 있어
+        // 정기예약 사이에 낀 1시간을 일반 1시간 예외로 인정하지 못하는 문제가 있었다.
+        const snap = await db.collection('recurring')
+            .where('center', '==', center)
+            .get();
+
+        snap.forEach(doc => {
+            const r = doc.data() || {};
+            if (!recurringRuleMatchesDate(r, dateStr)) return;
+            if (r.court == null || r.time == null) return;
+            const key = `${Number(r.court)}_${Number(r.time)}`;
+            occupiedMap.set(key, {
+                id: doc.id,
+                center,
+                date: dateStr,
+                court: Number(r.court),
+                time: Number(r.time),
+                status: 'FIXED',
+                source: 'recurring',
+                name: r.name || '정기예약'
+            });
+        });
+    }
+
     async function releaseReservationLocksByIds(reservationIds) {
         if (!reservationIds || reservationIds.length === 0) return;
         const uniqueIds = [...new Set(reservationIds.filter(Boolean))];
@@ -4310,7 +4347,7 @@ function checkAppVersion() {
 
 // [중요] 페이지 로드 시 바로 실행되도록 호출
 // ▼▼▼ [설정] 현재 이 코드의 버전 (업데이트 할 때마다 이 숫자를 1씩 올려서 배포하세요) ▼▼▼
-const CURRENT_APP_VERSION = 6;
+const CURRENT_APP_VERSION = 7;
 checkAppVersion();
 /* [신규] 승인 모달 열기 */
 let currentApproveData = null; // 승인 처리를 위한 임시 저장소
@@ -6772,8 +6809,12 @@ async function saveBook(uid) {
             const d = doc.data() || {};
             if (!['PENDING', 'BOOKED', 'BLOCKED'].includes(d.status)) return;
             if (d.court == null || d.time == null) return;
-            occupiedMap.set(`${d.court}_${d.time}`, { id: doc.id, ...d });
+            occupiedMap.set(`${Number(d.court)}_${Number(d.time)}`, { id: doc.id, ...d });
         });
+
+        // 정기예약(recurring)도 점유 슬롯에 포함해야 1시간 틈새 예외가 정확히 동작한다.
+        // 예: 일요일 정기예약 사이에 낀 1시간은 reservations에는 없지만 실제로는 양옆이 막힌 상태다.
+        await addRecurringOccupiedSlotsToMap(currentCenter, date, occupiedMap);
 
         for (const slot of slots) {
             const key = `${slot.c}_${slot.t}`;
