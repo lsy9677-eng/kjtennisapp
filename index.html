@@ -4283,6 +4283,7 @@ const HOLIDAYS = {
 let currentBoardFilter = 'all'; 
 let postsCache = []; // 게시글 데이터를 저장해두는 저장소
 let fixedNoticeIds = new Set(); // 상단에 고정된 공지글 ID 저장소
+let boardLoadSeq = 0; // 게시판 비동기 로딩 중복/경합 방지 토큰
 /* ▼▼▼ [추가] 앱 실행 시 버전 체크 함수 ▼▼▼ */
 function checkAppVersion() {
     db.collection("settings").doc("app_version").get().then(doc => {
@@ -7222,137 +7223,131 @@ async function loadMacroMonitor() {
 /* ▼▼▼ [수정] 게시판 필터링 함수 (페이지네이션 연동) ▼▼▼ */
 function filterBoard(cat, btn) {
     currentBoardFilter = cat;
-    
+
     // 버튼 스타일 변경
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
     if(btn) btn.classList.add('active');
-    
+
     // 필터가 바뀌면 1페이지부터 다시 로드
     loadPosts(false); 
 }
 
-/* ▼▼▼ [수정] 게시글 불러오기 (공지 상단 고정 + 시간순 나열) ▼▼▼ */
-
-/* [수정] 게시글 불러오기 (공지 순서 정렬 적용) */
-/* [수정] 게시글 불러오기 (기존 공지사항이 사라지는 문제 해결 버전) */
+/* ▼▼▼ [최종 수정] 게시글 불러오기
+   - 페이지 이동/탭 재진입 때 기존 목록을 먼저 비워 중복 append 방지
+   - 동시에 여러 loadPosts()가 실행되어도 마지막 호출 결과만 반영
+   - 공지글과 일반글이 같은 문서일 때 fixedNoticeIds로 중복 렌더링 방지
+*/
 function loadPosts(isPageMove = false) {
-    const list = document.getElementById('postList'); 
-    
+    const list = document.getElementById('postList');
+    if (!list) return;
+
+    const loadSeq = ++boardLoadSeq;
+    const activeFilter = currentBoardFilter;
+
     if (!isPageMove) {
-        list.innerHTML = "<div style='text-align:center; padding:20px;'>로딩중...</div>";
         boardCurrentPage = 1;
         boardPageSnapshots = [];
-        fixedNoticeIds.clear(); 
-        
-        let countQuery = db.collection("posts");
-        if (currentBoardFilter !== 'all') {
-             countQuery = countQuery.where("category", "==", currentBoardFilter);
-        }
-        countQuery.get().then(snap => {
-            boardTotalDocs = snap.size;
-            updateBoardPageUI();
-        });
+    }
 
-        // ▼▼▼ [핵심 수정] DB 정렬 대신 가져와서 JS 정렬 (기존 데이터 보호) ▼▼▼
-        db.collection("posts")
-            .where("isNotice", "==", true)
-            .get()
-            .then(noticeSnap => {
-                list.innerHTML = ""; 
+    fixedNoticeIds.clear();
+    list.innerHTML = "<div style='text-align:center; padding:20px;'>로딩중...</div>";
 
-                // 1. 데이터를 배열로 변환
-                let notices = [];
-                noticeSnap.forEach(doc => {
-                    notices.push({ id: doc.id, ...doc.data() });
-                });
+    let countQuery = db.collection("posts");
+    if (activeFilter !== 'all') {
+        countQuery = countQuery.where("category", "==", activeFilter);
+    }
 
-                // 2. 자바스크립트로 정렬 (순서 번호 없으면 99로 취급해서 뒤로 보냄)
-                notices.sort((a, b) => {
-                    const orderA = (a.noticeOrder !== undefined) ? a.noticeOrder : 99;
-                    const orderB = (b.noticeOrder !== undefined) ? b.noticeOrder : 99;
-                    
-                    if (orderA !== orderB) {
-                        return orderA - orderB; // 번호 작은 게 위로 (오름차순)
-                    } else {
-                        // 번호가 같으면 최신순 (내림차순)
-                        const dateA = a.at ? a.at.seconds : 0;
-                        const dateB = b.at ? b.at.seconds : 0;
-                        return dateB - dateA; 
-                    }
-                });
+    const countPromise = countQuery.get().then(snap => {
+        if (loadSeq !== boardLoadSeq) return;
+        boardTotalDocs = snap.size;
+        updateBoardPageUI();
+    }).catch(err => {
+        console.warn('게시글 개수 조회 실패:', err);
+    });
 
-                // 3. 화면에 그리기
-                notices.forEach(d => {
-                    let showThisNotice = false;
-                    if (currentBoardFilter === 'all') {
-                        showThisNotice = true;
-                    } else {
-                        if (d.category === currentBoardFilter || d.category === '공지') {
-                            showThisNotice = true;
-                        }
-                    }
+    const noticePromise = db.collection("posts")
+        .where("isNotice", "==", true)
+        .get();
 
-                    if (showThisNotice) {
-                        // renderOnePost 함수는 doc(객체)를 원하므로 가짜 doc 생성
-                        const fakeDoc = { id: d.id, data: () => d };
-                        renderOnePost(fakeDoc, list, true); 
-                        fixedNoticeIds.add(d.id);    
-                    }
-                });
+    Promise.all([countPromise, noticePromise])
+        .then(([_, noticeSnap]) => {
+            if (loadSeq !== boardLoadSeq) return;
 
-                fetchNormalPosts(list, isPageMove);
-            })
-            .catch(err => {
-                console.error(err);
-                fetchNormalPosts(list, isPageMove);
+            list.innerHTML = "";
+
+            let notices = [];
+            noticeSnap.forEach(doc => {
+                notices.push({ id: doc.id, ...doc.data() });
             });
-              
-        return; 
+
+            notices.sort((a, b) => {
+                const orderA = (a.noticeOrder !== undefined) ? Number(a.noticeOrder) : 99;
+                const orderB = (b.noticeOrder !== undefined) ? Number(b.noticeOrder) : 99;
+
+                if (orderA !== orderB) return orderA - orderB;
+
+                const dateA = a.at && a.at.seconds ? a.at.seconds : 0;
+                const dateB = b.at && b.at.seconds ? b.at.seconds : 0;
+                return dateB - dateA;
+            });
+
+            notices.forEach(d => {
+                const showNotice = (activeFilter === 'all') || d.category === activeFilter || d.category === '공지';
+                if (!showNotice) return;
+
+                const fakeDoc = { id: d.id, data: () => d };
+                renderOnePost(fakeDoc, list, true);
+                fixedNoticeIds.add(d.id);
+            });
+
+            fetchNormalPosts(list, loadSeq, activeFilter);
+        })
+        .catch(err => {
+            if (loadSeq !== boardLoadSeq) return;
+            console.error('공지글 로딩 실패:', err);
+            list.innerHTML = "";
+            fetchNormalPosts(list, loadSeq, activeFilter);
+        });
+}
+
+/* [최종 수정] 일반 게시글 불러오기: 기존 목록에 중복 append되지 않도록 loadSeq 검증 */
+function fetchNormalPosts(list, loadSeq, activeFilter) {
+    let query = db.collection("posts");
+
+    if (activeFilter !== 'all') {
+        query = query.where("category", "==", activeFilter);
     }
 
-    if(!isPageMove && list.innerHTML.includes("로딩중")) list.innerHTML = "";
-    fetchNormalPosts(list, isPageMove);
-}
-/* [추가] 일반 게시글 불러오기 (공지 제외하고 시간순) */
-function fetchNormalPosts(list, isPageMove) {
-    let query = db.collection("posts");
-    
-    // 필터 적용
-    if (currentBoardFilter !== 'all') {
-        query = query.where("category", "==", currentBoardFilter);
-    }
-    
-    // 시간순 정렬 (최신순)
     query = query.orderBy("at", "desc").limit(boardPageSize);
 
-    // 페이지네이션 처리
     if (boardCurrentPage > 1 && boardPageSnapshots[boardCurrentPage - 2]) {
         query = query.startAfter(boardPageSnapshots[boardCurrentPage - 2]);
     }
 
     query.get().then(snap => {
-        if (snap.empty && list.innerHTML === "") {
-            list.innerHTML = "<p style='text-align:center;color:#b2bec3;margin-top:20px;'>작성된 글이 없습니다.</p>";
-            updateBoardPageUI(0);
-            return;
-        }
+        if (loadSeq !== boardLoadSeq) return;
 
-        // 현재 페이지의 마지막 문서를 스택에 저장
         if(!snap.empty) {
             boardPageSnapshots[boardCurrentPage - 1] = snap.docs[snap.docs.length - 1];
         }
 
-        // 목록 그리기
+        let renderedCount = 0;
         snap.forEach(doc => {
-            // [중요] 이미 상단에 공지로 띄운 글이면 여기서 건너뜀 (중복 방지)
             if (fixedNoticeIds.has(doc.id)) return;
-
             renderOnePost(doc, list, false);
+            renderedCount++;
         });
+
+        if (fixedNoticeIds.size === 0 && renderedCount === 0) {
+            list.innerHTML = "<p style='text-align:center;color:#b2bec3;margin-top:20px;'>작성된 글이 없습니다.</p>";
+        }
 
         updateBoardPageUI(snap.size);
 
-    }).catch(err => handleIndexError(err, list));
+    }).catch(err => {
+        if (loadSeq !== boardLoadSeq) return;
+        handleIndexError(err, list);
+    });
 }
 
 /* [수정] 비밀글 로직이 적용된 게시글 그리기 함수 */
