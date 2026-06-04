@@ -2955,10 +2955,13 @@ body.dark-mode .weather-banner-link:hover{
     <div class="modal-win" style="max-width:400px;">
         <span class="modal-close" onclick="closeModal('modalJoin')">&times;</span>
         <div class="modal-head">회원가입</div>
+        <div style="background:#fff1f2; border:1px solid #fca5a5; color:#991b1b; padding:10px; border-radius:10px; font-size:0.86rem; font-weight:700; line-height:1.45; margin-bottom:14px;">
+            ⚠️ 반드시 본인 실명으로 가입해 주세요.<br>이름은 한글 실명만 입력 가능하며, 영문·숫자·특수문자는 사용할 수 없습니다.
+        </div>
         
         <div class="inp-row"><label>이메일 (아이디)</label><input type="email" id="joinEmail"></div>
         <div class="inp-row"><label>비밀번호</label><input type="password" id="joinPw"></div>
-        <div class="inp-row"><label>이름</label><input type="text" id="joinName"></div>
+        <div class="inp-row"><label>이름</label><input type="text" id="joinName" placeholder="실명 입력 (한글만 가능)" maxlength="6" inputmode="text" autocomplete="name" oninput="sanitizeKoreanRealNameInput(this)"></div>
         <div class="inp-row"><label>전화번호</label><input type="tel" id="joinPh" placeholder="010-0000-0000"></div>
         <div class="inp-row"><label>생년월일 (6자리)</label><input type="text" id="joinBirth" placeholder="예: 900101" maxlength="6"></div>
         <div class="inp-row"><label>주소</label><input type="text" id="joinAddr" placeholder="동/읍/면 까지만 입력"></div>
@@ -3886,6 +3889,39 @@ const HOLIDAYS = {
         return input;
     }
 
+
+    const REAL_NAME_WARNING_TEXT = "회원가입은 반드시 본인 실명으로만 가능합니다.\n\n이름은 한글 2~6자만 입력할 수 있으며, 영문·숫자·특수문자는 사용할 수 없습니다.\n실명이 아니면 가입이 제한됩니다.";
+    let joinRealNameWarningShown = false;
+
+    function normalizeKoreanRealName(value) {
+        return String(value || '').replace(/[^가-힣]/g, '').trim();
+    }
+
+    function isValidKoreanRealName(value) {
+        return /^[가-힣]{2,6}$/.test(String(value || '').trim());
+    }
+
+    function sanitizeKoreanRealNameInput(input) {
+        if (!input) return;
+        const cleaned = normalizeKoreanRealName(input.value).slice(0, 6);
+        if (input.value !== cleaned) input.value = cleaned;
+    }
+
+    function showJoinRealNameWarning(force = false) {
+        if (!force && joinRealNameWarningShown) return;
+        joinRealNameWarningShown = true;
+        alert(REAL_NAME_WARNING_TEXT);
+    }
+
+    function requireValidKoreanRealName(name) {
+        const cleaned = normalizeKoreanRealName(name);
+        if (!isValidKoreanRealName(cleaned) || cleaned !== String(name || '').trim()) {
+            alert("이름은 본인 실명 기준 한글 2~6자만 입력 가능합니다.\n영문, 숫자, 공백, 특수문자는 사용할 수 없습니다.");
+            return "";
+        }
+        return cleaned;
+    }
+
     async function ensureNaverUserDocument(profile = {}) {
         if (!auth.currentUser) return;
         const ref = db.collection('users').doc(auth.currentUser.uid);
@@ -3900,7 +3936,13 @@ const HOLIDAYS = {
             if (!phone) alert('휴대폰번호를 다시 입력해주세요.');
         }
 
-        const name = (profile.name || existing.name || auth.currentUser.displayName || '').trim() || '네이버회원';
+        let name = normalizeKoreanRealName(profile.name || existing.name || auth.currentUser.displayName || '');
+        while (!isValidKoreanRealName(name)) {
+            const value = prompt('회원가입은 반드시 본인 실명으로만 가능합니다.\n한글 실명 2~6자를 입력해주세요.\n영문·숫자·특수문자는 사용할 수 없습니다.');
+            if (value === null) throw new Error('실명 입력이 취소되어 회원가입을 완료할 수 없습니다.');
+            name = normalizeKoreanRealName(value);
+            if (!isValidKoreanRealName(name)) alert('한글 실명 2~6자로 다시 입력해주세요.');
+        }
         const email = (profile.email || existing.email || auth.currentUser.email || '').trim().toLowerCase();
         const address = existing.address || '';
         const birth = existing.birth || '';
@@ -4840,6 +4882,12 @@ function goTab(t) {
 
         if(!email || !pw || !name || !ph || !birth || !addr) return alert("모든 필수 정보를 입력해주세요.");
 
+        const validName = requireValidKoreanRealName(name);
+        if(!validName) {
+            document.getElementById('joinName').focus();
+            return;
+        }
+
         // [법적 주의] 시민 인증 사진 업로드 시 안내
         if(file && !confirm("증빙 서류(신분증 등) 업로드 시\n주민번호 뒷자리는 반드시 가려야 합니다.\n진행하시겠습니까?")) {
             return;
@@ -4866,7 +4914,7 @@ function goTab(t) {
 
             // DB 저장 시 동의 날짜 기록 (법적 분쟁 대비)
             await db.collection("users").doc(uid).set({
-                email: email, name: name, phone: ph, birth: birth, address: addr,
+                email: email, name: validName, phone: ph, birth: birth, address: addr,
                 proofUrl: proofUrl, proofUploadedAt: file ? new Date() : null,
                 isCitizen: false, verifStatus: file ? "PENDING" : "NONE",
                 isAdmin: false, 
@@ -4875,7 +4923,7 @@ function goTab(t) {
             });
 
             await appendCitizenAudit(uid, 'JOIN', {
-                name: name,
+                name: validName,
                 phone: ph,
                 address: addr,
                 hasProof: !!proofUrl
@@ -10250,7 +10298,12 @@ function cancelFromList(id, coll) {
         document.getElementById('transferInfo').style.display = (m === 'TRANSFER') ? 'block' : 'none';
     }
     function copyAcc() { navigator.clipboard.writeText(document.getElementById('dispAcc').innerText).then(()=>alert("복사됨")); }
-    function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+    function openModal(id) {
+    document.getElementById(id).style.display = 'flex';
+    if (id === 'modalJoin') {
+        setTimeout(() => showJoinRealNameWarning(false), 80);
+    }
+}
     function closeModal(id) { document.getElementById(id).style.display = 'none'; }
     window.onclick = null;
 // [추가] 배치도 팝업 띄우기 함수
