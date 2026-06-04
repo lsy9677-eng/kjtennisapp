@@ -197,7 +197,7 @@ async function handleStart(request, env) {
   const url = new URL(request.url);
   const mode = url.searchParams.get('mode') || 'login';
   const restApiKey = env.KAKAO_REST_API_KEY;
-  const redirectUri = env.KAKAO_REDIRECT_URI || `${url.origin}/kakao-auth?action=callback`;
+  const redirectUri = env.KAKAO_REDIRECT_URI || `${url.origin}/kakao-auth`;
 
   if (!restApiKey) return json({ error: 'KAKAO_REST_API_KEY가 없습니다.' }, 500);
 
@@ -207,13 +207,14 @@ async function handleStart(request, env) {
   authUrl.searchParams.set('client_id', restApiKey);
   authUrl.searchParams.set('redirect_uri', redirectUri);
   authUrl.searchParams.set('state', `${mode}.${state}`);
-  authUrl.searchParams.set('scope', 'profile_nickname,account_email');
+  authUrl.searchParams.set('scope', 'profile_nickname');
 
   return redirect(authUrl.toString());
 }
 
-async function exchangeCodeForAccessToken(code, env) {
-  const redirectUri = env.KAKAO_REDIRECT_URI;
+async function exchangeCodeForAccessToken(code, env, requestUrl) {
+  const fallbackRedirectUri = `${new URL(requestUrl).origin}/kakao-auth`;
+  const redirectUri = env.KAKAO_REDIRECT_URI || fallbackRedirectUri;
   if (!env.KAKAO_REST_API_KEY) throw new Error('KAKAO_REST_API_KEY가 없습니다.');
   if (!redirectUri) throw new Error('KAKAO_REDIRECT_URI가 없습니다.');
 
@@ -249,7 +250,7 @@ async function handleCallback(request, env) {
   }
 
   try {
-    const accessToken = await exchangeCodeForAccessToken(code, env);
+    const accessToken = await exchangeCodeForAccessToken(code, env, request.url);
     const kakaoProfile = await getKakaoProfileByAccessToken(accessToken);
     const customToken = await createFirebaseCustomToken(kakaoProfile.uid, {
       provider: 'kakao',
@@ -279,13 +280,20 @@ export async function onRequest(context) {
 
   try {
     const url = new URL(request.url);
-    const action = url.searchParams.get('action') || 'token';
+    const action = url.searchParams.get('action') || '';
 
-    if (action === 'token') return await handleToken(request, env);
     if (action === 'start') return await handleStart(request, env);
     if (action === 'callback') return await handleCallback(request, env);
 
-    return json({ error: '지원하지 않는 action입니다.' }, 400);
+    // 카카오 Developers Redirect URI를 /kakao-auth 로 등록하면
+    // 카카오가 /kakao-auth?code=...&state=... 형태로 돌아오므로 이 분기가 필요합니다.
+    if (url.searchParams.get('code') || url.searchParams.get('error')) {
+      return await handleCallback(request, env);
+    }
+
+    if (action === 'token' || request.method === 'POST') return await handleToken(request, env);
+
+    return json({ error: '지원하지 않는 요청입니다. /kakao-auth?action=start 로 시작하세요.' }, 400);
   } catch (err) {
     return json({ error: err && err.message ? err.message : String(err) }, 500);
   }
