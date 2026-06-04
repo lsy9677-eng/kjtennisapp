@@ -4077,71 +4077,53 @@ const HOLIDAYS = {
         }
     }
 
-    async function startKakaoLogin(mode = 'login') {
-        // 1순위: Firebase Authentication의 OIDC 제공자 ID가 oidc.kakao 로 설정된 경우
-        try {
-            const provider = new firebase.auth.OAuthProvider('oidc.kakao');
-            provider.addScope('openid');
-            provider.addScope('profile_nickname');
-            provider.addScope('account_email');
-            const result = await auth.signInWithPopup(provider);
-            const user = result.user || auth.currentUser;
-            await ensureSocialUserDocument({
-                name: user ? user.displayName : '',
-                email: user ? user.email : '',
-                providerUid: user ? user.uid : ''
-            }, 'kakao');
-            closeModal('modalLogin');
-            closeModal('modalJoin');
-            alert(mode === 'join' ? '카카오 자동 회원가입이 완료되었습니다.' : '카카오 로그인이 완료되었습니다.');
+    function startKakaoLogin(mode = 'login') {
+        // Kakao JavaScript SDK v2에는 Kakao.Auth.login()이 없으므로
+        // Cloudflare Pages Function(/kakao-auth) 리다이렉트 방식으로 처리합니다.
+        const nextUrl = window.location.origin + window.location.pathname;
+        const authUrl = `/kakao-auth?action=start&mode=${encodeURIComponent(mode)}&next=${encodeURIComponent(nextUrl)}`;
+        window.location.href = authUrl;
+    }
+
+    function getKakaoHashPayload() {
+        const raw = (location.hash || '').replace(/^#/, '');
+        if (!raw) return null;
+        const params = new URLSearchParams(raw);
+        const error = params.get('kakaoError');
+        if (error) return { error };
+        if (!params.get('kakaoCustomToken')) return null;
+        return {
+            token: params.get('kakaoCustomToken') || '',
+            providerUid: params.get('kakaoUid') || '',
+            name: params.get('kakaoName') || '',
+            email: params.get('kakaoEmail') || '',
+            phone: params.get('kakaoMobile') || '',
+            mode: params.get('kakaoMode') || 'login'
+        };
+    }
+
+    async function completeKakaoLoginFromUrl() {
+        const payload = getKakaoHashPayload();
+        if (!payload) return;
+
+        history.replaceState(null, '', location.pathname + location.search);
+
+        if (payload.error) {
+            alert('카카오 로그인 처리 실패: ' + payload.error);
             return;
-        } catch (oidcErr) {
-            console.warn('Firebase Kakao OIDC 로그인 실패, Kakao SDK 방식 시도:', oidcErr);
         }
 
-        // 2순위: Kakao SDK + Cloudflare Pages Function(/kakao-auth) 커스텀 토큰 방식
-        if (typeof Kakao === 'undefined' || !Kakao.isInitialized()) {
-            alert('카카오 SDK 초기화가 필요합니다. Kakao JavaScript 키 설정을 확인해주세요.');
-            return;
-        }
-
         try {
-            const authObj = await new Promise((resolve, reject) => {
-                Kakao.Auth.login({
-                    scope: 'profile_nickname,account_email',
-                    success: resolve,
-                    fail: reject
-                });
-            });
+            await auth.signInWithCustomToken(payload.token);
+            await ensureSocialUserDocument(payload, 'kakao');
 
-            const profileRes = await Kakao.API.request({ url: '/v2/user/me' });
-            const kakaoAccount = profileRes.kakao_account || {};
-            const kakaoProfile = kakaoAccount.profile || {};
-            const kakaoProfileData = {
-                providerUid: String(profileRes.id || ''),
-                name: kakaoProfile.name || kakaoProfile.nickname || '',
-                email: kakaoAccount.email || '',
-                phone: kakaoAccount.phone_number || ''
-            };
-
-            const tokenRes = await fetch('/kakao-auth?action=token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ accessToken: authObj.access_token, profile: kakaoProfileData })
-            });
-            const tokenData = await tokenRes.json().catch(() => ({}));
-            if (!tokenRes.ok || !tokenData.customToken) {
-                throw new Error(tokenData.error || '카카오 Firebase 커스텀 토큰을 발급받지 못했습니다.');
-            }
-
-            await auth.signInWithCustomToken(tokenData.customToken);
-            await ensureSocialUserDocument(kakaoProfileData, 'kakao');
             closeModal('modalLogin');
             closeModal('modalJoin');
-            alert(mode === 'join' ? '카카오 자동 회원가입이 완료되었습니다.' : '카카오 로그인이 완료되었습니다.');
+
+            alert(payload.mode === 'join' ? '카카오 자동 회원가입이 완료되었습니다.' : '카카오 로그인이 완료되었습니다.');
         } catch (err) {
-            console.error('카카오 로그인 실패:', err);
-            alert('카카오 로그인 처리 실패: ' + (err && err.message ? err.message : err) + '\n\n카카오는 Firebase 기본 제공자가 아니므로 Firebase OIDC(oidc.kakao) 설정 또는 /kakao-auth 커스텀 토큰 함수가 필요합니다.');
+            console.error('카카오 로그인 완료 실패:', err);
+            alert('카카오 로그인 처리 실패: ' + (err && err.message ? err.message : err));
         }
     }
 
@@ -4188,6 +4170,7 @@ const HOLIDAYS = {
 
     window.addEventListener('DOMContentLoaded', () => {
         completeNaverLoginFromUrl();
+        completeKakaoLoginFromUrl();
         completeFirebaseRedirectLogin();
     });
 
