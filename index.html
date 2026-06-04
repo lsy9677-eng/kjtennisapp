@@ -2126,6 +2126,9 @@ header h1{
 .social-login-divider::before,.social-login-divider::after{content:"";flex:1;height:1px;background:#e2e8f0}
 .btn-social-naver{width:100%;border:none;border-radius:12px;padding:14px 16px;background:#03C75A;color:#fff;font-size:0.95rem;font-weight:800;cursor:pointer}
 .btn-social-naver:disabled{opacity:.6;cursor:not-allowed}
+.btn-social-kakao{width:100%;border:none;border-radius:12px;padding:14px 16px;background:#FEE500;color:#3C1E1E;font-size:0.95rem;font-weight:800;cursor:pointer}
+.btn-social-google{width:100%;border:1px solid #cbd5e1;border-radius:12px;padding:14px 16px;background:#ffffff;color:#1e293b;font-size:0.95rem;font-weight:800;cursor:pointer}
+.btn-social-kakao:disabled,.btn-social-google:disabled{opacity:.6;cursor:not-allowed}
 </style>
 
 
@@ -2948,6 +2951,8 @@ body.dark-mode .weather-banner-link:hover{
         <div class="social-login-wrap">
             <div class="social-login-divider">또는</div>
             <button type="button" class="btn-social-naver" onclick="startNaverLogin('login')">네이버로 1초 로그인</button>
+            <button type="button" class="btn-social-kakao" onclick="startKakaoLogin('login')">카카오로 1초 로그인</button>
+            <button type="button" class="btn-social-google" onclick="startGoogleLogin('login')">Google로 1초 로그인</button>
         </div>
     </div>
 </div>
@@ -2995,6 +3000,8 @@ body.dark-mode .weather-banner-link:hover{
         <div class="social-login-wrap">
             <div class="social-login-divider">또는</div>
             <button type="button" class="btn-social-naver" onclick="startNaverLogin('join')">네이버 자동 회원가입</button>
+            <button type="button" class="btn-social-kakao" onclick="startKakaoLogin('join')">카카오 자동 회원가입</button>
+            <button type="button" class="btn-social-google" onclick="startGoogleLogin('join')">Google 자동 회원가입</button>
         </div>
     </div>
 </div>
@@ -3965,6 +3972,179 @@ const HOLIDAYS = {
         }, { merge: true });
     }
 
+
+    async function ensureSocialUserDocument(profile = {}, provider = 'social') {
+        if (!auth.currentUser) return;
+        const providerLabel = provider === 'google' ? 'Google' : (provider === 'kakao' ? '카카오' : provider);
+        const ref = db.collection('users').doc(auth.currentUser.uid);
+        const snap = await ref.get();
+        const existing = snap.exists ? (snap.data() || {}) : {};
+
+        let phone = normalizePhoneNumber(profile.phone || profile.mobile || existing.phone || '');
+        while (!phone) {
+            const value = prompt(`${providerLabel} 로그인은 완료되었습니다. 예약에 필요한 휴대폰번호를 입력해주세요.\n예: 010-1234-5678`);
+            if (value === null) throw new Error('휴대폰번호 입력이 취소되어 로그인을 완료할 수 없습니다.');
+            phone = normalizePhoneNumber(value);
+            if (!phone) alert('휴대폰번호를 다시 입력해주세요.');
+        }
+
+        let name = normalizeKoreanRealName(profile.name || existing.name || auth.currentUser.displayName || '');
+        while (!isValidKoreanRealName(name)) {
+            const value = prompt('회원가입은 반드시 본인 실명으로만 가능합니다.\n한글 실명 2~6자를 입력해주세요.\n영문·숫자·특수문자는 사용할 수 없습니다.');
+            if (value === null) throw new Error('실명 입력이 취소되어 회원가입을 완료할 수 없습니다.');
+            name = normalizeKoreanRealName(value);
+            if (!isValidKoreanRealName(name)) alert('한글 실명 2~6자로 다시 입력해주세요.');
+        }
+
+        const email = (profile.email || existing.email || auth.currentUser.email || '').trim().toLowerCase();
+        const address = existing.address || '';
+        const birth = existing.birth || '';
+        const joinedAt = existing.joinedAt || new Date();
+        const providerUid = profile.providerUid || profile.uid || existing.providerUid || auth.currentUser.uid;
+        const socialProviders = Object.assign({}, existing.socialProviders || {});
+        socialProviders[provider] = true;
+
+        await ref.set({
+            email: email,
+            name: name,
+            phone: phone,
+            address: address,
+            birth: birth,
+            isCitizen: !!existing.isCitizen,
+            verifStatus: existing.verifStatus || 'NONE',
+            isAdmin: !!existing.isAdmin,
+            joinedAt: joinedAt,
+            provider: existing.provider || provider,
+            providerUid: providerUid,
+            socialType: provider,
+            socialProviders: socialProviders,
+            agreedAt: existing.agreedAt || new Date()
+        }, { merge: true });
+    }
+
+    async function startGoogleLogin(mode = 'login') {
+        try {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            provider.setCustomParameters({ prompt: 'select_account' });
+            const result = await auth.signInWithPopup(provider);
+            const user = result.user || auth.currentUser;
+            await ensureSocialUserDocument({
+                name: user ? user.displayName : '',
+                email: user ? user.email : '',
+                providerUid: user ? user.uid : ''
+            }, 'google');
+            closeModal('modalLogin');
+            closeModal('modalJoin');
+            alert(mode === 'join' ? 'Google 자동 회원가입이 완료되었습니다.' : 'Google 로그인이 완료되었습니다.');
+        } catch (err) {
+            console.error('Google 로그인 실패:', err);
+            const msg = (err && err.message) ? err.message : String(err);
+            if (String(err && err.code || '').includes('popup')) {
+                try {
+                    sessionStorage.setItem('pendingSocialMode', mode);
+                    sessionStorage.setItem('pendingSocialProvider', 'google');
+                    const provider = new firebase.auth.GoogleAuthProvider();
+                    provider.setCustomParameters({ prompt: 'select_account' });
+                    await auth.signInWithRedirect(provider);
+                    return;
+                } catch (redirectErr) {
+                    alert('Google 로그인 처리 실패: ' + (redirectErr && redirectErr.message ? redirectErr.message : redirectErr));
+                    return;
+                }
+            }
+            alert('Google 로그인 처리 실패: ' + msg + '\n\nFirebase Authentication에서 Google 제공자가 사용 설정되어 있는지 확인해주세요.');
+        }
+    }
+
+    async function completeFirebaseRedirectLogin() {
+        try {
+            const result = await auth.getRedirectResult();
+            if (!result || !result.user) return;
+            const provider = sessionStorage.getItem('pendingSocialProvider') || 'google';
+            const mode = sessionStorage.getItem('pendingSocialMode') || 'login';
+            sessionStorage.removeItem('pendingSocialProvider');
+            sessionStorage.removeItem('pendingSocialMode');
+            await ensureSocialUserDocument({
+                name: result.user.displayName || '',
+                email: result.user.email || '',
+                providerUid: result.user.uid || ''
+            }, provider);
+            closeModal('modalLogin');
+            closeModal('modalJoin');
+            alert(mode === 'join' ? `${provider === 'kakao' ? '카카오' : 'Google'} 자동 회원가입이 완료되었습니다.` : `${provider === 'kakao' ? '카카오' : 'Google'} 로그인이 완료되었습니다.`);
+        } catch (err) {
+            if (err && err.code) console.warn('소셜 리다이렉트 로그인 확인 실패:', err);
+        }
+    }
+
+    async function startKakaoLogin(mode = 'login') {
+        // 1순위: Firebase Authentication의 OIDC 제공자 ID가 oidc.kakao 로 설정된 경우
+        try {
+            const provider = new firebase.auth.OAuthProvider('oidc.kakao');
+            provider.addScope('openid');
+            provider.addScope('profile_nickname');
+            provider.addScope('account_email');
+            const result = await auth.signInWithPopup(provider);
+            const user = result.user || auth.currentUser;
+            await ensureSocialUserDocument({
+                name: user ? user.displayName : '',
+                email: user ? user.email : '',
+                providerUid: user ? user.uid : ''
+            }, 'kakao');
+            closeModal('modalLogin');
+            closeModal('modalJoin');
+            alert(mode === 'join' ? '카카오 자동 회원가입이 완료되었습니다.' : '카카오 로그인이 완료되었습니다.');
+            return;
+        } catch (oidcErr) {
+            console.warn('Firebase Kakao OIDC 로그인 실패, Kakao SDK 방식 시도:', oidcErr);
+        }
+
+        // 2순위: Kakao SDK + Cloudflare Pages Function(/kakao-auth) 커스텀 토큰 방식
+        if (typeof Kakao === 'undefined' || !Kakao.isInitialized()) {
+            alert('카카오 SDK 초기화가 필요합니다. Kakao JavaScript 키 설정을 확인해주세요.');
+            return;
+        }
+
+        try {
+            const authObj = await new Promise((resolve, reject) => {
+                Kakao.Auth.login({
+                    scope: 'profile_nickname,account_email',
+                    success: resolve,
+                    fail: reject
+                });
+            });
+
+            const profileRes = await Kakao.API.request({ url: '/v2/user/me' });
+            const kakaoAccount = profileRes.kakao_account || {};
+            const kakaoProfile = kakaoAccount.profile || {};
+            const kakaoProfileData = {
+                providerUid: String(profileRes.id || ''),
+                name: kakaoProfile.name || kakaoProfile.nickname || '',
+                email: kakaoAccount.email || '',
+                phone: kakaoAccount.phone_number || ''
+            };
+
+            const tokenRes = await fetch('/kakao-auth?action=token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ accessToken: authObj.access_token, profile: kakaoProfileData })
+            });
+            const tokenData = await tokenRes.json().catch(() => ({}));
+            if (!tokenRes.ok || !tokenData.customToken) {
+                throw new Error(tokenData.error || '카카오 Firebase 커스텀 토큰을 발급받지 못했습니다.');
+            }
+
+            await auth.signInWithCustomToken(tokenData.customToken);
+            await ensureSocialUserDocument(kakaoProfileData, 'kakao');
+            closeModal('modalLogin');
+            closeModal('modalJoin');
+            alert(mode === 'join' ? '카카오 자동 회원가입이 완료되었습니다.' : '카카오 로그인이 완료되었습니다.');
+        } catch (err) {
+            console.error('카카오 로그인 실패:', err);
+            alert('카카오 로그인 처리 실패: ' + (err && err.message ? err.message : err) + '\n\n카카오는 Firebase 기본 제공자가 아니므로 Firebase OIDC(oidc.kakao) 설정 또는 /kakao-auth 커스텀 토큰 함수가 필요합니다.');
+        }
+    }
+
     function getNaverHashPayload() {
         const raw = (location.hash || '').replace(/^#/, '');
         if (!raw) return null;
@@ -4008,6 +4188,7 @@ const HOLIDAYS = {
 
     window.addEventListener('DOMContentLoaded', () => {
         completeNaverLoginFromUrl();
+        completeFirebaseRedirectLogin();
     });
 
 
