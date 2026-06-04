@@ -5,6 +5,7 @@
     <meta name="color-scheme" content="light only">
    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>김해시테니스협회</title>
+    <!-- stable-manual-refresh: Firestore 읽기 절감 안정본 -->
     
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="abc-192.png">
@@ -2850,6 +2851,7 @@ body.dark-mode .weather-banner-link:hover{
         <div class="sel-info">선택 <span><span id="selCnt">0</span></span>칸</div>
         <div class="footer-actions-inline">
             <button type="button" class="footer-info-btn" onclick="openBookingRuleInfo()" aria-label="예약 규칙 안내">i</button>
+            <button type="button" class="footer-mini-btn" id="btnRefreshReservations" onclick="manualRefreshReservations()">새로고침</button>
             <button type="button" class="footer-mini-btn" onclick="openDailyStatusModal()">전체현황</button>
             <button type="button" class="footer-mini-btn" onclick="shareDailyStatusImage()">공유</button>
         </div>
@@ -4323,18 +4325,18 @@ const HOLIDAYS = {
     // ── Firestore 읽기 절약을 위한 캐시 ──
     // recurring(고정예약): 센터별로 메모리에 보관, 30분 TTL
     const _recurringCache = {};
-    const RECURRING_TTL = 30 * 60 * 1000;
+    const RECURRING_TTL = 60 * 60 * 1000; // 정기예약은 수동 새로고침 중심으로 1시간 캐시
     // reservations(날짜별 예약): 날짜+센터 키로 캐시, 3분 TTL
     const _reservationsCache = {};
-    const RESERVATIONS_TTL = 3 * 60 * 1000;
+    const RESERVATIONS_TTL = 15 * 60 * 1000; // 예약현황은 자동 갱신 대신 새로고침 버튼으로 갱신
     // settings(global): 자주 다시 읽지 않도록 캐시
     let _configCache = null;
     let _configCacheTs = 0;
     let _configCachePromise = null;
-    const CONFIG_TTL = 5 * 60 * 1000;
+    const CONFIG_TTL = 30 * 60 * 1000; // 설정값 반복 읽기 절감
     // 내 예약 달력 dot: 월별 캐시
     const _myReservedDatesCache = {};
-    const MY_RESERVED_DATES_TTL = 3 * 60 * 1000;
+    const MY_RESERVED_DATES_TTL = 15 * 60 * 1000; // 내 예약 dot 반복 읽기 절감
     let _authRefreshTimer = null;
 
     function _invalidateRecurringCache(center) {
@@ -4360,6 +4362,37 @@ const HOLIDAYS = {
     function scheduleLoadDB(delay = 0) {
         if (loadDBTimer) clearTimeout(loadDBTimer);
         loadDBTimer = setTimeout(() => loadDB(), delay);
+    }
+
+    // 읽기 과금 절감: 예약판은 자동 실시간 갱신하지 않고 사용자가 새로고침 버튼을 눌렀을 때만 강제 조회합니다.
+    // 예약 저장/취소/승인 직후에는 기존처럼 캐시를 무효화하고 자동으로 1회 갱신합니다.
+    function manualRefreshReservations() {
+        const btn = document.getElementById('btnRefreshReservations');
+        const oldText = btn ? btn.innerText : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerText = '갱신중';
+        }
+        try {
+            const date = document.getElementById('hiddenDate') ? document.getElementById('hiddenDate').value : '';
+            _invalidateReservationsCache(currentCenter, date);
+            if (currentUser && currentUser.phone) _invalidateMyReservedDatesCache(currentCenter, currentUser.phone);
+            return loadDB().then(() => {
+                try { refreshTodayMyReservationCard(true); } catch (_) {}
+                try { drawCalendar(); } catch (_) {}
+            }).finally(() => {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerText = oldText || '새로고침';
+                }
+            });
+        } catch (e) {
+            if (btn) {
+                btn.disabled = false;
+                btn.innerText = oldText || '새로고침';
+            }
+            alert('새로고침 실패: ' + (e && e.message ? e.message : e));
+        }
     }
 
     function safeSetInputValue(id, value) {
@@ -4907,7 +4940,7 @@ auth.onAuthStateChanged(user => {
         drawCalendar();
         drawGrid();
         loadConfig();
-        loadPosts();
+        // 게시판은 실제 게시판 탭 진입 시에만 읽어 Firestore 읽기 과금을 줄입니다.
  
 
     // [추가] 관리자 UI 업데이트 함수
@@ -7505,25 +7538,14 @@ function loadPosts(isPageMove = false) {
     fixedNoticeIds.clear();
     list.innerHTML = "<div style='text-align:center; padding:20px;'>로딩중...</div>";
 
-    let countQuery = db.collection("posts");
-    if (activeFilter !== 'all') {
-        countQuery = countQuery.where("category", "==", activeFilter);
-    }
-
-    const countPromise = countQuery.get().then(snap => {
-        if (loadSeq !== boardLoadSeq) return;
-        boardTotalDocs = snap.size;
-        updateBoardPageUI();
-    }).catch(err => {
-        console.warn('게시글 개수 조회 실패:', err);
-    });
-
+    // 게시글 전체 개수 계산용 전체 get()은 읽기 과금이 커서 제거합니다.
     const noticePromise = db.collection("posts")
         .where("isNotice", "==", true)
+        .limit(10)
         .get();
 
-    Promise.all([countPromise, noticePromise])
-        .then(([_, noticeSnap]) => {
+    Promise.all([noticePromise])
+        .then(([noticeSnap]) => {
             if (loadSeq !== boardLoadSeq) return;
 
             list.innerHTML = "";
@@ -7702,16 +7724,13 @@ function updateBoardPageUI(currentFetchSize) {
     const btnNext = document.getElementById('btnNextBoard');
     const txtInfo = document.getElementById('txtBoardPageInfo');
 
-    // 전체 페이지 수 계산
-    const totalPages = Math.ceil(boardTotalDocs / boardPageSize) || 1;
-    
-    txtInfo.innerText = `${boardCurrentPage} / ${totalPages} 페이지`;
+    // 전체 게시글 개수 계산을 하지 않고 현재 페이지 기준으로만 표시합니다.
+    txtInfo.innerText = `${boardCurrentPage} 페이지`;
 
-    // 버튼 활성/비활성 처리
     btnPrev.disabled = (boardCurrentPage === 1);
     btnPrev.style.opacity = (boardCurrentPage === 1) ? 0.5 : 1;
 
-    const isEnd = (boardCurrentPage >= totalPages);
+    const isEnd = (typeof currentFetchSize === 'number') ? currentFetchSize < boardPageSize : false;
     btnNext.disabled = isEnd;
     btnNext.style.opacity = isEnd ? 0.5 : 1;
 }
@@ -10208,17 +10227,9 @@ function loadAllRes(type, isPageMove = false) {
         else if(type === 'pending' && document.getElementById('btnListPend')) document.getElementById('btnListPend').className = 'btn-sm bg-blue';
         else if(type === 'recurring') document.getElementById('btnListFix').className = 'btn-sm bg-blue';
         
-        // 전체 개수 파악 (페이지 번호 계산용) - 일반 예약일 때만
-        if(type === 'general') {
-            const todayStr = new Date().toISOString().split('T')[0];
-            db.collection("reservations")
-              .where("center", "==", currentCenter)
-              .where("date", ">=", todayStr)
-              .get().then(snap => {
-                  resTotalDocs = snap.size; // 전체 개수 저장
-                  updatePageUI(); // UI 업데이트
-              });
-        }
+        // 전체 개수 계산을 위해 미래 예약 전체를 읽지 않습니다.
+        // 현재 페이지 limit 결과만 보고 다음 버튼 활성 여부를 판단합니다.
+        resTotalDocs = 0;
     }
 
     // 2. 쿼리 구성
@@ -10263,12 +10274,14 @@ function loadAllRes(type, isPageMove = false) {
 
         db.collection('reservations')
           .where('center', '==', currentCenter)
+          .where('status', '==', 'PENDING')
           .where('date', '>=', todayStr)
           .orderBy('date', 'asc')
+          .limit(100)
           .get()
           .then(snap => {
-              const pendingDocs = snap.docs.filter(doc => (doc.data().status === 'PENDING'));
-              list.innerHTML = `<div style="padding:0 0 10px; font-weight:bold; border-bottom:1px solid #ddd; margin-bottom:10px; color:#059669;">⏳ 가승인 조회 결과 (${pendingDocs.length}건)</div>`;
+              const pendingDocs = snap.docs;
+              list.innerHTML = `<div style="padding:0 0 10px; font-weight:bold; border-bottom:1px solid #ddd; margin-bottom:10px; color:#059669;">⏳ 가승인 조회 결과 (${pendingDocs.length}건, 최대 100건)</div>`;
               const container = document.createElement('div');
               list.appendChild(container);
               renderReservations({ empty: pendingDocs.length === 0, forEach: (cb) => pendingDocs.forEach(cb) }, container, 'general');
@@ -10372,15 +10385,13 @@ function updatePageUI(currentFetchSize) {
     }
     if(bar) bar.style.display = 'flex';
 
-    // 전체 페이지 수 계산
-    const totalPages = Math.ceil(resTotalDocs / resPageSize) || 1;
-    
-    txtInfo.innerText = `${resCurrentPage} / ${totalPages} 페이지`;
+    // 읽기 절감: 전체 페이지 수 계산을 위한 전체 예약 get()을 하지 않습니다.
+    txtInfo.innerText = `${resCurrentPage} 페이지`;
 
     btnPrev.disabled = (resCurrentPage === 1);
     btnPrev.style.opacity = (resCurrentPage === 1) ? 0.5 : 1;
 
-    const isEnd = (resCurrentPage >= totalPages);
+    const isEnd = (typeof currentFetchSize === 'number') ? currentFetchSize < resPageSize : false;
     btnNext.disabled = isEnd;
     btnNext.style.opacity = isEnd ? 0.5 : 1;
 }
