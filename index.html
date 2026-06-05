@@ -10185,8 +10185,8 @@ function handleIndexError(err, list) {
             <div style="background:#fff1f2; color:#e11d48; padding:15px; border-radius:8px; border:1px solid #fca5a5; font-size:0.9rem; text-align:center;">
                 <p style="font-weight:bold; margin-bottom:10px; font-size:1rem;">⚠️ 데이터베이스 설정 필요</p>
                 <p style="margin-bottom:15px; color:#374151; line-height:1.4;">
-                    새로운 검색 기능(이름 조회)을 사용하려면<br>
-                    파이어베이스에 <b>'색인(Index)'</b>을 추가해야 합니다.<br>
+                    현재 조회 조건에 필요한<br>
+                    파이어베이스 <b>'색인(Index)'</b>이 아직 없습니다.<br>
                     아래 버튼을 누르면 자동으로 설정 화면으로 이동합니다.
                 </p>
                 <a href="${url}" target="_blank" style="display:inline-block; background:#2563eb; color:white; text-decoration:none; padding:12px 20px; border-radius:8px; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
@@ -10272,21 +10272,38 @@ function loadAllRes(type, isPageMove = false) {
         const bar = document.querySelector('.pagination-bar');
         if(bar) bar.style.display = 'none';
 
+        // 안정본: 복합 색인(center + status + date + orderBy)이 없으면 가승인 목록이 막히므로
+        // 단일 필드(status)만 조회하고, 센터/날짜 정렬은 화면에서 필터링합니다.
+        // 가승인 문서는 보통 많지 않으므로 읽기 폭증 없이 인덱스 오류를 피할 수 있습니다.
         db.collection('reservations')
-          .where('center', '==', currentCenter)
           .where('status', '==', 'PENDING')
-          .where('date', '>=', todayStr)
-          .orderBy('date', 'asc')
-          .limit(100)
+          .limit(200)
           .get()
           .then(snap => {
-              const pendingDocs = snap.docs;
-              list.innerHTML = `<div style="padding:0 0 10px; font-weight:bold; border-bottom:1px solid #ddd; margin-bottom:10px; color:#059669;">⏳ 가승인 조회 결과 (${pendingDocs.length}건, 최대 100건)</div>`;
+              let pendingDocs = snap.docs.filter(doc => {
+                  const d = doc.data() || {};
+                  return String(d.center || '') === String(currentCenter)
+                      && String(d.date || '') >= String(todayStr);
+              });
+
+              pendingDocs.sort((a, b) => {
+                  const da = a.data() || {};
+                  const dbb = b.data() || {};
+                  if (String(da.date || '') !== String(dbb.date || '')) {
+                      return String(da.date || '') < String(dbb.date || '') ? -1 : 1;
+                  }
+                  return Number(da.time || 0) - Number(dbb.time || 0);
+              });
+
+              list.innerHTML = `<div style="padding:0 0 10px; font-weight:bold; border-bottom:1px solid #ddd; margin-bottom:10px; color:#059669;">⏳ 가승인 조회 결과 (${pendingDocs.length}건)</div>`;
               const container = document.createElement('div');
               list.appendChild(container);
               renderReservations({ empty: pendingDocs.length === 0, forEach: (cb) => pendingDocs.forEach(cb) }, container, 'general');
           })
-          .catch(err => handleIndexError(err, list));
+          .catch(err => {
+              console.error('가승인 조회 실패:', err);
+              list.innerHTML = `<div style="padding:18px; color:#b91c1c; text-align:center; background:#fff1f2; border:1px solid #fecaca; border-radius:10px;">가승인 조회 실패<br>${err.message || err}</div>`;
+          });
 
     } else if (type === 'recurring') {
         // 정기 예약은 기본적으로 현재 유효한 건만 표시
