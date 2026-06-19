@@ -3590,3 +3590,776 @@ body.admin-mode #view-res.content-area.active > #adminToolbar.admin-toolbar-lega
     top:-99999px !important;
   }
 }
+
+/* ============================================================
+   STEP21 PC-ONLY LAYOUT PATCH
+   목적: 모바일 앱 화면은 유지하고, PC 예약 화면만 운영자용 와이드 레이아웃으로 개선
+   범위: @media (min-width:1100px) 내부만 적용
+   ============================================================ */
+@media (min-width:1100px){
+  html,
+  body{
+    overflow:hidden !important;
+    background:#f4f7fb !important;
+  }
+
+  body{
+    height:100vh !important;
+    height:100dvh !important;
+  }
+
+  .content-area{
+    min-height:0 !important;
+  }
+
+  .tabs{
+    height:50px !important;
+    align-items:flex-end !important;
+    justify-content:center !important;
+    gap:10px !important;
+    padding:8px 18px 0 !important;
+    background:#f8fafc !important;
+    border-bottom:1px solid #e2e8f0 !important;
+    flex-shrink:0 !important;
+  }
+
+  .tab{
+    flex:0 0 160px !important;
+    height:42px !important;
+    max-width:180px !important;
+    border-radius:18px 18px 0 0 !important;
+    background:#ffffff !important;
+    border:1px solid #eef2f7 !important;
+    border-bottom:0 !important;
+    box-shadow:0 8px 20px rgba(15,23,42,.05) !important;
+  }
+
+  .tab.active{
+    background:#ffffff !important;
+    color:#2563eb !important;
+    border-bottom:3px solid #2563eb !important;
+  }
+
+  #view-res.content-area.active{
+    display:grid !important;
+    grid-template-columns:320px minmax(0,1fr) !important;
+    grid-template-rows:auto minmax(0,1fr) auto !important;
+    grid-template-areas:
+      "calendar weather"
+      "calendar grid"
+      "calendar footer" !important;
+    gap:14px !important;
+    height:calc(100dvh - 102px) !important;
+    min-height:0 !important;
+    padding:14px 22px 16px !important;
+    overflow:hidden !important;
+    align-items:stretch !important;
+    background:linear-gradient(180deg,#f8fafc 0%,#eef3f8 100%) !important;
+  }
+
+  #view-res #calendarWrap.calendar-wrap{
+    grid-area:calendar !important;
+    width:320px !important;
+    min-width:320px !important;
+    max-width:320px !important;
+    height:100% !important;
+    min-height:0 !important;
+    max-height:none !important;
+    margin:0 !important;
+    padding:10px 12px !important;
+    border-radius:22px !important;
+    border:1px solid rgba(203,213,225,.95) !important;
+    background:#ffffff !important;
+    box-shadow:0 18px 36px rgba(15,23,42,.08) !important;
+    overflow:hidden !important;
+    position:relative !important;
+    top:auto !important;
+  }
+
+  #view-res #calendarWrap .cal-head{
+    min-height:34px !important;
+    margin-bottom:8px !important;
+    padding:0 2px !important;
+  }
+
+  #view-res #calBody.continuous-calendar{
+    height:calc(100% - 42px) !important;
+    max-height:none !important;
+    overflow-y:auto !important;
+    padding-right:2px !important;
+  }
+
+  #view-res #calBody .cal-month-section{
+    border-radius:14px !important;
+    margin-bottom:10px !important;
+    border-color:#dbe4ef !important;
+  }
+
+  #view-res #calBody .cal-date{
+    min-height:38px !important;
+  }
+
+  #view-res #weatherBanner{
+    grid-area:weather !important;
+    display:flex !important;
+    height:50px !important;
+    min-height:50px !important;
+    margin:0 !important;
+    padding:8px 16px !important;
+    border-radius:18px !important;
+    background:#ffffff !important;
+    border:1px solid #e2e8f0 !important;
+    box-shadow:0 10px 24px rgba(15,23,42,.06) !important;
+    align-self:stretch !important;
+  }
+
+  #view-res #gridArea.grid-area{
+    grid-area:grid !important;
+    width:100% !important;
+    min-width:0 !important;
+    height:100% !important;
+    min-height:0 !important;
+    margin:0 !important;
+    padding:0 !important;
+    border-radius:22px !important;
+    border:1px solid #dbe4ef !important;
+    background:#ffffff !important;
+    box-shadow:0 18px 36px rgba(15,23,42,.08) !important;
+    overflow:auto !important;
+    position:relative !important;
+  }
+
+  #view-res #schTable.schedule-table{
+    display:grid !important;
+    grid-template-columns:76px repeat(15,minmax(62px,1fr)) !important;
+    width:100% !important;
+    min-width:1120px !important;
+    padding:0 0 14px 0 !important;
+    background:#ffffff !important;
+  }
+
+  #view-res .corner{
+    height:38px !important;
+    min-height:38px !important;
+    background:#f8fafc !important;
+    color:#475569 !important;
+    border-bottom:1px solid #cbd5e1 !important;
+    border-right:1px solid #cbd5e1 !important;
+    font-size:.8rem !important;
+    z-index:60 !important;
+  }
+
+  #view-res .head-time{
+    height:38px !important;
+    min-height:38px !important;
+    background:#f8fafc !important;
+    color:#334155 !important;
+    border-bottom:1px solid #cbd5e1 !important;
+    border-right:1px solid #edf2f7 !important;
+    font-size:.78rem !important;
+    font-weight:900 !important;
+    letter-spacing:-.02em !important;
+    top:0 !important;
+    z-index:45 !important;
+  }
+
+  #view-res .head-court{
+    height:48px !important;
+    min-height:48px !important;
+    background:linear-gradient(180deg,#2563eb 0%,#1d4ed8 100%) !important;
+    color:#ffffff !important;
+    border-bottom:1px solid rgba(255,255,255,.24) !important;
+    border-right:1px solid rgba(255,255,255,.18) !important;
+    font-size:.84rem !important;
+    font-weight:900 !important;
+    position:sticky !important;
+    left:0 !important;
+    z-index:38 !important;
+    box-shadow:4px 0 12px rgba(37,99,235,.16) !important;
+  }
+
+  #view-res .data-cell{
+    height:48px !important;
+    min-height:48px !important;
+    background:#ffffff !important;
+    border-bottom:1px solid #dbe4ef !important;
+    border-right:1px dashed #c8d4e3 !important;
+  }
+
+  #view-res .data-cell:nth-child(16n + 2),
+  #view-res .data-cell:nth-child(16n + 3),
+  #view-res .data-cell:nth-child(16n + 4){
+    background:#fbfdff !important;
+  }
+
+  #view-res .data-cell:hover:not(.past){
+    background:#eef6ff !important;
+    box-shadow:inset 0 0 0 2px rgba(37,99,235,.16) !important;
+  }
+
+  #view-res .data-cell.past{
+    background:#f1f5f9 !important;
+  }
+
+  #view-res .orb{
+    width:calc(100% - 10px) !important;
+    max-width:86px !important;
+    min-width:42px !important;
+    height:29px !important;
+    border-radius:8px !important;
+    font-size:.74rem !important;
+    justify-content:center !important;
+    padding:0 6px !important;
+  }
+
+  #view-res .booked-orb,
+  #view-res .fixed-orb,
+  #view-res .pending-orb{
+    padding-left:6px !important;
+    border-left-width:4px !important;
+  }
+
+  #view-res .footer-bar{
+    grid-area:footer !important;
+    position:static !important;
+    left:auto !important;
+    right:auto !important;
+    bottom:auto !important;
+    transform:none !important;
+    width:100% !important;
+    max-width:none !important;
+    min-width:0 !important;
+    height:62px !important;
+    margin:0 !important;
+    padding:0 10px 0 24px !important;
+    border-radius:22px !important;
+    background:rgba(255,255,255,.96) !important;
+    border:1px solid #dbe4ef !important;
+    box-shadow:0 18px 34px rgba(15,23,42,.10) !important;
+    z-index:30 !important;
+  }
+
+  #view-res .sel-info{
+    font-size:.92rem !important;
+    min-width:86px !important;
+  }
+
+  #view-res .footer-actions-inline{
+    margin-left:auto !important;
+    margin-right:10px !important;
+    gap:8px !important;
+  }
+
+  #view-res .footer-mini-btn{
+    height:40px !important;
+    padding:0 14px !important;
+    border-radius:18px !important;
+    background:#eef2f7 !important;
+    color:#334155 !important;
+    font-size:.8rem !important;
+  }
+
+  #view-res .footer-info-btn{
+    width:36px !important;
+    height:36px !important;
+  }
+
+  #view-res .btn-pay{
+    height:46px !important;
+    min-width:150px !important;
+    padding:0 28px !important;
+    border-radius:20px !important;
+    background:#1e293b !important;
+    box-shadow:0 10px 18px rgba(30,41,59,.18) !important;
+  }
+
+  #view-res .btn-pay:disabled{
+    background:#cbd5e1 !important;
+    color:#94a3b8 !important;
+    box-shadow:none !important;
+  }
+
+  #desktopSideRail{
+    display:none !important;
+  }
+}
+
+@media (min-width:1560px){
+  #view-res.content-area.active{
+    grid-template-columns:320px minmax(0,1fr) 286px !important;
+    grid-template-areas:
+      "calendar weather side"
+      "calendar grid side"
+      "calendar footer side" !important;
+  }
+
+  #desktopSideRail{
+    grid-area:side !important;
+    display:flex !important;
+    flex-direction:column !important;
+    gap:12px !important;
+    height:100% !important;
+    min-height:0 !important;
+    overflow:auto !important;
+    position:relative !important;
+    top:auto !important;
+  }
+
+  #desktopSideRail .desktop-summary-card,
+  #desktopSideRail .desktop-quick-card,
+  #desktopSideRail #myReservationCard{
+    box-shadow:0 14px 28px rgba(15,23,42,.08) !important;
+  }
+}
+
+@media (min-width:1100px){
+  body.dark-mode #view-res.content-area.active{
+    background:linear-gradient(180deg,#0f172a 0%,#111827 100%) !important;
+  }
+
+  body.dark-mode #view-res #calendarWrap.calendar-wrap,
+  body.dark-mode #view-res #weatherBanner,
+  body.dark-mode #view-res #gridArea.grid-area,
+  body.dark-mode #view-res .footer-bar{
+    background:#1e293b !important;
+    border-color:#334155 !important;
+    box-shadow:0 18px 36px rgba(0,0,0,.22) !important;
+  }
+
+  body.dark-mode #view-res .corner,
+  body.dark-mode #view-res .head-time{
+    background:#0f172a !important;
+    color:#cbd5e1 !important;
+    border-color:#334155 !important;
+  }
+
+  body.dark-mode #view-res .data-cell{
+    background:#1e293b !important;
+    border-color:#334155 !important;
+  }
+
+  body.dark-mode #view-res .data-cell:hover:not(.past){
+    background:#172554 !important;
+    box-shadow:inset 0 0 0 2px rgba(96,165,250,.18) !important;
+  }
+
+  body.dark-mode #view-res .data-cell.past{
+    background:#111827 !important;
+  }
+
+  body.dark-mode #view-res .footer-mini-btn{
+    background:#334155 !important;
+    color:#e2e8f0 !important;
+  }
+}
+
+
+
+/* ============================================================
+   STEP22 PC COMPANION LAYOUT
+   - Mobile/tablet layout is intentionally untouched.
+   - Applies only on desktop when Reservation Status or Board is active.
+   - Keeps reservation screen as a left companion panel and stacks the
+     selected work screen on the right.
+   ============================================================ */
+@media (min-width:1100px){
+  body:has(#view-list.content-area.active),
+  body:has(#view-board.content-area.active){
+    background:#f3f6fb !important;
+    overflow:hidden !important;
+  }
+
+  /* Left companion reservation panel */
+  body:has(#view-list.content-area.active) #view-res.content-area,
+  body:has(#view-board.content-area.active) #view-res.content-area{
+    display:grid !important;
+    position:fixed !important;
+    left:18px !important;
+    top:112px !important;
+    bottom:22px !important;
+    width:430px !important;
+    height:auto !important;
+    z-index:8 !important;
+    grid-template-columns:1fr !important;
+    grid-template-rows:300px 52px minmax(230px,1fr) 64px !important;
+    grid-template-areas:
+      "calendar"
+      "weather"
+      "grid"
+      "footer" !important;
+    gap:10px !important;
+    padding:0 !important;
+    margin:0 !important;
+    overflow:hidden !important;
+    background:transparent !important;
+    border:none !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-res #adminToolbar,
+  body:has(#view-board.content-area.active) #view-res #adminToolbar,
+  body:has(#view-list.content-area.active) #desktopSideRail,
+  body:has(#view-board.content-area.active) #desktopSideRail{
+    display:none !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-res #calendarWrap.calendar-wrap,
+  body:has(#view-board.content-area.active) #view-res #calendarWrap.calendar-wrap{
+    grid-area:calendar !important;
+    position:relative !important;
+    top:auto !important;
+    width:100% !important;
+    min-width:0 !important;
+    height:100% !important;
+    min-height:0 !important;
+    max-height:none !important;
+    margin:0 !important;
+    padding:10px 12px !important;
+    overflow:auto !important;
+    border-radius:22px !important;
+    border:1px solid #dbe4ef !important;
+    background:#ffffff !important;
+    box-shadow:0 16px 32px rgba(15,23,42,.08) !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-res #calBody.continuous-calendar,
+  body:has(#view-board.content-area.active) #view-res #calBody.continuous-calendar{
+    max-height:none !important;
+    height:auto !important;
+    overflow:visible !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-res #calBody .cal-date,
+  body:has(#view-board.content-area.active) #view-res #calBody .cal-date{
+    min-height:33px !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-res #weatherBanner,
+  body:has(#view-board.content-area.active) #view-res #weatherBanner{
+    grid-area:weather !important;
+    display:flex !important;
+    width:100% !important;
+    height:52px !important;
+    min-height:52px !important;
+    margin:0 !important;
+    padding:7px 12px !important;
+    border-radius:18px !important;
+    border:1px solid #dbe4ef !important;
+    background:#ffffff !important;
+    box-shadow:0 12px 24px rgba(15,23,42,.07) !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-res #gridArea.grid-area,
+  body:has(#view-board.content-area.active) #view-res #gridArea.grid-area{
+    grid-area:grid !important;
+    width:100% !important;
+    height:100% !important;
+    min-height:0 !important;
+    margin:0 !important;
+    padding:0 !important;
+    overflow:auto !important;
+    border-radius:22px !important;
+    border:1px solid #dbe4ef !important;
+    background:#ffffff !important;
+    box-shadow:0 16px 32px rgba(15,23,42,.08) !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-res #schTable.schedule-table,
+  body:has(#view-board.content-area.active) #view-res #schTable.schedule-table{
+    grid-template-columns:58px repeat(15,54px) !important;
+    width:max-content !important;
+    min-width:868px !important;
+    padding:0 0 12px 0 !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-res .corner,
+  body:has(#view-board.content-area.active) #view-res .corner,
+  body:has(#view-list.content-area.active) #view-res .head-time,
+  body:has(#view-board.content-area.active) #view-res .head-time{
+    height:34px !important;
+    min-height:34px !important;
+    font-size:.72rem !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-res .head-court,
+  body:has(#view-board.content-area.active) #view-res .head-court,
+  body:has(#view-list.content-area.active) #view-res .data-cell,
+  body:has(#view-board.content-area.active) #view-res .data-cell{
+    height:42px !important;
+    min-height:42px !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-res .orb,
+  body:has(#view-board.content-area.active) #view-res .orb{
+    width:46px !important;
+    max-width:46px !important;
+    height:26px !important;
+    font-size:.68rem !important;
+    border-radius:7px !important;
+    padding:0 4px !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-res .footer-bar,
+  body:has(#view-board.content-area.active) #view-res .footer-bar{
+    grid-area:footer !important;
+    position:relative !important;
+    left:auto !important;
+    right:auto !important;
+    bottom:auto !important;
+    transform:none !important;
+    width:100% !important;
+    max-width:none !important;
+    min-width:0 !important;
+    height:64px !important;
+    margin:0 !important;
+    padding:0 8px 0 14px !important;
+    border-radius:22px !important;
+    background:rgba(255,255,255,.97) !important;
+    border:1px solid #dbe4ef !important;
+    box-shadow:0 16px 30px rgba(15,23,42,.12) !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-res .sel-info,
+  body:has(#view-board.content-area.active) #view-res .sel-info{
+    font-size:.82rem !important;
+    min-width:68px !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-res .footer-actions-inline,
+  body:has(#view-board.content-area.active) #view-res .footer-actions-inline{
+    gap:5px !important;
+    margin-left:auto !important;
+    margin-right:6px !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-res .footer-mini-btn,
+  body:has(#view-board.content-area.active) #view-res .footer-mini-btn{
+    height:34px !important;
+    padding:0 10px !important;
+    font-size:.72rem !important;
+    border-radius:14px !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-res .footer-info-btn,
+  body:has(#view-board.content-area.active) #view-res .footer-info-btn{
+    width:32px !important;
+    height:32px !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-res .btn-pay,
+  body:has(#view-board.content-area.active) #view-res .btn-pay{
+    min-width:98px !important;
+    height:40px !important;
+    padding:0 14px !important;
+    border-radius:18px !important;
+    font-size:.8rem !important;
+  }
+
+  /* Right work panel: Reservation Status */
+  body:has(#view-list.content-area.active) #view-list.content-area.active{
+    display:flex !important;
+    position:fixed !important;
+    left:468px !important;
+    right:18px !important;
+    top:112px !important;
+    bottom:22px !important;
+    width:auto !important;
+    height:auto !important;
+    padding:18px !important;
+    overflow:auto !important;
+    z-index:6 !important;
+    flex-direction:column !important;
+    gap:12px !important;
+    background:#ffffff !important;
+    border:1px solid #dbe4ef !important;
+    border-radius:24px !important;
+    box-shadow:0 18px 36px rgba(15,23,42,.09) !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-list.content-area.active::before{
+    content:'예약현황';
+    display:block;
+    font-size:1.18rem;
+    font-weight:1000;
+    color:#0f172a;
+    letter-spacing:-.04em;
+    margin:0 0 2px 2px;
+  }
+
+  body:has(#view-list.content-area.active) #view-list > div:first-child{
+    display:grid !important;
+    grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+    gap:8px !important;
+    padding:0 !important;
+    margin:0 !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-list > div:first-child .btn-sm{
+    height:42px !important;
+    border-radius:14px !important;
+    font-size:.86rem !important;
+    box-shadow:none !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-list > div:nth-child(2){
+    margin:0 !important;
+    padding:16px !important;
+    border-radius:20px !important;
+    border:1px solid #e2e8f0 !important;
+    background:#f8fafc !important;
+    flex:1 1 auto !important;
+    min-height:0 !important;
+    overflow:auto !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-list .pagination-bar{
+    position:sticky !important;
+    top:0 !important;
+    z-index:12 !important;
+    border-radius:14px !important;
+  }
+
+  body:has(#view-list.content-area.active) #allResList{
+    padding:0 !important;
+  }
+
+  body:has(#view-list.content-area.active) .res-card{
+    border-radius:18px !important;
+    margin-bottom:10px !important;
+    box-shadow:0 8px 18px rgba(15,23,42,.05) !important;
+  }
+
+  /* Right work panel: Board */
+  body:has(#view-board.content-area.active) #view-board.content-area.active{
+    display:flex !important;
+    position:fixed !important;
+    left:468px !important;
+    right:18px !important;
+    top:112px !important;
+    bottom:22px !important;
+    width:auto !important;
+    height:auto !important;
+    padding:18px !important;
+    overflow:hidden !important;
+    z-index:6 !important;
+    flex-direction:column !important;
+    gap:12px !important;
+    background:#ffffff !important;
+    border:1px solid #dbe4ef !important;
+    border-radius:24px !important;
+    box-shadow:0 18px 36px rgba(15,23,42,.09) !important;
+  }
+
+  body:has(#view-board.content-area.active) #view-board.content-area.active::before{
+    content:'게시판';
+    display:block;
+    font-size:1.18rem;
+    font-weight:1000;
+    color:#0f172a;
+    letter-spacing:-.04em;
+    margin:0 0 2px 2px;
+  }
+
+  body:has(#view-board.content-area.active) #view-board .board-filter{
+    display:grid !important;
+    grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+    gap:8px !important;
+    padding:0 !important;
+    background:transparent !important;
+    border-bottom:none !important;
+    overflow:visible !important;
+  }
+
+  body:has(#view-board.content-area.active) #view-board .filter-btn{
+    height:42px !important;
+    border-radius:14px !important;
+    font-size:.86rem !important;
+  }
+
+  body:has(#view-board.content-area.active) #boardPageBar{
+    border:1px solid #e2e8f0 !important;
+    border-radius:16px !important;
+    background:#f8fafc !important;
+  }
+
+  body:has(#view-board.content-area.active) #view-board .board-list{
+    flex:1 1 auto !important;
+    min-height:0 !important;
+    padding:0 4px 120px !important;
+    overflow:auto !important;
+    background:transparent !important;
+  }
+
+  body:has(#view-board.content-area.active) #view-board .post-card{
+    margin:0 0 12px 0 !important;
+    padding:18px 22px !important;
+    border-radius:18px !important;
+    box-shadow:0 8px 18px rgba(15,23,42,.05) !important;
+  }
+
+  body:has(#view-board.content-area.active) #view-board .fab-btn{
+    right:34px !important;
+    bottom:34px !important;
+    left:auto !important;
+    margin-left:0 !important;
+    width:58px !important;
+    height:58px !important;
+    z-index:80 !important;
+  }
+
+  body:has(#view-list.content-area.active) .tabs,
+  body:has(#view-board.content-area.active) .tabs{
+    box-shadow:0 8px 24px rgba(15,23,42,.05) !important;
+  }
+}
+
+@media (min-width:1400px){
+  body:has(#view-list.content-area.active) #view-res.content-area,
+  body:has(#view-board.content-area.active) #view-res.content-area{
+    width:460px !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-list.content-area.active,
+  body:has(#view-board.content-area.active) #view-board.content-area.active{
+    left:498px !important;
+  }
+}
+
+@media (min-width:1700px){
+  body:has(#view-list.content-area.active) #view-res.content-area,
+  body:has(#view-board.content-area.active) #view-res.content-area{
+    width:500px !important;
+  }
+
+  body:has(#view-list.content-area.active) #view-list.content-area.active,
+  body:has(#view-board.content-area.active) #view-board.content-area.active{
+    left:538px !important;
+  }
+}
+
+@media (min-width:1100px){
+  body.dark-mode:has(#view-list.content-area.active) #view-res #calendarWrap.calendar-wrap,
+  body.dark-mode:has(#view-board.content-area.active) #view-res #calendarWrap.calendar-wrap,
+  body.dark-mode:has(#view-list.content-area.active) #view-res #weatherBanner,
+  body.dark-mode:has(#view-board.content-area.active) #view-res #weatherBanner,
+  body.dark-mode:has(#view-list.content-area.active) #view-res #gridArea.grid-area,
+  body.dark-mode:has(#view-board.content-area.active) #view-res #gridArea.grid-area,
+  body.dark-mode:has(#view-list.content-area.active) #view-res .footer-bar,
+  body.dark-mode:has(#view-board.content-area.active) #view-res .footer-bar,
+  body.dark-mode:has(#view-list.content-area.active) #view-list.content-area.active,
+  body.dark-mode:has(#view-board.content-area.active) #view-board.content-area.active{
+    background:#1e293b !important;
+    border-color:#334155 !important;
+    box-shadow:0 18px 36px rgba(0,0,0,.22) !important;
+  }
+
+  body.dark-mode:has(#view-list.content-area.active) #view-list.content-area.active::before,
+  body.dark-mode:has(#view-board.content-area.active) #view-board.content-area.active::before{
+    color:#f8fafc !important;
+  }
+
+  body.dark-mode:has(#view-list.content-area.active) #view-list > div:nth-child(2),
+  body.dark-mode:has(#view-board.content-area.active) #boardPageBar{
+    background:#0f172a !important;
+    border-color:#334155 !important;
+  }
+}
