@@ -4561,3 +4561,24 @@ body.dark-mode .notice-admin-empty{color:#64748b !important;}
   .notice-admin-dates{grid-template-columns:1fr; gap:0;}
   .notice-admin-actions{grid-template-columns:1fr;}
 }
+
+/* === Step24 공지 팝업 미리보기 z-index 보정 === */
+.notice-popup-preview-mask{
+  z-index: 5300 !important;
+}
+.notice-popup-preview-mask .notice-popup-win{
+  box-shadow: 0 30px 80px rgba(15,23,42,.42) !important;
+  border: 2px solid rgba(124,58,237,.28) !important;
+}
+.notice-popup-preview-mask .notice-popup-title::before{
+  content: '미리보기';
+  display: inline-block;
+  margin-right: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #7c3aed;
+  color: #fff;
+  font-size: .72rem;
+  font-weight: 900;
+  vertical-align: middle;
+}

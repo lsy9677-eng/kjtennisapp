@@ -66,8 +66,12 @@
     document.body.appendChild(modal);
   }
 
-  function renderNoticePopup(data){
+  function renderNoticePopup(data, options = {}){
     ensureUserNoticeModal();
+    const modal = document.getElementById('modalNoticePopup');
+    if(modal){
+      modal.classList.toggle('notice-popup-preview-mask', options.preview === true);
+    }
     const body = document.getElementById('noticePopupBody');
     const title = String(data.title || '').trim();
     const text = String(data.text || '').trim();
@@ -85,7 +89,7 @@
 
     body.innerHTML = html || '<div class="notice-popup-text">공지 내용이 없습니다.</div>';
     window.__currentNoticePopupKey = noticeVersionKey(data);
-    document.getElementById('modalNoticePopup').style.display = 'flex';
+    if(modal) modal.style.display = 'flex';
   }
 
   window.closeNoticePopup = function(){
@@ -213,10 +217,10 @@
     };
     if(file){
       const reader = new FileReader();
-      reader.onload = function(e){ data.imageUrl = e.target.result; renderNoticePopup(data); };
+      reader.onload = function(e){ data.imageUrl = e.target.result; renderNoticePopup(data, { preview: true }); };
       reader.readAsDataURL(file);
     }else{
-      renderNoticePopup(data);
+      renderNoticePopup(data, { preview: true });
     }
   };
 
