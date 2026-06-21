@@ -4363,3 +4363,201 @@ body.admin-mode #view-res.content-area.active > #adminToolbar.admin-toolbar-lega
     border-color:#334155 !important;
   }
 }
+
+/* === Step23 공지 팝업 기능 === */
+.notice-popup-mask{
+  z-index: 5000 !important;
+  padding: 16px;
+}
+.notice-popup-win{
+  width: min(92vw, 460px) !important;
+  max-width: 460px !important;
+  padding: 0 !important;
+  border-radius: 22px !important;
+  overflow: hidden !important;
+  box-shadow: 0 24px 60px rgba(15,23,42,.30) !important;
+  border: 1px solid rgba(226,232,240,.95) !important;
+  background: #fff !important;
+}
+.notice-popup-close{
+  position:absolute;
+  right:14px;
+  top:12px;
+  z-index:3;
+  width:34px;
+  height:34px;
+  border:none;
+  border-radius:999px;
+  background:rgba(15,23,42,.68);
+  color:#fff;
+  font-size:22px;
+  line-height:32px;
+  cursor:pointer;
+}
+#noticePopupBody{
+  max-height: min(72vh, 680px);
+  overflow-y:auto;
+  background:#fff;
+}
+.notice-popup-title{
+  padding:22px 22px 12px;
+  font-size:1.15rem;
+  font-weight:900;
+  color:#0f172a;
+  line-height:1.35;
+  letter-spacing:-.02em;
+}
+.notice-popup-image{
+  display:block;
+  width:100%;
+  height:auto;
+  max-height:54vh;
+  object-fit:contain;
+  background:#f8fafc;
+}
+.notice-popup-text{
+  padding:16px 22px 20px;
+  color:#334155;
+  font-size:.95rem;
+  line-height:1.62;
+  white-space:normal;
+}
+.notice-popup-link{
+  display:block;
+  margin:0 22px 18px;
+  padding:12px 14px;
+  border-radius:12px;
+  background:#eff6ff;
+  color:#1d4ed8;
+  font-weight:800;
+  text-decoration:none;
+  text-align:center;
+  border:1px solid #bfdbfe;
+}
+.notice-popup-actions{
+  display:flex;
+  gap:8px;
+  padding:14px 16px 16px;
+  border-top:1px solid #e2e8f0;
+  background:#f8fafc;
+}
+.notice-popup-actions button{
+  flex:1;
+  border:none;
+  border-radius:14px;
+  padding:12px 10px;
+  font-weight:900;
+  cursor:pointer;
+}
+.notice-popup-secondary{
+  background:#e2e8f0;
+  color:#475569;
+}
+.notice-popup-primary{
+  background:#2563eb;
+  color:#fff;
+}
+.notice-popup-admin-mask{
+  z-index: 5100 !important;
+}
+.notice-popup-admin-win{
+  max-width:560px !important;
+  width:min(92vw,560px) !important;
+}
+.notice-admin-card{
+  background:#f8fafc;
+  border:1px solid #e2e8f0;
+  border-radius:14px;
+  padding:14px;
+  margin-bottom:14px;
+}
+.notice-admin-toggle{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-weight:900;
+  color:#0f172a;
+  cursor:pointer;
+}
+.notice-admin-toggle input{
+  width:22px;
+  height:22px;
+  accent-color:#7c3aed;
+}
+.notice-admin-help{
+  margin-top:7px;
+  font-size:.78rem;
+  color:#64748b;
+  line-height:1.45;
+}
+.notice-admin-dates{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+.notice-admin-preview{
+  margin-top:10px;
+  border:1px dashed #cbd5e1;
+  border-radius:12px;
+  overflow:hidden;
+  background:#fff;
+  min-height:58px;
+}
+.notice-admin-preview img{
+  display:block;
+  width:100%;
+  max-height:260px;
+  object-fit:contain;
+  background:#f1f5f9;
+}
+.notice-admin-empty{
+  padding:18px;
+  color:#94a3b8;
+  text-align:center;
+  font-weight:800;
+}
+.notice-admin-small{
+  margin-top:8px;
+  border:none;
+  border-radius:10px;
+  padding:8px 10px;
+  font-size:.82rem;
+  font-weight:900;
+  cursor:pointer;
+}
+.notice-admin-small.danger{
+  background:#fee2e2;
+  color:#b91c1c;
+}
+.notice-admin-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr 1.2fr;
+  gap:8px;
+}
+.notice-admin-actions .btn-full{
+  margin-top:0 !important;
+  padding:13px 8px !important;
+}
+body.dark-mode .notice-popup-win,
+body.dark-mode #noticePopupBody{
+  background:#1e293b !important;
+  border-color:#334155 !important;
+}
+body.dark-mode .notice-popup-title{color:#f8fafc !important;}
+body.dark-mode .notice-popup-text{color:#e2e8f0 !important;}
+body.dark-mode .notice-popup-actions{background:#0f172a !important; border-color:#334155 !important;}
+body.dark-mode .notice-popup-secondary{background:#334155 !important; color:#cbd5e1 !important;}
+body.dark-mode .notice-admin-card,
+body.dark-mode .notice-admin-preview{background:#0f172a !important; border-color:#334155 !important;}
+body.dark-mode .notice-admin-toggle{color:#f8fafc !important;}
+body.dark-mode .notice-admin-empty{color:#64748b !important;}
+@media (max-width:768px){
+  .notice-popup-mask{padding:12px; align-items:center !important;}
+  .notice-popup-win{width:94vw !important; max-height:86vh !important;}
+  .notice-popup-title{font-size:1.05rem; padding:20px 18px 10px;}
+  .notice-popup-text{font-size:.9rem; padding:14px 18px 18px;}
+  .notice-popup-actions{padding:12px;}
+  .notice-popup-actions button{font-size:.82rem; padding:11px 6px;}
+  .notice-admin-dates{grid-template-columns:1fr; gap:0;}
+  .notice-admin-actions{grid-template-columns:1fr;}
+}
