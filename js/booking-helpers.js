@@ -226,6 +226,51 @@ function getBookingInteractionEvidence() {
 
 installMacroInteractionRecorder();
 
+// ===== v10 예약 오픈 전용 포렌식 모드 =====
+var FORENSIC_OPEN_HOUR = 0;
+var FORENSIC_OPEN_MINUTE = 0;
+var FORENSIC_BEFORE_MS = 30 * 1000;
+var FORENSIC_AFTER_MS = 90 * 1000;
+
+function getForensicOpenState(nowMs) {
+    const now = new Date(nowMs || Date.now());
+    const todayOpen = new Date(now);
+    todayOpen.setHours(FORENSIC_OPEN_HOUR, FORENSIC_OPEN_MINUTE, 0, 0);
+    const prevOpen = todayOpen.getTime() <= now.getTime() ? todayOpen.getTime() : todayOpen.getTime() - 86400000;
+    const nextOpen = prevOpen + 86400000;
+    const prevDelta = now.getTime() - prevOpen;
+    const nextDelta = now.getTime() - nextOpen;
+    const delta = Math.abs(prevDelta) <= Math.abs(nextDelta) ? prevDelta : nextDelta;
+    const active = delta >= -FORENSIC_BEFORE_MS && delta <= FORENSIC_AFTER_MS;
+    return {
+        active,
+        openDeltaMs: delta,
+        openEpochMs: now.getTime() - delta,
+        forensicVersion: 'v10-open-forensic',
+        windowBeforeMs: FORENSIC_BEFORE_MS,
+        windowAfterMs: FORENSIC_AFTER_MS
+    };
+}
+
+function getForensicEventSnapshot() {
+    const state = getForensicOpenState(Date.now());
+    if (!state.active) return { ...state, events: [] };
+    const minMs = state.openEpochMs - FORENSIC_BEFORE_MS;
+    const maxMs = state.openEpochMs + FORENSIC_AFTER_MS;
+    const events = macroInteractionBuffer
+        .filter(x => Number(x.atMs || 0) >= minMs && Number(x.atMs || 0) <= maxMs)
+        .slice(-120)
+        .map(x => ({
+            d: Number(x.atMs || 0) - state.openEpochMs,
+            t: String(x.type || '').slice(0,16),
+            tr: x.trusted === true,
+            p: String(x.pointerType || '').slice(0,12),
+            k: String(x.key || '').slice(0,12),
+            el: String(x.target || '').slice(0,48)
+        }));
+    return { ...state, events };
+}
+
 function getMacroClientId() {
     const key = 'tenniskj_macro_client_id';
     let value = '';
@@ -288,6 +333,7 @@ async function logBookingAttempt(payload) {
             navigationStartMs: Number((performance && performance.timeOrigin) || 0),
             perfNowMs: Number((performance && performance.now && performance.now()) || 0),
             ...getBookingInteractionEvidence(),
+            forensicOpen: getForensicEventSnapshot(),
             timeZone: (Intl && Intl.DateTimeFormat) ? Intl.DateTimeFormat().resolvedOptions().timeZone : '',
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });

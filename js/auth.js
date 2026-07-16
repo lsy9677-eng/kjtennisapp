@@ -286,6 +286,36 @@
     });
 
 
+
+// ===== v10 로그인 시 공정 예약 이용 고지 =====
+function showAutomationPolicyLoginNoticeOnce() {
+    if (isAdmin || !currentUser) return;
+    const today = new Date().toISOString().slice(0,10);
+    const key = 'automationPolicyNotice_' + today;
+    try { if (localStorage.getItem(key) === 'shown') return; } catch (_) {}
+    let modal = document.getElementById('modalAutomationPolicyNotice');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modalAutomationPolicyNotice';
+        modal.className = 'modal-mask';
+        modal.innerHTML = `<div class="modal-win" style="max-width:430px;">
+            <div class="modal-head">⚠️ 공정 예약 이용 안내</div>
+            <div style="padding:14px;border:1px solid #fca5a5;background:#fff1f2;border-radius:12px;color:#7f1d1d;line-height:1.65;font-size:.9rem;">
+                매크로, 자동화 프로그램, 비정상적 반복 요청 등 공정한 예약을 저해하는 행위는 금지됩니다.<br><br>
+                객관적인 접속·예약 기록을 통해 위반 사실이 확인되면 운영규정에 따라 예약 취소, 일정 기간 이용 제한 또는 계정 차단 조치가 이루어질 수 있습니다.<br><br>
+                시스템 장애 유발, 부정한 명령 입력 등 위법성이 확인되는 경우 관계기관 신고 및 법적 조치가 진행될 수 있습니다.
+            </div>
+            <button id="btnAutomationPolicyConfirm" class="btn-full bg-blue" style="margin-top:14px;">확인</button>
+        </div>`;
+        document.body.appendChild(modal);
+        modal.querySelector('#btnAutomationPolicyConfirm').onclick = function(){
+            try { localStorage.setItem(key, 'shown'); } catch (_) {}
+            closeModal('modalAutomationPolicyNotice');
+        };
+    }
+    setTimeout(() => openModal('modalAutomationPolicyNotice'), 180);
+}
+
 /* 로그인 상태 감지 초기화: main script에서 db/auth/currentUser 상태 변수를 만든 뒤 호출합니다. */
 function initAuthStateListener() {
     /* [수정] 로그인 상태 변경 감지 */
@@ -353,6 +383,7 @@ function initAuthStateListener() {
                 }
 
                 updateAdminUI();
+                showAutomationPolicyLoginNoticeOnce();
                 try {
                     if (_authRefreshTimer) clearTimeout(_authRefreshTimer);
                     _authRefreshTimer = setTimeout(() => {

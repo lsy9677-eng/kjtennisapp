@@ -15,6 +15,29 @@
  * - dev/index.dev.html now only keeps a marker comment for saveBook.
  */
 
+// ===== v10 자동화 도구 이용 제한 고지 =====
+function ensureAutomationPolicyBookingBox() {
+    const modal = document.getElementById('modalBook');
+    const payBtn = document.getElementById('btnDoPay');
+    if (!modal || !payBtn || document.getElementById('automationPolicyBookingBox')) return;
+    const box = document.createElement('div');
+    box.id = 'automationPolicyBookingBox';
+    box.style.cssText = 'margin:12px 0;padding:11px 12px;border:1px solid #fca5a5;border-radius:10px;background:#fff1f2;color:#7f1d1d;font-size:.78rem;line-height:1.5;';
+    box.innerHTML = '<b>⚠️ 공정 예약 이용 안내</b><br>매크로·자동화 도구·비정상적 반복 요청 등 공정한 예약을 저해하는 행위가 확인되면 운영규정에 따라 예약 취소, 이용 제한 또는 계정 차단 조치가 이루어질 수 있습니다. 시스템 장애 유발, 부정한 명령 입력 등 위법성이 확인되는 경우 관계기관 신고 및 법적 조치가 진행될 수 있습니다.<label style="display:flex;gap:7px;align-items:flex-start;margin-top:9px;font-weight:700;"><input id="chkAutomationPolicy" type="checkbox" onchange="updateBookingSubmitAvailability()" style="margin-top:3px;"> 위 내용을 확인했으며 공정 예약 규정을 준수하겠습니다.</label>';
+    payBtn.parentNode.insertBefore(box, payBtn);
+}
+
+function updateBookingSubmitAvailability() {
+    const btn = document.getElementById('btnDoPay');
+    if (!btn) return;
+    if (isAdmin) { btn.style.opacity='1'; btn.style.pointerEvents='auto'; return; }
+    const checked = !!(document.getElementById('chkAutomationPolicy') && document.getElementById('chkAutomationPolicy').checked);
+    const captchaOk = !!_recaptchaToken;
+    const enabled = checked && captchaOk;
+    btn.style.opacity = enabled ? '1' : '0.4';
+    btn.style.pointerEvents = enabled ? 'auto' : 'none';
+}
+
 function setPayMethod(m) {
     currentPayMethod = m;
 
@@ -204,6 +227,9 @@ function openBook() {
     }
 
     calcPay();
+    ensureAutomationPolicyBookingBox();
+    const policyCheck = document.getElementById('chkAutomationPolicy');
+    if (policyCheck) policyCheck.checked = false;
 
     // ▼▼▼ [매크로 방지] 모달 열 때마다 reCAPTCHA 초기화 ▼▼▼
     const btn = document.getElementById('btnDoPay');
@@ -222,6 +248,7 @@ function openBook() {
         btn.style.pointerEvents = 'auto';
     }
     // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+    updateBookingSubmitAvailability();
 
     openModal('modalBook');
 }
@@ -234,23 +261,23 @@ function openBook() {
     // reCAPTCHA 체크박스 완료 시 Google이 자동으로 호출
     window.onRecaptchaSuccess = function(token) {
         _recaptchaToken = token;
-        const btn = document.getElementById('btnDoPay');
-        btn.style.opacity = '1';
-        btn.style.pointerEvents = 'auto';
+        updateBookingSubmitAvailability();
     };
 
     // 토큰 만료 시 (2분 후 자동 만료) Google이 자동으로 호출
     window.onRecaptchaExpired = function() {
         _recaptchaToken = null;
-        const btn = document.getElementById('btnDoPay');
-        btn.style.opacity = '0.4';
-        btn.style.pointerEvents = 'none';
+        updateBookingSubmitAvailability();
     };
     /* ========== [매크로 방지] reCAPTCHA 콜백 끝 ========== */
 
     async function doPay() {
         if(isAdmin && confirm("관리자 권한으로 결제 없이 예약하시겠습니까?")) { saveBook("ADMIN"); return; }
         if(!currentUser && !isAdmin) return alert("로그인 정보가 없습니다.");
+        if (!isAdmin && !(document.getElementById('chkAutomationPolicy') && document.getElementById('chkAutomationPolicy').checked)) {
+            alert('공정 예약 이용 안내를 확인하고 동의해주세요.');
+            return;
+        }
 
         // ▼▼▼ [매크로 방지] reCAPTCHA 미완료 시 차단 (2중 안전장치) ▼▼▼
         if (!isAdmin && !_recaptchaToken) {
@@ -387,8 +414,9 @@ async function saveBook(uid) {
         amountText: amt,
         userAgent: navigator.userAgent || '',
         actorRole: isAdmin ? 'ADMIN' : 'USER',
-        appVersion: 'macro-v9',
-        interactionEvidence: (typeof getBookingInteractionEvidence === 'function') ? getBookingInteractionEvidence() : {}
+        appVersion: 'macro-v10',
+        interactionEvidence: (typeof getBookingInteractionEvidence === 'function') ? getBookingInteractionEvidence() : {},
+        forensicOpen: (typeof getForensicEventSnapshot === 'function') ? getForensicEventSnapshot() : {}
     };
 
     try {
@@ -492,8 +520,8 @@ async function saveBook(uid) {
                     requestStartedAtMs,
                     clientId,
                     actorRole: isAdmin ? 'ADMIN' : 'USER',
-                    source: 'WEB_APP_V9',
-                    appVersion: 'macro-v9',
+                    source: 'WEB_APP_V10',
+                    appVersion: 'macro-v10',
                     clientCommitAtMs: Date.now(),
                     at: firebase.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });
