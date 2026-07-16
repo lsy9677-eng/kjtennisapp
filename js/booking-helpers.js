@@ -183,13 +183,43 @@ function createBookingRequestId(uid) {
     return 'req_' + safeUid + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9);
 }
 
+function getMacroSessionId() {
+    const key = 'tenniskj_macro_session_id';
+    let value = '';
+    try { value = sessionStorage.getItem(key) || ''; } catch (_) {}
+    if (!value) {
+        value = 'ses_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+        try { sessionStorage.setItem(key, value); } catch (_) {}
+    }
+    return value;
+}
+
+function nextMacroClientSequence() {
+    const key = 'tenniskj_macro_sequence';
+    let seq = 0;
+    try {
+        seq = Number(sessionStorage.getItem(key) || '0') + 1;
+        sessionStorage.setItem(key, String(seq));
+    } catch (_) {
+        seq = Date.now();
+    }
+    return seq;
+}
+
 async function logBookingAttempt(payload) {
     try {
         await db.collection('booking_attempt_logs').add({
             ...payload,
             clientId: payload.clientId || getMacroClientId(),
+            sessionId: payload.sessionId || getMacroSessionId(),
+            clientSequence: payload.clientSequence || nextMacroClientSequence(),
             clientAtMs: payload.clientAtMs || Date.now(),
             pagePath: location.pathname || '',
+            pageVisibility: document.visibilityState || '',
+            platform: navigator.platform || '',
+            language: navigator.language || '',
+            hardwareConcurrency: Number(navigator.hardwareConcurrency || 0),
+            timeZone: (Intl && Intl.DateTimeFormat) ? Intl.DateTimeFormat().resolvedOptions().timeZone : '',
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
     } catch (e) {

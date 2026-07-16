@@ -385,7 +385,9 @@ async function saveBook(uid) {
         slotCount: slots.length,
         paymentMethod: payMethod,
         amountText: amt,
-        userAgent: navigator.userAgent || ''
+        userAgent: navigator.userAgent || '',
+        actorRole: isAdmin ? 'ADMIN' : 'USER',
+        appVersion: 'macro-v7'
     };
 
     try {
@@ -488,7 +490,10 @@ async function saveBook(uid) {
                     requestSlotCount: slots.length,
                     requestStartedAtMs,
                     clientId,
-                    source: 'WEB_APP_V6',
+                    actorRole: isAdmin ? 'ADMIN' : 'USER',
+                    source: 'WEB_APP_V7',
+                    appVersion: 'macro-v7',
+                    clientCommitAtMs: Date.now(),
                     at: firebase.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });
             }
