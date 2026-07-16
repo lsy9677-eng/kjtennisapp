@@ -85,8 +85,12 @@
         </div>`;
     }
 
+    function currentAdminState() {
+        try { return typeof isAdmin !== 'undefined' && isAdmin === true; } catch (_) { return false; }
+    }
+
     window.renderAutomationPolicyControls = async function (container) {
-        if (!container || !window.isAdmin) return;
+        if (!container || !currentAdminState()) return;
         await window.loadAutomationPolicySettings(false);
         let panel = container.querySelector('#automationPolicyControlPanel');
         if (!panel) {
@@ -102,7 +106,7 @@
     };
 
     window.toggleAutomationPolicySetting = async function (key) {
-        if (!window.isAdmin) return alert('관리자만 변경할 수 있습니다.');
+        if (!currentAdminState()) return alert('관리자만 변경할 수 있습니다.');
         const next = !(settings[key] !== false);
         try {
             await window.saveAutomationPolicySetting(key, next);
