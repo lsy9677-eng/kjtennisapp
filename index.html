@@ -969,6 +969,7 @@
 </div>
 <script src="./js/config.js?v=20260619-step20"></script>
 <script src="./js/utils.js?v=20260619-step20"></script>
+<script src="./js/policy-settings.js?v=20260716-policy-v1"></script>
 <script src="./js/reservation-data.js?v=20260619-step20"></script>
 <script src="./js/auth.js?v=20260619-step20"></script>
 <script src="./js/calendar.js?v=20260619-step20"></script>
@@ -2134,9 +2135,15 @@ async function loadMacroMonitor() {
           <div style="margin-top:16px"><b style="color:#9a3412">🧾 실제 예약 성공 타임라인(ms)</b><div style="margin-top:8px;max-height:390px;overflow:auto;border:1px solid #fed7aa;background:white;border-radius:10px;padding:8px">${timelineHtml||'최근 예약 없음'}</div></div>
           <div style="margin-top:16px"><b style="color:#9a3412">📜 예약 시도 원본 로그(ms)</b><div style="margin-top:8px;max-height:360px;overflow:auto;border:1px solid #fed7aa;background:#fffaf0;border-radius:10px;padding:10px">${recentHtml||'시도 로그 없음'}</div></div>
           <div style="margin-top:10px;font-size:.7rem;color:#78716c;line-height:1.5">24시간 시도가 0이어도 최근 활동이 24시간을 넘겼다면 정상입니다. 의심 판단은 7일 데이터와 실제 예약 타임라인을 함께 확인하세요. 점수는 자동 확정이 아닌 관리자 판단 보조자료입니다.</div>`;
+        if (typeof renderAutomationPolicyControls === 'function') {
+            await renderAutomationPolicyControls(box);
+        }
     } catch(err) {
         console.error('macro monitor load error',err);
         box.innerHTML=`<div style="padding:14px;border:1px solid #fecaca;background:#fef2f2;border-radius:10px;color:#b91c1c;">감시 자료를 불러오지 못했습니다.<br>${esc(err.message||err)}</div>`;
+        if (typeof renderAutomationPolicyControls === 'function') {
+            try { await renderAutomationPolicyControls(box); } catch (_) {}
+        }
     }
 }
 

@@ -288,8 +288,10 @@
 
 
 // ===== v10 로그인 시 공정 예약 이용 고지 =====
-function showAutomationPolicyLoginNoticeOnce() {
+async function showAutomationPolicyLoginNoticeOnce() {
     if (isAdmin || !currentUser) return;
+    try { if (typeof loadAutomationPolicySettings === 'function') await loadAutomationPolicySettings(false); } catch (_) {}
+    if (typeof isAutomationPolicyEnabled === 'function' && !isAutomationPolicyEnabled('loginNoticeEnabled')) return;
     const today = new Date().toISOString().slice(0,10);
     const key = 'automationPolicyNotice_' + today;
     try { if (localStorage.getItem(key) === 'shown') return; } catch (_) {}

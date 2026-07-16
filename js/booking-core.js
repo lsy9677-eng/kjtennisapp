@@ -19,7 +19,14 @@
 function ensureAutomationPolicyBookingBox() {
     const modal = document.getElementById('modalBook');
     const payBtn = document.getElementById('btnDoPay');
-    if (!modal || !payBtn || document.getElementById('automationPolicyBookingBox')) return;
+    if (!modal || !payBtn) return;
+    const enabled = (typeof isAutomationPolicyEnabled !== 'function') || isAutomationPolicyEnabled('bookingConsentEnabled');
+    const existing = document.getElementById('automationPolicyBookingBox');
+    if (!enabled) {
+        if (existing) existing.remove();
+        return;
+    }
+    if (existing) return;
     const box = document.createElement('div');
     box.id = 'automationPolicyBookingBox';
     box.style.cssText = 'margin:12px 0;padding:11px 12px;border:1px solid #fca5a5;border-radius:10px;background:#fff1f2;color:#7f1d1d;font-size:.78rem;line-height:1.5;';
@@ -31,7 +38,8 @@ function updateBookingSubmitAvailability() {
     const btn = document.getElementById('btnDoPay');
     if (!btn) return;
     if (isAdmin) { btn.style.opacity='1'; btn.style.pointerEvents='auto'; return; }
-    const checked = !!(document.getElementById('chkAutomationPolicy') && document.getElementById('chkAutomationPolicy').checked);
+    const consentRequired = (typeof isAutomationPolicyEnabled !== 'function') || isAutomationPolicyEnabled('bookingConsentEnabled');
+    const checked = !consentRequired || !!(document.getElementById('chkAutomationPolicy') && document.getElementById('chkAutomationPolicy').checked);
     const captchaOk = !!_recaptchaToken;
     const enabled = checked && captchaOk;
     btn.style.opacity = enabled ? '1' : '0.4';
@@ -274,7 +282,8 @@ function openBook() {
     async function doPay() {
         if(isAdmin && confirm("관리자 권한으로 결제 없이 예약하시겠습니까?")) { saveBook("ADMIN"); return; }
         if(!currentUser && !isAdmin) return alert("로그인 정보가 없습니다.");
-        if (!isAdmin && !(document.getElementById('chkAutomationPolicy') && document.getElementById('chkAutomationPolicy').checked)) {
+        const consentRequired = (typeof isAutomationPolicyEnabled !== 'function') || isAutomationPolicyEnabled('bookingConsentEnabled');
+        if (!isAdmin && consentRequired && !(document.getElementById('chkAutomationPolicy') && document.getElementById('chkAutomationPolicy').checked)) {
             alert('공정 예약 이용 안내를 확인하고 동의해주세요.');
             return;
         }
