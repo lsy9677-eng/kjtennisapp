@@ -1256,7 +1256,7 @@ function doAppUpdate(btnElement) {
 function forceReload() {
     // 브라우저가 '같은 페이지'라고 인식하지 못하게 현재 시간(?v=...)을 뒤에 붙여서 이동
     // 이렇게 하면 브라우저는 무조건 서버에서 새 파일을 가져옵니다.
-    window.location.replace(window.location.pathname + '?v=' + new Date().getTime());
+    window.location.href = window.location.pathname + '?updated=1';
 }
 /** 2. 기간별 일괄 삭제 함수 */
 
@@ -1270,43 +1270,10 @@ function forceReload() {
 
 /* step4-utils-extracted: hashPassword moved to ./js/utils.js */
 
-/* ▼▼▼ [수정] 캐시 자동 삭제 및 강제 업데이트 스크립트 ▼▼▼ */
-if ('serviceWorker' in navigator) {
-    // 1. sw.js 뒤에 ?v=날짜를 붙여서 매번 파일이 달라진 것처럼 인식시킴 (개발 중에만 유용, 배포 후엔 버전 관리 필요)
-    navigator.serviceWorker.register('./sw.js?v=' + new Date().getTime()).then(reg => {
-        
-        // 2. 주기적으로 업데이트가 있는지 확인 (1시간 마다)
-        setInterval(() => {
-            reg.update();
-        }, 60 * 60 * 1000);
-
-        reg.addEventListener('updatefound', () => {
-            const newWorker = reg.installing;
-            newWorker.addEventListener('statechange', () => {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    // [핵심] 사용자에게 묻지 않고 바로 캐시 비우고 새로고침
-                    // 기존의 confirm 창을 없애고 바로 리로드
-                    console.log("새 버전 발견! 자동 업데이트 실행");
-                    
-                    // 캐시 저장소 이름들을 싹 지우고 리로드
-                    caches.keys().then(function(names) {
-                        for (let name of names) caches.delete(name);
-                    });
-                    
-                    window.location.reload(); 
-                }
-            });
-        });
-    });
-
-    // 3. 새로고침 시 즉시 새 버전 적용되도록 설정
-    let refreshing;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (refreshing) return;
-        window.location.reload();
-        refreshing = true;
-    });
-}        
+/* ▼▼▼ [v10.3] 서비스워커 완전 비활성화 ▼▼▼ */
+// 이 버전은 서비스워커를 등록하거나 자동 새로고침하지 않습니다.
+window.__TENNISKJ_SW_DISABLED__ = true;
+/* ▲▲▲ [v10.3 끝] ▲▲▲ */
        /* [수정 완료] 새로고침 시 관리자 상태 복구 및 설정 버튼 표시 */
         if(localStorage.getItem('isAdm') === 'true') {
             isAdmin = true;
@@ -2112,6 +2079,10 @@ async function loadMacroMonitor() {
             const resolvedName=latest.name||latestGroup.name||'(이름없음)';
             const resolvedPhone=latest.phone||latestGroup.phone||'-';
             const lastActivityMs=Math.max(eventMs(latest),latestGroup.atMs||0);
+            const forensicLogs = recent7d.filter(l => l && l.forensicOpen && l.forensicOpen.active === true);
+            const forensicDeltas = forensicLogs.map(l => Math.abs(Number(l.forensicOpen.openDeltaMs || 0))).filter(Number.isFinite);
+            const forensicMinDelta = forensicDeltas.length ? Math.min(...forensicDeltas) : 0;
+            const forensicEventCount = forensicLogs.reduce((sum, l) => sum + (Array.isArray(l.forensicOpen.events) ? l.forensicOpen.events.length : 0), 0);
             window.macroReplayData[replayId]={name:resolvedName,phone:resolvedPhone,uid:resolvedUid,events:replayEvents.filter(e=>e.ms)};
             return {identity,replayId,uid:resolvedUid,name:resolvedName,phone:resolvedPhone,score,confidence,reasons,anomaly,blocked:!!blockedMap[resolvedUid],try24:tries24.length,success24:successes24.length,fail24:fails24.length,try7d:tries7.length,success7d:successes7.length,fail7d:fails7.length,successRate7d,minIntervalMs,medianIntervalMs,intervalStdDevMs,intervalCv,intervals,sub300,sub800,maxIn3s,successElapsedMin:elapsed.length?Math.min(...elapsed):0,successElapsedMedian:median(elapsed),clientCount,sessionCount,userAgents,noTrustedTryCount,webdriverCount,maxSlotsPerRequest,avgSlotsPerRequest,unlogged:anomaly.unlogged,successBurst:anomaly.successBurst,noTrace:anomaly.noTrace,lastActivityMs,lastActivityText:fmtExact(lastActivityMs),analysisLogCount:userLogs.length,analysisReservationCount:userGroups.length,forensicLogCount:forensicLogs.length,forensicMinDelta,forensicEventCount};
         }).sort((a,b)=>b.score-a.score || b.lastActivityMs-a.lastActivityMs);
@@ -2143,8 +2114,8 @@ async function loadMacroMonitor() {
         const recentHtml=logs.slice(0,100).map(l=>{const ms=eventMs(l),color=l.result==='SUCCESS'?'#16a34a':(String(l.result).includes('FAIL')?'#dc2626':'#2563eb'),slotText=Array.isArray(l.slots)?l.slots.map(s=>`${s.court}코트 ${s.time}시`).join(', '):'-';return `<div style="padding:8px 0;border-bottom:1px solid #fde68a;font-size:.73rem;line-height:1.45;"><div style="display:flex;justify-content:space-between"><b style="color:${color}">${esc(l.result)}</b><span style="font-variant-numeric:tabular-nums;">${esc(fmtExact(ms))}</span></div><div>${esc(l.name||'(이름없음)')} / ${esc(slotText)}</div><div style="color:#78716c">${esc(l.reason||'')}${l.elapsedMs?` · 처리 ${esc(l.elapsedMs)}ms`:''}${l.forensicOpen&&l.forensicOpen.active?` · 오픈대비 ${esc(l.forensicOpen.openDeltaMs)}ms · 포렌식이벤트 ${esc((l.forensicOpen.events||[]).length)}`:''} · requestId ${esc(l.requestId||'-')}</div></div>`;}).join('');
         const anomalyCount=evidence.filter(x=>x.anomaly.unlogged||x.anomaly.successBurst||x.score>=95).length;
         box.innerHTML=`<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-bottom:13px;"><div style="background:#fff;border:1px solid #fed7aa;border-radius:9px;padding:9px;text-align:center"><small>로그</small><div style="font-weight:800;color:#9a3412">${logs.length}</div></div><div style="background:#fff;border:1px solid #fed7aa;border-radius:9px;padding:9px;text-align:center"><small>예약묶음</small><div style="font-weight:800;color:#2563eb">${reservationGroups.length}</div></div><div style="background:#fff;border:1px solid #fed7aa;border-radius:9px;padding:9px;text-align:center"><small>강한징후</small><div style="font-weight:800;color:#dc2626">${anomalyCount}</div></div><div style="background:#fff;border:1px solid #fed7aa;border-radius:9px;padding:9px;text-align:center"><small>차단</small><div style="font-weight:800;color:#dc2626">${Object.keys(blockedMap).length}</div></div></div>
-          <div style="display:flex;justify-content:space-between;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap"><b style="color:#9a3412">🕵️ v10 예약 오픈 포렌식·통합 분석</b><div><button onclick="downloadMacroEvidenceCsv()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:6px 9px;cursor:pointer;margin-right:4px">증거 CSV</button><button onclick="loadMacroMonitor()" style="background:#fff;border:1px solid #fdba74;color:#9a3412;border-radius:8px;padding:6px 9px;cursor:pointer">새로고침</button></div></div>
-          <div style="font-size:.68rem;color:#78716c;margin-bottom:8px;line-height:1.45;">v10 정밀 로그는 매일 00:00 예약 오픈 전 30초부터 오픈 후 90초까지의 신뢰 입력, 요청 간격, 오픈시각 대비 지연을 별도로 기록합니다. 구버전 자료는 참고용이며 자동화 판정 근거에서는 분리해 확인하세요.</div>
+          <div style="display:flex;justify-content:space-between;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap"><b style="color:#9a3412">🕵️ v10.1 예약 오픈 포렌식·통합 분석</b><div><button onclick="downloadMacroEvidenceCsv()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:6px 9px;cursor:pointer;margin-right:4px">증거 CSV</button><button onclick="loadMacroMonitor()" style="background:#fff;border:1px solid #fdba74;color:#9a3412;border-radius:8px;padding:6px 9px;cursor:pointer">새로고침</button></div></div>
+          <div style="font-size:.68rem;color:#78716c;margin-bottom:8px;line-height:1.45;">v10.1 정밀 로그는 매일 00:00 예약 오픈 전 30초부터 오픈 후 90초까지의 신뢰 입력, 요청 간격, 오픈시각 대비 지연을 별도로 기록합니다. 구버전 자료는 참고용이며 자동화 판정 근거에서는 분리해 확인하세요.</div>
           ${suspiciousHtml||'<div style="padding:12px;border:1px solid #d9f99d;background:#f7fee7;border-radius:10px;color:#3f6212">현재 강한 자동화 징후가 없습니다.</div>'}
           <div style="margin-top:16px"><b style="color:#9a3412">🧾 실제 예약 성공 타임라인(ms)</b><div style="margin-top:8px;max-height:390px;overflow:auto;border:1px solid #fed7aa;background:white;border-radius:10px;padding:8px">${timelineHtml||'최근 예약 없음'}</div></div>
           <div style="margin-top:16px"><b style="color:#9a3412">📜 예약 시도 원본 로그(ms)</b><div style="margin-top:8px;max-height:360px;overflow:auto;border:1px solid #fed7aa;background:#fffaf0;border-radius:10px;padding:10px">${recentHtml||'시도 로그 없음'}</div></div>
