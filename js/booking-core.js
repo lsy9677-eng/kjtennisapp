@@ -387,7 +387,8 @@ async function saveBook(uid) {
         amountText: amt,
         userAgent: navigator.userAgent || '',
         actorRole: isAdmin ? 'ADMIN' : 'USER',
-        appVersion: 'macro-v7'
+        appVersion: 'macro-v8',
+        interactionEvidence: (typeof getBookingInteractionEvidence === 'function') ? getBookingInteractionEvidence() : {}
     };
 
     try {
@@ -491,8 +492,8 @@ async function saveBook(uid) {
                     requestStartedAtMs,
                     clientId,
                     actorRole: isAdmin ? 'ADMIN' : 'USER',
-                    source: 'WEB_APP_V7',
-                    appVersion: 'macro-v7',
+                    source: 'WEB_APP_V8',
+                    appVersion: 'macro-v8',
                     clientCommitAtMs: Date.now(),
                     at: firebase.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });

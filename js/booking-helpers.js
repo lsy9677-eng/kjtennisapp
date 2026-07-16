@@ -167,6 +167,65 @@ function checkRequestedBlock(court, block, occupiedMap, openTime, lastStartTime)
 }
 
 
+
+// ===== v8 정밀 상호작용 증거 수집 =====
+var macroInteractionBuffer = window.macroInteractionBuffer = window.macroInteractionBuffer || [];
+var macroInteractionInstalled = window.macroInteractionInstalled || false;
+
+function installMacroInteractionRecorder() {
+    if (window.macroInteractionInstalled) return;
+    window.macroInteractionInstalled = true;
+    const record = function(ev) {
+        try {
+            const now = Date.now();
+            const target = ev && ev.target;
+            const cell = target && target.closest ? target.closest('.data-cell') : null;
+            const bookBtn = target && target.closest ? target.closest('#btnMainBook, #btnBookAction, [onclick*="openBook"], [onclick*="doPay"]') : null;
+            const relevant = !!cell || !!bookBtn || (ev && ev.type === 'keydown');
+            if (!relevant) return;
+            macroInteractionBuffer.push({
+                atMs: now,
+                type: String(ev.type || ''),
+                trusted: ev.isTrusted === true,
+                pointerType: String(ev.pointerType || ''),
+                key: ev.type === 'keydown' ? String(ev.key || '') : '',
+                target: cell ? String(cell.id || 'grid-cell') : (bookBtn ? String(bookBtn.id || 'book-action') : String((target && target.id) || ''))
+            });
+            const cutoff = now - 120000;
+            while (macroInteractionBuffer.length && macroInteractionBuffer[0].atMs < cutoff) macroInteractionBuffer.shift();
+            if (macroInteractionBuffer.length > 300) macroInteractionBuffer.splice(0, macroInteractionBuffer.length - 300);
+        } catch (_) {}
+    };
+    ['pointerdown','click','keydown','touchstart'].forEach(type => {
+        document.addEventListener(type, record, { capture: true, passive: true });
+    });
+}
+
+function getBookingInteractionEvidence() {
+    installMacroInteractionRecorder();
+    const now = Date.now();
+    const recent = macroInteractionBuffer.filter(x => now - Number(x.atMs || 0) <= 60000);
+    const trusted = recent.filter(x => x.trusted);
+    const gridTrusted = trusted.filter(x => String(x.target || '').startsWith('c-'));
+    const last = recent.length ? recent[recent.length - 1] : null;
+    const lastTrusted = trusted.length ? trusted[trusted.length - 1] : null;
+    const gaps = [];
+    for (let i = 1; i < gridTrusted.length; i++) gaps.push(gridTrusted[i].atMs - gridTrusted[i-1].atMs);
+    return {
+        interactionCount60s: recent.length,
+        trustedInteractionCount60s: trusted.length,
+        trustedGridInteractionCount60s: gridTrusted.length,
+        untrustedInteractionCount60s: recent.length - trusted.length,
+        lastInteractionAgoMs: last ? Math.max(0, now - last.atMs) : -1,
+        lastTrustedInteractionAgoMs: lastTrusted ? Math.max(0, now - lastTrusted.atMs) : -1,
+        lastPointerType: last ? String(last.pointerType || '') : '',
+        gridIntervalMinMs: gaps.length ? Math.min.apply(null, gaps) : 0,
+        gridIntervalMedianMs: gaps.length ? gaps.slice().sort((a,b)=>a-b)[Math.floor(gaps.length/2)] : 0
+    };
+}
+
+installMacroInteractionRecorder();
+
 function getMacroClientId() {
     const key = 'tenniskj_macro_client_id';
     let value = '';
@@ -219,6 +278,16 @@ async function logBookingAttempt(payload) {
             platform: navigator.platform || '',
             language: navigator.language || '',
             hardwareConcurrency: Number(navigator.hardwareConcurrency || 0),
+            deviceMemory: Number(navigator.deviceMemory || 0),
+            maxTouchPoints: Number(navigator.maxTouchPoints || 0),
+            webdriver: navigator.webdriver === true,
+            screenWidth: Number((window.screen && window.screen.width) || 0),
+            screenHeight: Number((window.screen && window.screen.height) || 0),
+            viewportWidth: Number(window.innerWidth || 0),
+            viewportHeight: Number(window.innerHeight || 0),
+            navigationStartMs: Number((performance && performance.timeOrigin) || 0),
+            perfNowMs: Number((performance && performance.now && performance.now()) || 0),
+            ...getBookingInteractionEvidence(),
             timeZone: (Intl && Intl.DateTimeFormat) ? Intl.DateTimeFormat().resolvedOptions().timeZone : '',
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });

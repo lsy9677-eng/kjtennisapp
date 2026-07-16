@@ -973,8 +973,8 @@
 <script src="./js/auth.js?v=20260619-step20"></script>
 <script src="./js/calendar.js?v=20260619-step20"></script>
 <script src="./js/reservation-ui.js?v=20260619-step20"></script>
-<script src="./js/booking-helpers.js?v=20260716-macro-v7"></script>
-<script src="./js/booking-core.js?v=20260716-macro-v7"></script>
+<script src="./js/booking-helpers.js?v=20260716-macro-v8"></script>
+<script src="./js/booking-core.js?v=20260716-macro-v8"></script>
 <script src="./js/admin-actions.js?v=20260619-step20"></script>
 
 <script>
@@ -1883,18 +1883,79 @@ function scoreBadge(score) {
 window.downloadMacroEvidenceCsv = function() {
     const rows = Array.isArray(window.macroEvidenceRows) ? window.macroEvidenceRows : [];
     if (!rows.length) return alert('내보낼 감시 자료가 없습니다. 먼저 새로고침하세요.');
-    const headers = ['이름','UID','전화번호','점수','24시간시도','24시간성공','24시간실패','최단간격ms','중앙간격ms','3초내최대요청','800ms이하시도','성공로그불일치','2초내연속성공','클라이언트수','세션수','판정근거'];
+    const headers = [
+        '이름','UID','전화번호','점수','판정','24시간시도','24시간성공','24시간실패','성공률%',
+        '최단간격ms','중앙간격ms','간격표준편차ms','간격변동계수','3초내최대요청','300ms이하','800ms이하',
+        '신뢰사용자입력없는시도','webdriver감지','성공로그불일치','2초내연속성공','최대슬롯묶음','평균슬롯묶음',
+        '처리최단ms','처리중앙ms','클라이언트수','세션수','브라우저수','판정근거'
+    ];
     const csvEscape = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
     const lines = [headers.map(csvEscape).join(',')].concat(rows.map(r => [
-        r.name,r.uid,r.phone,r.score,r.try24,r.success24,r.fail24,r.minIntervalMs,r.medianIntervalMs,
-        r.maxIn3s,r.sub800,r.unlogged,r.successBurst,r.clientCount,r.sessionCount,(r.reasons || []).join(' / ')
+        r.name,r.uid,r.phone,r.score,r.confidence,r.try24,r.success24,r.fail24,r.successRate,
+        r.minIntervalMs,r.medianIntervalMs,r.intervalStdDevMs,r.intervalCv,r.maxIn3s,r.sub300,r.sub800,
+        r.noTrustedTryCount,r.webdriverCount,r.unlogged,r.successBurst,r.maxSlotsPerRequest,r.avgSlotsPerRequest,
+        r.successElapsedMin,r.successElapsedMedian,r.clientCount,r.sessionCount,r.userAgents,(r.reasons || []).join(' / ')
     ].map(csvEscape).join(',')));
     const blob = new Blob(['\ufeff' + lines.join('\n')], { type:'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'macro_evidence_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.download = 'macro_evidence_v8_' + new Date().toISOString().slice(0,10) + '.csv';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+
+window.openMacroReplay = function(replayId) {
+    const data = window.macroReplayData && window.macroReplayData[replayId];
+    if (!data) return alert('재생할 기록이 없습니다. 감시판을 새로고침해 주세요.');
+    let modal = document.getElementById('modalMacroReplayV8');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modalMacroReplayV8';
+        modal.className = 'modal-mask';
+        modal.innerHTML = `<div class="modal-win" style="max-width:620px;max-height:88vh;overflow:auto;">
+          <span class="modal-close" onclick="closeModal('modalMacroReplayV8')">×</span>
+          <div class="modal-head">예약 행동 리플레이</div>
+          <div id="macroReplayHeader"></div>
+          <div style="display:flex;gap:6px;margin:10px 0;">
+            <button id="macroReplayPlayBtn" style="flex:1;background:#2563eb;color:white;border:none;border-radius:9px;padding:9px;font-weight:800;cursor:pointer;">▶ 재생</button>
+            <button onclick="window.resetMacroReplay && window.resetMacroReplay()" style="background:#f1f5f9;color:#334155;border:none;border-radius:9px;padding:9px 14px;font-weight:800;cursor:pointer;">초기화</button>
+          </div>
+          <div id="macroReplayTrack" style="border:1px solid #fed7aa;border-radius:10px;background:#fffaf0;padding:9px;"></div>
+          <div style="font-size:.7rem;color:#78716c;line-height:1.5;margin-top:10px;">표시 시각은 Firestore 서버 시각 또는 클라이언트 기록 시각을 밀리초 단위로 재구성한 것입니다. 네트워크 지연이 있으므로 단독 확정 증거가 아니라 반복 패턴 판단 자료로 사용하세요.</div>
+        </div>`;
+        document.body.appendChild(modal);
+    }
+    const esc = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    const events = (data.events || []).slice().sort((a,b)=>a.ms-b.ms);
+    const base = events.length ? events[0].ms : Date.now();
+    document.getElementById('macroReplayHeader').innerHTML = `<div style="padding:9px;border-radius:9px;background:#fff7ed;border:1px solid #fdba74;"><b>${esc(data.name)}</b> · ${esc(data.phone)}<br><span style="font-size:.75rem;color:#57534e;">UID ${esc(data.uid || '-')} · ${events.length}개 이벤트 · 관측구간 ${(events.length ? ((events[events.length-1].ms-base)/1000).toFixed(3) : '0.000')}초</span></div>`;
+    const track = document.getElementById('macroReplayTrack');
+    track.innerHTML = events.map((e,i) => {
+        const delta = e.ms-base;
+        const color = e.type === 'SUCCESS' ? '#16a34a' : (String(e.type).includes('FAIL') ? '#dc2626' : (e.type === 'RESERVATION' ? '#7c3aed' : '#2563eb'));
+        return `<div class="macro-replay-row" data-i="${i}" style="padding:8px;border-bottom:1px solid #fde68a;opacity:.42;transition:.15s;">
+          <div style="display:flex;justify-content:space-between;gap:8px;"><b style="color:${color};">${esc(e.type)}</b><span style="font-variant-numeric:tabular-nums;">+${delta.toLocaleString()}ms</span></div>
+          <div style="font-size:.75rem;">${esc(e.label || '')}</div><div style="font-size:.68rem;color:#78716c;">${esc(new Date(e.ms).toLocaleString('ko-KR',{hour12:false}))}.${String(e.ms%1000).padStart(3,'0')} · ${esc(e.requestId || '')}</div>
+        </div>`;
+    }).join('') || '<div>기록 없음</div>';
+    let timers=[];
+    window.resetMacroReplay = function() {
+        timers.forEach(clearTimeout); timers=[];
+        track.querySelectorAll('.macro-replay-row').forEach(x => { x.style.opacity='.42'; x.style.transform='none'; x.style.background='transparent'; });
+    };
+    document.getElementById('macroReplayPlayBtn').onclick = function() {
+        window.resetMacroReplay();
+        if (!events.length) return;
+        const total = Math.max(1, events[events.length-1].ms-base);
+        const scale = total > 15000 ? 15000/total : 1;
+        events.forEach((e,i) => {
+            timers.push(setTimeout(() => {
+                const row=track.querySelector(`[data-i="${i}"]`);
+                if(row){row.style.opacity='1';row.style.transform='translateX(3px)';row.style.background='#fff';row.scrollIntoView({block:'nearest',behavior:'smooth'});}
+            }, Math.max(0,(e.ms-base)*scale)));
+        });
+    };
+    openModal('modalMacroReplayV8');
 };
 
 async function loadMacroMonitor() {
@@ -1908,188 +1969,143 @@ async function loadMacroMonitor() {
         if (!value) return 0;
         if (typeof value.toMillis === 'function') return value.toMillis();
         if (typeof value.toDate === 'function') return value.toDate().getTime();
-        if (value.seconds) return value.seconds * 1000;
+        if (value.seconds) return value.seconds * 1000 + Math.floor(Number(value.nanoseconds || 0) / 1000000);
         const parsed = new Date(value).getTime();
         return Number.isFinite(parsed) ? parsed : 0;
     };
-    const esc = value => String(value == null ? '' : value)
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-    const median = nums => {
-        if (!nums.length) return 0;
-        const a = [...nums].sort((x,y)=>x-y), m = Math.floor(a.length/2);
-        return a.length % 2 ? a[m] : Math.round((a[m-1]+a[m])/2);
+    const eventMs = x => toMs(x.createdAt) || Number(x.clientAtMs) || Number(x.requestStartedAtMs) || Number(x.atMs) || 0;
+    const esc = value => String(value == null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    const median = nums => { if(!nums.length)return 0; const a=[...nums].sort((x,y)=>x-y),m=Math.floor(a.length/2); return a.length%2?a[m]:Math.round((a[m-1]+a[m])/2); };
+    const mean = nums => nums.length ? nums.reduce((a,b)=>a+b,0)/nums.length : 0;
+    const stdDev = nums => { if(nums.length<2)return 0; const m=mean(nums); return Math.sqrt(nums.reduce((s,x)=>s+(x-m)*(x-m),0)/nums.length); };
+    const maxEventsInWindow = (times,windowMs) => { if(!times.length)return 0; const a=[...times].sort((x,y)=>x-y);let best=1,left=0;for(let right=0;right<a.length;right++){while(a[right]-a[left]>windowMs)left++;best=Math.max(best,right-left+1);}return best; };
+    const fmtMs = ms => !ms ? '-' : (ms < 1000 ? `${Math.round(ms)}ms` : `${(ms/1000).toFixed(3)}초`);
+    const fmtExact = ms => { if(!ms)return '-'; const d=new Date(ms); return `${d.toLocaleDateString('ko-KR')} ${d.toLocaleTimeString('ko-KR',{hour12:false})}.${String(d.getMilliseconds()).padStart(3,'0')}`; };
+    const isAdminRecord = x => x && (x.actorRole === 'ADMIN' || ['ADMIN','ADMIN_BULK'].includes(String(x.uid||'')) || String(x.source||'').includes('ADMIN'));
+    const miniBars = intervals => {
+        if(!intervals.length)return '<div style="font-size:.68rem;color:#94a3b8;">간격 데이터 없음</div>';
+        const vals=intervals.slice(-18), max=Math.max(...vals,1);
+        return `<div title="최근 요청 간격(ms)" style="height:34px;display:flex;align-items:flex-end;gap:2px;margin-top:7px;">${vals.map(v=>`<span style="flex:1;min-width:2px;height:${Math.max(3,Math.round((v/max)*32))}px;background:${v<=300?'#dc2626':v<=800?'#f97316':'#60a5fa'};border-radius:2px 2px 0 0;"></span>`).join('')}</div>`;
     };
-    const maxEventsInWindow = (times, windowMs) => {
-        if (!times.length) return 0;
-        const a=[...times].sort((x,y)=>x-y); let best=1, left=0;
-        for (let right=0; right<a.length; right++) {
-            while (a[right]-a[left] > windowMs) left++;
-            best=Math.max(best,right-left+1);
-        }
-        return best;
-    };
-    const fmtMs = ms => !ms ? '-' : (ms < 1000 ? `${Math.round(ms)}ms` : `${(ms/1000).toFixed(2)}초`);
-    const isAdminRecord = x => x && (x.actorRole === 'ADMIN' || ['ADMIN','ADMIN_BULK'].includes(String(x.uid || '')) || String(x.source || '').includes('ADMIN'));
 
     try {
         const [logsSnap, blockedSnap, reservationSnap] = await Promise.all([
-            db.collection('booking_attempt_logs').orderBy('createdAt', 'desc').limit(500).get(),
+            db.collection('booking_attempt_logs').orderBy('createdAt','desc').limit(800).get(),
             db.collection('blocked_users').get(),
-            db.collection('reservations').orderBy('at', 'desc').limit(500).get()
+            db.collection('reservations').orderBy('at','desc').limit(800).get()
         ]);
+        const allLogs=logsSnap.docs.map(d=>({id:d.id,...d.data()}));
+        const logs=allLogs.filter(l=>!isAdminRecord(l));
+        const reservations=reservationSnap.docs.map(d=>({id:d.id,...d.data()})).filter(r=>['PENDING','BOOKED','BLOCKED'].includes(r.status)&&!isAdminRecord(r));
+        window.bookingLogs=logs;
+        const blockedMap={}; blockedSnap.forEach(doc=>blockedMap[doc.id]=doc.data()||{});
+        const successRequestIds=new Set(logs.filter(l=>l.result==='SUCCESS'&&l.requestId).map(l=>l.requestId));
 
-        const allLogs = logsSnap.docs.map(d => ({ id:d.id, ...d.data() }));
-        const logs = allLogs.filter(l => !isAdminRecord(l));
-        const reservations = reservationSnap.docs.map(d => ({ id:d.id, ...d.data() }))
-            .filter(r => ['PENDING','BOOKED','BLOCKED'].includes(r.status) && !isAdminRecord(r));
-        window.bookingLogs = logs;
-
-        const blockedMap = {};
-        blockedSnap.forEach(doc => blockedMap[doc.id] = doc.data() || {});
-        const successRequestIds = new Set(logs.filter(l => l.result === 'SUCCESS' && l.requestId).map(l => l.requestId));
-
-        const groups = {};
-        reservations.forEach(r => {
-            const identity = r.uid || r.phone || r.name || 'unknown';
-            const groupKey = r.requestId || `legacy_${r.id}`;
-            if (!groups[groupKey]) groups[groupKey] = {
-                groupKey, requestId:r.requestId || '', identity, uid:r.uid || '', name:r.name || '', phone:r.phone || '',
-                clientId:r.clientId || '', source:r.source || '', actorRole:r.actorRole || '', atMs:toMs(r.at), slots:[]
-            };
-            groups[groupKey].slots.push({ court:r.court,time:r.time,date:r.date,center:r.center,id:r.id });
-            groups[groupKey].atMs = Math.max(groups[groupKey].atMs, toMs(r.at));
+        const groups={};
+        reservations.forEach(r=>{
+            const identity=r.uid||r.phone||r.name||'unknown';
+            const groupKey=r.requestId||`legacy_${r.id}`;
+            if(!groups[groupKey]) groups[groupKey]={groupKey,requestId:r.requestId||'',identity,uid:r.uid||'',name:r.name||'',phone:r.phone||'',clientId:r.clientId||'',source:r.source||'',actorRole:r.actorRole||'',atMs:toMs(r.at)||Number(r.clientCommitAtMs)||0,requestStartedAtMs:Number(r.requestStartedAtMs)||0,clientCommitAtMs:Number(r.clientCommitAtMs)||0,slots:[]};
+            groups[groupKey].slots.push({court:r.court,time:r.time,date:r.date,center:r.center,id:r.id});
+            groups[groupKey].atMs=Math.max(groups[groupKey].atMs,toMs(r.at)||Number(r.clientCommitAtMs)||0);
         });
-        const reservationGroups = Object.values(groups).sort((a,b)=>b.atMs-a.atMs);
-        const byIdentityGroups = {};
-        reservationGroups.forEach(g => (byIdentityGroups[g.identity] ||= []).push(g));
+        const reservationGroups=Object.values(groups).sort((a,b)=>b.atMs-a.atMs);
+        const byIdentityGroups={}; reservationGroups.forEach(g=>(byIdentityGroups[g.identity]||=[]).push(g));
 
-        const anomaliesByIdentity = {};
-        Object.entries(byIdentityGroups).forEach(([identity, arr]) => {
-            arr.sort((a,b)=>a.atMs-b.atMs);
-            let successBurst=0, minSuccessInterval=0;
-            const intervals=[];
-            for (let i=1;i<arr.length;i++) {
-                if (arr[i].requestId && arr[i-1].requestId && arr[i].requestId !== arr[i-1].requestId) {
-                    const diff=Math.abs(arr[i].atMs-arr[i-1].atMs); intervals.push(diff);
-                    if (diff <= 2000) successBurst++;
-                }
-            }
-            if (intervals.length) minSuccessInterval=Math.min(...intervals);
-            anomaliesByIdentity[identity] = {
-                successBurst,
-                minSuccessInterval,
-                unlogged:arr.filter(g=>g.requestId && !successRequestIds.has(g.requestId)).length,
-                noTrace:arr.filter(g=>!g.requestId).length
-            };
+        const anomaliesByIdentity={};
+        Object.entries(byIdentityGroups).forEach(([identity,arr])=>{
+            arr.sort((a,b)=>a.atMs-b.atMs); let successBurst=0; const intervals=[];
+            for(let i=1;i<arr.length;i++){if(arr[i].requestId&&arr[i-1].requestId&&arr[i].requestId!==arr[i-1].requestId){const diff=Math.abs(arr[i].atMs-arr[i-1].atMs);intervals.push(diff);if(diff<=2000)successBurst++;}}
+            anomaliesByIdentity[identity]={successBurst,minSuccessInterval:intervals.length?Math.min(...intervals):0,unlogged:arr.filter(g=>g.requestId&&!successRequestIds.has(g.requestId)).length,noTrace:arr.filter(g=>!g.requestId).length};
         });
 
-        const byUser = {};
-        logs.forEach(l => {
-            const key=l.uid || l.phone || l.name || 'unknown';
-            (byUser[key] ||= []).push(l);
-        });
-        reservationGroups.forEach(g => { if (!byUser[g.identity]) byUser[g.identity]=[]; });
-
-        const evidence = Object.keys(byUser).map(identity => {
-            const userLogs=(byUser[identity] || []).sort((a,b)=>toMs(a.createdAt)-toMs(b.createdAt));
-            const recent=userLogs.filter(l => (now-(toMs(l.createdAt) || Number(l.clientAtMs)||0)) <= DAY);
-            const latest=userLogs[userLogs.length-1] || {};
-            const latestGroup=(byIdentityGroups[identity] || []).slice().sort((a,b)=>b.atMs-a.atMs)[0] || {};
-            const anomaly=anomaliesByIdentity[identity] || {successBurst:0,minSuccessInterval:0,unlogged:0,noTrace:0};
-            const tries=recent.filter(l=>l.result==='TRY');
-            const successes=recent.filter(l=>l.result==='SUCCESS');
-            const fails=recent.filter(l=>String(l.result||'').includes('FAIL'));
-            const uniqueTryMap=new Map();
-            tries.forEach(l => { const k=l.requestId || l.id; if (!uniqueTryMap.has(k)) uniqueTryMap.set(k,l); });
-            const tryTimes=[...uniqueTryMap.values()].map(l=>Number(l.clientAtMs)||toMs(l.createdAt)).filter(Boolean).sort((a,b)=>a-b);
-            const intervals=[]; for(let i=1;i<tryTimes.length;i++) intervals.push(tryTimes[i]-tryTimes[i-1]);
-            const minIntervalMs=intervals.length?Math.min(...intervals):0;
-            const medianIntervalMs=median(intervals);
-            const sub300=intervals.filter(x=>x<=300).length;
-            const sub800=intervals.filter(x=>x<=800).length;
-            const sub1500=intervals.filter(x=>x<=1500).length;
-            const maxIn3s=maxEventsInWindow(tryTimes,3000);
+        const byUser={}; logs.forEach(l=>{const key=l.uid||l.phone||l.name||'unknown';(byUser[key]||=[]).push(l);}); reservationGroups.forEach(g=>{if(!byUser[g.identity])byUser[g.identity]=[];});
+        window.macroReplayData={};
+        const evidence=Object.keys(byUser).map((identity,idx)=>{
+            const userLogs=(byUser[identity]||[]).sort((a,b)=>eventMs(a)-eventMs(b));
+            const recent=userLogs.filter(l=>now-eventMs(l)<=DAY);
+            const latest=userLogs[userLogs.length-1]||{};
+            const userGroups=(byIdentityGroups[identity]||[]).slice().sort((a,b)=>a.atMs-b.atMs);
+            const latestGroup=userGroups[userGroups.length-1]||{};
+            const anomaly=anomaliesByIdentity[identity]||{successBurst:0,minSuccessInterval:0,unlogged:0,noTrace:0};
+            const tries=recent.filter(l=>l.result==='TRY'), successes=recent.filter(l=>l.result==='SUCCESS'), fails=recent.filter(l=>String(l.result||'').includes('FAIL'));
+            const uniqueTryMap=new Map(); tries.forEach(l=>{const k=l.requestId||l.id;if(!uniqueTryMap.has(k))uniqueTryMap.set(k,l);});
+            const uniqueTries=[...uniqueTryMap.values()];
+            const tryTimes=uniqueTries.map(eventMs).filter(Boolean).sort((a,b)=>a-b);
+            const intervals=[];for(let i=1;i<tryTimes.length;i++)intervals.push(tryTimes[i]-tryTimes[i-1]);
+            const minIntervalMs=intervals.length?Math.min(...intervals):0, medianIntervalMs=median(intervals), intervalStdDevMs=Math.round(stdDev(intervals)), intervalCv=medianIntervalMs?Number((intervalStdDevMs/medianIntervalMs).toFixed(3)):0;
+            const sub300=intervals.filter(x=>x<=300).length,sub800=intervals.filter(x=>x<=800).length,sub1500=intervals.filter(x=>x<=1500).length,maxIn3s=maxEventsInWindow(tryTimes,3000);
             const elapsed=successes.map(l=>Number(l.elapsedMs)||0).filter(x=>x>0);
-            const clientCount=new Set(recent.map(l=>l.clientId).filter(Boolean)).size;
-            const sessionCount=new Set(recent.map(l=>l.sessionId).filter(Boolean)).size;
-            const userAgents=new Set(recent.map(l=>l.userAgent).filter(Boolean)).size;
-            let score=0; const reasons=[];
-            if (anomaly.unlogged) { score += anomaly.unlogged*65; reasons.push(`예약 성공 로그 불일치 ${anomaly.unlogged}건`); }
-            if (anomaly.successBurst) { score += anomaly.successBurst*45; reasons.push(`2초 내 서로 다른 예약 성공 ${anomaly.successBurst}회`); }
-            if (minIntervalMs && minIntervalMs < 250) { score+=60; reasons.push(`최단 요청 간격 ${minIntervalMs}ms`); }
-            else if (minIntervalMs && minIntervalMs < 500) { score+=45; reasons.push(`최단 요청 간격 ${minIntervalMs}ms`); }
-            else if (minIntervalMs && minIntervalMs < 900) { score+=25; reasons.push(`최단 요청 간격 ${minIntervalMs}ms`); }
-            if (maxIn3s >= 5) { score+=70; reasons.push(`3초 내 최대 ${maxIn3s}개 요청`); }
-            else if (maxIn3s >= 4) { score+=50; reasons.push(`3초 내 최대 ${maxIn3s}개 요청`); }
-            else if (maxIn3s >= 3) { score+=25; reasons.push(`3초 내 최대 ${maxIn3s}개 요청`); }
-            if (sub300 >= 2) { score+=Math.min(50,sub300*15); reasons.push(`300ms 이하 반복 ${sub300}회`); }
-            if (sub800 >= 3) { score+=Math.min(40,sub800*8); reasons.push(`800ms 이하 반복 ${sub800}회`); }
-            if (successes.length >= 3 && elapsed.length && Math.min(...elapsed) < 1000) { score+=20; reasons.push(`1초 미만 예약완료 ${elapsed.filter(x=>x<1000).length}건`); }
-            if (fails.length >= 8 && tries.length >= 8) { score+=15; reasons.push(`24시간 실패 ${fails.length}건`); }
-            if (clientCount >= 3 && tries.length >= 5) { score+=10; reasons.push(`클라이언트 식별자 ${clientCount}개`); }
-            if (userAgents >= 3 && tries.length >= 5) { score+=10; reasons.push(`브라우저 환경 ${userAgents}종`); }
-            score += Math.min(20, calcMacroScore(recent));
-            return {
-                identity, uid:latest.uid||latestGroup.uid||'', name:latest.name||latestGroup.name||'(이름없음)', phone:latest.phone||latestGroup.phone||'-',
-                score, reasons, anomaly, blocked:!!blockedMap[latest.uid||latestGroup.uid||''], try24:tries.length, success24:successes.length,
-                fail24:fails.length, minIntervalMs, medianIntervalMs, sub300, sub800, sub1500, maxIn3s,
-                successElapsedMin:elapsed.length?Math.min(...elapsed):0, successElapsedMedian:median(elapsed), clientCount, sessionCount, userAgents
-            };
+            const clientCount=new Set(recent.map(l=>l.clientId).filter(Boolean)).size,sessionCount=new Set(recent.map(l=>l.sessionId).filter(Boolean)).size,userAgents=new Set(recent.map(l=>l.userAgent).filter(Boolean)).size;
+            const noTrustedTryCount=uniqueTries.filter(l=>Number(l.trustedInteractionCount60s||0)===0 && Number((l.interactionEvidence&&l.interactionEvidence.trustedInteractionCount60s)||0)===0).length;
+            const webdriverCount=uniqueTries.filter(l=>l.webdriver===true).length;
+            const slotCounts=uniqueTries.map(l=>Number(l.slotCount)||((Array.isArray(l.slots)&&l.slots.length)||0)).filter(x=>x>0);
+            const maxSlotsPerRequest=slotCounts.length?Math.max(...slotCounts):0,avgSlotsPerRequest=slotCounts.length?Number(mean(slotCounts).toFixed(2)):0;
+            const successRate=tries.length?Number((successes.length/tries.length*100).toFixed(1)):0;
+            let score=0;const reasons=[];
+            if(anomaly.unlogged){score+=anomaly.unlogged*70;reasons.push(`예약 성공 로그 불일치 ${anomaly.unlogged}건`);}
+            if(anomaly.noTrace){score+=Math.min(60,anomaly.noTrace*8);reasons.push(`추적정보 없는 예약 ${anomaly.noTrace}건`);}
+            if(anomaly.successBurst){score+=anomaly.successBurst*50;reasons.push(`2초 내 별도 예약 성공 ${anomaly.successBurst}회`);}
+            if(minIntervalMs&&minIntervalMs<250){score+=65;reasons.push(`최단 요청 간격 ${minIntervalMs}ms`);}else if(minIntervalMs&&minIntervalMs<500){score+=48;reasons.push(`최단 요청 간격 ${minIntervalMs}ms`);}else if(minIntervalMs&&minIntervalMs<900){score+=25;reasons.push(`최단 요청 간격 ${minIntervalMs}ms`);}
+            if(maxIn3s>=5){score+=75;reasons.push(`3초 내 최대 ${maxIn3s}회 요청`);}else if(maxIn3s>=4){score+=52;reasons.push(`3초 내 최대 ${maxIn3s}회 요청`);}else if(maxIn3s>=3){score+=28;reasons.push(`3초 내 최대 ${maxIn3s}회 요청`);}
+            if(sub300>=2){score+=Math.min(55,sub300*16);reasons.push(`300ms 이하 반복 ${sub300}회`);} if(sub800>=3){score+=Math.min(42,sub800*8);reasons.push(`800ms 이하 반복 ${sub800}회`);}
+            if(intervals.length>=4&&medianIntervalMs<2000&&intervalCv>0&&intervalCv<0.12){score+=45;reasons.push(`기계적으로 일정한 간격 CV ${intervalCv}`);}else if(intervals.length>=4&&medianIntervalMs<3000&&intervalCv>0&&intervalCv<0.22){score+=22;reasons.push(`반복 간격 일정 CV ${intervalCv}`);}
+            if(noTrustedTryCount>=3){score+=45;reasons.push(`신뢰 사용자 입력 없는 요청 ${noTrustedTryCount}건`);}else if(noTrustedTryCount>=1&&tries.length>=3){score+=15;reasons.push(`사용자 입력 흔적 부족 ${noTrustedTryCount}건`);}
+            if(webdriverCount){score+=80;reasons.push(`WebDriver 자동화 신호 ${webdriverCount}건`);}
+            if(tries.length>=5&&successRate>=90){score+=28;reasons.push(`성공률 ${successRate}%`);}else if(tries.length>=8&&successRate>=70){score+=15;reasons.push(`높은 성공률 ${successRate}%`);}
+            if(successes.length>=3&&elapsed.length&&Math.min(...elapsed)<1000){score+=20;reasons.push(`1초 미만 처리 ${elapsed.filter(x=>x<1000).length}건`);}
+            if(clientCount>=3&&tries.length>=5){score+=10;reasons.push(`클라이언트 ${clientCount}개`);} if(userAgents>=3&&tries.length>=5){score+=10;reasons.push(`브라우저 환경 ${userAgents}종`);}
+            score+=Math.min(15,calcMacroScore(recent));
+            const confidence=score>=150?'매우 강한 의심':score>=95?'강한 의심':score>=55?'주의':score>=25?'관찰':'정상 범위';
+            const replayId='r'+idx;
+            const replayEvents=[];
+            recent.forEach(l=>replayEvents.push({ms:eventMs(l),type:l.result||'LOG',label:`${l.name||''} / ${(l.slots||[]).map(s=>`${s.court}코트 ${s.time}시`).join(', ')} ${l.reason||''}`,requestId:l.requestId||''}));
+            userGroups.filter(g=>now-g.atMs<=DAY).forEach(g=>replayEvents.push({ms:g.atMs,type:'RESERVATION',label:`실제 저장: ${g.slots.map(s=>`${s.court}코트 ${s.time}시`).join(', ')}`,requestId:g.requestId||''}));
+            window.macroReplayData[replayId]={name:latest.name||latestGroup.name||'(이름없음)',phone:latest.phone||latestGroup.phone||'-',uid:latest.uid||latestGroup.uid||'',events:replayEvents.filter(e=>e.ms)};
+            return {identity,replayId,uid:latest.uid||latestGroup.uid||'',name:latest.name||latestGroup.name||'(이름없음)',phone:latest.phone||latestGroup.phone||'-',score,confidence,reasons,anomaly,blocked:!!blockedMap[latest.uid||latestGroup.uid||''],try24:tries.length,success24:successes.length,fail24:fails.length,successRate,minIntervalMs,medianIntervalMs,intervalStdDevMs,intervalCv,intervals,sub300,sub800,sub1500,maxIn3s,successElapsedMin:elapsed.length?Math.min(...elapsed):0,successElapsedMedian:median(elapsed),clientCount,sessionCount,userAgents,noTrustedTryCount,webdriverCount,maxSlotsPerRequest,avgSlotsPerRequest,unlogged:anomaly.unlogged,successBurst:anomaly.successBurst};
         }).sort((a,b)=>b.score-a.score);
         window.macroEvidenceRows=evidence;
 
-        const suspiciousHtml=evidence.filter(x=>x.score>=40 || x.blocked || x.anomaly.unlogged || x.anomaly.successBurst).slice(0,20).map(x=>{
-            const uid=x.uid;
-            const blockBtn=uid ? (x.blocked
-              ? `<button onclick="unblockUser('${esc(uid)}')" style="margin-top:8px;background:#16a34a;color:#fff;border:none;border-radius:8px;padding:7px 11px;cursor:pointer;">차단 해제</button>`
-              : `<button onclick="blockUser('${esc(uid)}')" style="margin-top:8px;background:#dc2626;color:#fff;border:none;border-radius:8px;padding:7px 11px;cursor:pointer;">즉시 차단</button>`) : '';
-            const confidence=x.score>=120?'매우 강한 의심':x.score>=80?'강한 의심':x.score>=40?'주의':'관찰';
-            return `<div style="padding:11px;border:1px solid ${x.score>=80?'#fca5a5':'#fed7aa'};background:${x.score>=80?'#fff1f2':'#fff7ed'};border-radius:11px;margin-bottom:9px;">
-              <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;"><b style="color:#7c2d12;">${esc(x.name)}</b><span style="font-size:.7rem;font-weight:800;color:${x.score>=80?'#b91c1c':'#92400e'};">${confidence} · ${x.score}점</span></div>
-              <div style="font-size:.74rem;color:#57534e;margin-top:5px;">UID: ${esc(uid||'-')} · ${esc(x.phone)}</div>
-              <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-top:8px;font-size:.7rem;">
-                <div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">시도 <b>${x.try24}</b></div><div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">성공 <b>${x.success24}</b></div><div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">실패 <b>${x.fail24}</b></div>
-                <div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">최단 <b>${fmtMs(x.minIntervalMs)}</b></div><div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">중앙 <b>${fmtMs(x.medianIntervalMs)}</b></div><div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">3초최대 <b>${x.maxIn3s}</b></div>
-              </div>
-              <div style="font-size:.73rem;color:#7c2d12;margin-top:8px;line-height:1.5;">${esc(x.reasons.join(' / ') || '반복 패턴 관찰')}</div>
-              <div style="font-size:.68rem;color:#78716c;margin-top:5px;">클라이언트 ${x.clientCount} · 세션 ${x.sessionCount} · 800ms 이하 ${x.sub800}회 · 성공 처리 최단 ${fmtMs(x.successElapsedMin)}</div>${blockBtn}
+        const suspiciousHtml=evidence.filter(x=>x.score>=25||x.blocked||x.anomaly.unlogged||x.anomaly.successBurst).slice(0,30).map(x=>{
+            const uid=x.uid; const blockBtn=uid?(x.blocked?`<button onclick="unblockUser('${esc(uid)}')" style="background:#16a34a;color:#fff;border:none;border-radius:8px;padding:7px 11px;cursor:pointer;">차단 해제</button>`:`<button onclick="blockUser('${esc(uid)}')" style="background:#dc2626;color:#fff;border:none;border-radius:8px;padding:7px 11px;cursor:pointer;">즉시 차단</button>`):'';
+            const border=x.score>=95?'#fca5a5':x.score>=55?'#fdba74':'#fde68a',bg=x.score>=95?'#fff1f2':x.score>=55?'#fff7ed':'#fffbeb';
+            return `<div style="padding:11px;border:1px solid ${border};background:${bg};border-radius:11px;margin-bottom:9px;">
+              <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;"><b style="color:#7c2d12;">${esc(x.name)}</b><span style="font-size:.7rem;font-weight:800;color:${x.score>=95?'#b91c1c':'#92400e'};">${esc(x.confidence)} · ${x.score}점</span></div>
+              <div style="font-size:.72rem;color:#57534e;margin-top:4px;">UID ${esc(uid||'-')} · ${esc(x.phone)}</div>
+              <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;margin-top:8px;font-size:.68rem;">
+                <div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">시도 <b>${x.try24}</b></div><div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">성공 <b>${x.success24}</b></div><div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">성공률 <b>${x.successRate}%</b></div><div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">3초최대 <b>${x.maxIn3s}</b></div>
+                <div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">최단 <b>${fmtMs(x.minIntervalMs)}</b></div><div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">중앙 <b>${fmtMs(x.medianIntervalMs)}</b></div><div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">표준편차 <b>${fmtMs(x.intervalStdDevMs)}</b></div><div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">CV <b>${x.intervalCv||'-'}</b></div>
+              </div>${miniBars(x.intervals)}
+              <div style="font-size:.72rem;color:#7c2d12;margin-top:7px;line-height:1.5;">${esc(x.reasons.join(' / ')||'관찰 데이터 축적 중')}</div>
+              <div style="font-size:.67rem;color:#78716c;margin-top:5px;">사용자 입력 없음 ${x.noTrustedTryCount} · WebDriver ${x.webdriverCount} · 최대 묶음 ${x.maxSlotsPerRequest}칸 · 평균 ${x.avgSlotsPerRequest}칸 · 처리 최단 ${fmtMs(x.successElapsedMin)}</div>
+              <div style="display:flex;gap:6px;margin-top:8px;"><button onclick="openMacroReplay('${x.replayId}')" style="flex:1;background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:7px 10px;cursor:pointer;font-weight:800;">▶ 행동 리플레이</button>${blockBtn}</div>
             </div>`;
         }).join('');
 
-        const timelineHtml=reservationGroups.slice(0,50).map(g=>{
-            const when=g.atMs?new Date(g.atMs).toLocaleString():'-';
+        const timelineHtml=reservationGroups.slice(0,80).map(g=>{
             const slotText=g.slots.sort((a,b)=>(a.court-b.court)||(a.time-b.time)).map(s=>`${s.court}코트 ${s.time}시`).join(', ');
-            let label='<span style="background:#16a34a;color:white;padding:2px 7px;border-radius:999px;font-size:.68rem;">정상 앱 묶음</span>', border='#bbf7d0';
-            if(!g.requestId){label='<span style="background:#64748b;color:white;padding:2px 7px;border-radius:999px;font-size:.68rem;">추적정보 없음</span>';border='#cbd5e1';}
-            else if(!successRequestIds.has(g.requestId)){label='<span style="background:#dc2626;color:white;padding:2px 7px;border-radius:999px;font-size:.68rem;">성공 로그 불일치</span>';border='#fecaca';}
-            return `<div style="padding:8px;border-bottom:1px solid ${border};font-size:.75rem;line-height:1.45;"><div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap;"><b>${esc(g.name)} (${esc(g.phone)})</b>${label}</div><div>${esc(slotText)} · ${g.slots.length}칸</div><div style="color:#78716c;">${esc(when)} · ${esc(g.requestId||'requestId 없음')}</div></div>`;
+            let label='<span style="background:#16a34a;color:white;padding:2px 7px;border-radius:999px;font-size:.68rem;">정상 앱 묶음</span>',border='#bbf7d0';
+            if(!g.requestId){label='<span style="background:#64748b;color:white;padding:2px 7px;border-radius:999px;font-size:.68rem;">추적정보 없음</span>';border='#cbd5e1';}else if(!successRequestIds.has(g.requestId)){label='<span style="background:#dc2626;color:white;padding:2px 7px;border-radius:999px;font-size:.68rem;">성공 로그 불일치</span>';border='#fecaca';}
+            const processing=(g.requestStartedAtMs&&g.clientCommitAtMs)?Math.max(0,g.clientCommitAtMs-g.requestStartedAtMs):0;
+            return `<div style="padding:8px;border-bottom:1px solid ${border};font-size:.74rem;line-height:1.45;"><div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap;"><b>${esc(g.name)} (${esc(g.phone)})</b>${label}</div><div>${esc(slotText)} · ${g.slots.length}칸</div><div style="color:#78716c;font-variant-numeric:tabular-nums;">${esc(fmtExact(g.atMs))} · ${esc(g.requestId||'requestId 없음')}${processing?` · 클라이언트 처리 ${processing}ms`:''}</div></div>`;
         }).join('');
 
-        const recentHtml=logs.slice(0,40).map(l=>{
-            const ms=toMs(l.createdAt)||Number(l.clientAtMs)||0, when=ms?new Date(ms).toLocaleString():'-';
-            const color=l.result==='SUCCESS'?'#16a34a':(String(l.result).includes('FAIL')?'#dc2626':'#2563eb');
-            const slotText=Array.isArray(l.slots)?l.slots.map(s=>`${s.court}코트 ${s.time}시`).join(', '):'-';
-            return `<div style="padding:8px 0;border-bottom:1px solid #fde68a;font-size:.74rem;line-height:1.45;"><div style="display:flex;justify-content:space-between"><b style="color:${color}">${esc(l.result)}</b><span>${esc(when)}</span></div><div>${esc(l.name||'(이름없음)')} / ${esc(slotText)}</div><div style="color:#78716c">${esc(l.reason||'')} ${l.elapsedMs?`· 처리 ${esc(l.elapsedMs)}ms`:''}</div></div>`;
-        }).join('');
+        const recentHtml=logs.slice(0,60).map(l=>{const ms=eventMs(l),color=l.result==='SUCCESS'?'#16a34a':(String(l.result).includes('FAIL')?'#dc2626':'#2563eb'),slotText=Array.isArray(l.slots)?l.slots.map(s=>`${s.court}코트 ${s.time}시`).join(', '):'-';return `<div style="padding:8px 0;border-bottom:1px solid #fde68a;font-size:.73rem;line-height:1.45;"><div style="display:flex;justify-content:space-between"><b style="color:${color}">${esc(l.result)}</b><span style="font-variant-numeric:tabular-nums;">${esc(fmtExact(ms))}</span></div><div>${esc(l.name||'(이름없음)')} / ${esc(slotText)}</div><div style="color:#78716c">${esc(l.reason||'')}${l.elapsedMs?` · 처리 ${esc(l.elapsedMs)}ms`:''} · 신뢰입력 ${Number(l.trustedInteractionCount60s||0)}</div></div>`;}).join('');
 
-        const anomalyCount=evidence.filter(x=>x.anomaly.unlogged||x.anomaly.successBurst||x.score>=80).length;
-        box.innerHTML=`<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-bottom:13px;">
-          <div style="background:#fff;border:1px solid #fed7aa;border-radius:9px;padding:9px;text-align:center"><small>로그</small><div style="font-weight:800;color:#9a3412">${logs.length}</div></div>
-          <div style="background:#fff;border:1px solid #fed7aa;border-radius:9px;padding:9px;text-align:center"><small>예약묶음</small><div style="font-weight:800;color:#2563eb">${reservationGroups.length}</div></div>
-          <div style="background:#fff;border:1px solid #fed7aa;border-radius:9px;padding:9px;text-align:center"><small>강한징후</small><div style="font-weight:800;color:#dc2626">${anomalyCount}</div></div>
-          <div style="background:#fff;border:1px solid #fed7aa;border-radius:9px;padding:9px;text-align:center"><small>차단</small><div style="font-weight:800;color:#dc2626">${Object.keys(blockedMap).length}</div></div></div>
-          <div style="display:flex;justify-content:space-between;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap"><b style="color:#9a3412">🚨 정밀 의심 분석</b><div><button onclick="downloadMacroEvidenceCsv()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:6px 9px;cursor:pointer;margin-right:4px">증거 CSV</button><button onclick="loadMacroMonitor()" style="background:#fff;border:1px solid #fdba74;color:#9a3412;border-radius:8px;padding:6px 9px;cursor:pointer">새로고침</button></div></div>
-          <div style="font-size:.68rem;color:#78716c;margin-bottom:8px;">최근 로그·예약 각 최대 500건을 분석합니다. 관리자 예약은 의심 점수에서 제외합니다.</div>
+        const anomalyCount=evidence.filter(x=>x.anomaly.unlogged||x.anomaly.successBurst||x.score>=95).length;
+        box.innerHTML=`<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-bottom:13px;"><div style="background:#fff;border:1px solid #fed7aa;border-radius:9px;padding:9px;text-align:center"><small>로그</small><div style="font-weight:800;color:#9a3412">${logs.length}</div></div><div style="background:#fff;border:1px solid #fed7aa;border-radius:9px;padding:9px;text-align:center"><small>예약묶음</small><div style="font-weight:800;color:#2563eb">${reservationGroups.length}</div></div><div style="background:#fff;border:1px solid #fed7aa;border-radius:9px;padding:9px;text-align:center"><small>강한징후</small><div style="font-weight:800;color:#dc2626">${anomalyCount}</div></div><div style="background:#fff;border:1px solid #fed7aa;border-radius:9px;padding:9px;text-align:center"><small>차단</small><div style="font-weight:800;color:#dc2626">${Object.keys(blockedMap).length}</div></div></div>
+          <div style="display:flex;justify-content:space-between;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap"><b style="color:#9a3412">🚨 v8 증거 기반 정밀 분석</b><div><button onclick="downloadMacroEvidenceCsv()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:6px 9px;cursor:pointer;margin-right:4px">증거 CSV</button><button onclick="loadMacroMonitor()" style="background:#fff;border:1px solid #fdba74;color:#9a3412;border-radius:8px;padding:6px 9px;cursor:pointer">새로고침</button></div></div>
+          <div style="font-size:.68rem;color:#78716c;margin-bottom:8px;line-height:1.45;">최근 로그·예약 각 최대 800건을 분석합니다. 밀리초 간격, 간격 규칙성(CV), 신뢰 사용자 입력 흔적, WebDriver 신호, 실제 예약 저장과 SUCCESS 로그 일치 여부를 함께 봅니다.</div>
           ${suspiciousHtml||'<div style="padding:12px;border:1px solid #d9f99d;background:#f7fee7;border-radius:10px;color:#3f6212">현재 강한 자동화 징후가 없습니다.</div>'}
-          <div style="margin-top:16px"><b style="color:#9a3412">🧾 실제 예약 성공 타임라인</b><div style="margin-top:8px;max-height:350px;overflow:auto;border:1px solid #fed7aa;background:white;border-radius:10px;padding:8px">${timelineHtml||'최근 예약 없음'}</div></div>
-          <div style="margin-top:16px"><b style="color:#9a3412">📜 예약 시도 원본 로그</b><div style="margin-top:8px;max-height:280px;overflow:auto;border:1px solid #fed7aa;background:#fffaf0;border-radius:10px;padding:10px">${recentHtml||'시도 로그 없음'}</div></div>
-          <div style="margin-top:10px;font-size:.7rem;color:#78716c;line-height:1.5">판정은 최단 요청 간격, 3초 내 요청 수, 800ms 이하 반복, 서로 다른 requestId의 초단기 성공, 성공 로그 불일치를 종합합니다. 점수는 관리자 판단 보조자료이며 자동화의 법적 확정 증거는 아닙니다.</div>`;
+          <div style="margin-top:16px"><b style="color:#9a3412">🧾 실제 예약 성공 타임라인(ms)</b><div style="margin-top:8px;max-height:390px;overflow:auto;border:1px solid #fed7aa;background:white;border-radius:10px;padding:8px">${timelineHtml||'최근 예약 없음'}</div></div>
+          <div style="margin-top:16px"><b style="color:#9a3412">📜 예약 시도 원본 로그(ms)</b><div style="margin-top:8px;max-height:320px;overflow:auto;border:1px solid #fed7aa;background:#fffaf0;border-radius:10px;padding:10px">${recentHtml||'시도 로그 없음'}</div></div>
+          <div style="margin-top:10px;font-size:.7rem;color:#78716c;line-height:1.5">점수는 자동 차단의 확정 근거가 아니라 관리자 판단 보조자료입니다. 특히 과거 v8 이전 예약은 requestId·상호작용 정보가 없어 '추적정보 없음'으로 나타날 수 있습니다.</div>`;
     } catch(err) {
         console.error('macro monitor load error',err);
         box.innerHTML=`<div style="padding:14px;border:1px solid #fecaca;background:#fef2f2;border-radius:10px;color:#b91c1c;">감시 자료를 불러오지 못했습니다.<br>${esc(err.message||err)}</div>`;
     }
 }
+
 
     // [추가] 문자 발송 헬퍼 함수
 
