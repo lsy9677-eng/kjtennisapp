@@ -368,9 +368,15 @@ async function saveBook(uid) {
     let timeStr = slots.map(s => `${s.t}시`).join(', ');
     let courtTimeStr = formatCourtTimeSummary(slots);
     const actorUid = (auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : (currentUser && currentUser.uid ? currentUser.uid : 'guest');
+    const requestStartedAtMs = Date.now();
+    const requestId = createBookingRequestId(actorUid);
+    const clientId = getMacroClientId();
 
     const attemptMeta = {
         uid: actorUid,
+        requestId,
+        clientId,
+        requestStartedAtMs,
         name: bkName || '',
         phone: bkPhone || '',
         center: currentCenter,
@@ -478,12 +484,17 @@ async function saveBook(uid) {
                     status: initialStatus,
                     uid: actorUid,
                     paymentUid: uid,
+                    requestId,
+                    requestSlotCount: slots.length,
+                    requestStartedAtMs,
+                    clientId,
+                    source: 'WEB_APP_V6',
                     at: firebase.firestore.FieldValue.serverTimestamp()
                 }, { merge: true });
             }
         });
 
-        await logBookingAttempt({ ...attemptMeta, result: 'SUCCESS' });
+        await logBookingAttempt({ ...attemptMeta, result: 'SUCCESS', elapsedMs: Date.now() - requestStartedAtMs });
         if (!isAdmin) await maybeAutoBlockUser(actorUid);
         if (document.getElementById('macroMonitorBox') && document.getElementById('macroMonitorBox').style.display !== 'none') loadMacroMonitor();
         showSuccessAnimation();

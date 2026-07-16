@@ -166,10 +166,30 @@ function checkRequestedBlock(court, block, occupiedMap, openTime, lastStartTime)
     throw new Error('일반 회원 예약은 기본 2시간입니다. 다만 끼어 있는 1시간이나 마지막 1시간만 예외적으로 예약할 수 있습니다.');
 }
 
+
+function getMacroClientId() {
+    const key = 'tenniskj_macro_client_id';
+    let value = '';
+    try { value = localStorage.getItem(key) || ''; } catch (_) {}
+    if (!value) {
+        value = 'cli_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+        try { localStorage.setItem(key, value); } catch (_) {}
+    }
+    return value;
+}
+
+function createBookingRequestId(uid) {
+    const safeUid = String(uid || 'guest').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 16) || 'guest';
+    return 'req_' + safeUid + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9);
+}
+
 async function logBookingAttempt(payload) {
     try {
         await db.collection('booking_attempt_logs').add({
             ...payload,
+            clientId: payload.clientId || getMacroClientId(),
+            clientAtMs: payload.clientAtMs || Date.now(),
+            pagePath: location.pathname || '',
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
         });
     } catch (e) {
@@ -208,6 +228,9 @@ function calcMacroScore(logs) {
         if (l.result === 'FAIL') score += 8;
         if (l.result === 'FAIL_GUARD') score += 12;
         if (l.result === 'SUCCESS') score += 2;
+        if (l.result === 'SUCCESS_BURST') score += 35;
+        if (l.result === 'UNLOGGED_SUCCESS') score += 45;
+        if (l.result === 'DIRECT_WRITE_SUSPECT') score += 55;
 
         const reason = String(l.reason || '');
         if (reason.includes('선점')) score += 10;

@@ -973,8 +973,8 @@
 <script src="./js/auth.js?v=20260619-step20"></script>
 <script src="./js/calendar.js?v=20260619-step20"></script>
 <script src="./js/reservation-ui.js?v=20260619-step20"></script>
-<script src="./js/booking-helpers.js?v=20260619-step20"></script>
-<script src="./js/booking-core.js?v=20260619-step20"></script>
+<script src="./js/booking-helpers.js?v=20260716-macro-v6"></script>
+<script src="./js/booking-core.js?v=20260716-macro-v6"></script>
 <script src="./js/admin-actions.js?v=20260619-step20"></script>
 
 <script>
@@ -1883,97 +1883,156 @@ function scoreBadge(score) {
 async function loadMacroMonitor() {
     const box = document.getElementById('macroMonitorBox');
     if (!box) return;
-    const hadContent = !!box.innerHTML.trim();
-    if (!hadContent) {
-        box.innerHTML = '<div style="color:#9a3412;font-weight:700;">감시 로그를 불러오는 중...</div>';
+    if (!box.innerHTML.trim()) {
+        box.innerHTML = '<div style="color:#9a3412;font-weight:700;">감시 자료를 불러오는 중...</div>';
     }
 
+    const toMs = value => {
+        if (!value) return 0;
+        if (typeof value.toMillis === 'function') return value.toMillis();
+        if (typeof value.toDate === 'function') return value.toDate().getTime();
+        if (value.seconds) return value.seconds * 1000;
+        const parsed = new Date(value).getTime();
+        return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const esc = value => String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+
     try {
-        const [logsSnap, blockedSnap] = await Promise.all([
-            db.collection('booking_attempt_logs').orderBy('createdAt', 'desc').limit(120).get(),
-            db.collection('blocked_users').get()
+        const [logsSnap, blockedSnap, reservationSnap] = await Promise.all([
+            db.collection('booking_attempt_logs').orderBy('createdAt', 'desc').limit(200).get(),
+            db.collection('blocked_users').get(),
+            db.collection('reservations').orderBy('at', 'desc').limit(250).get()
         ]);
 
         const logs = logsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const reservations = reservationSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+            .filter(r => ['PENDING', 'BOOKED', 'BLOCKED'].includes(r.status));
         window.bookingLogs = logs;
+
         const blockedMap = {};
         blockedSnap.forEach(doc => blockedMap[doc.id] = doc.data() || {});
+        const successRequestIds = new Set(logs.filter(l => l.result === 'SUCCESS' && l.requestId).map(l => l.requestId));
 
-        if (!logs.length) {
-            box.innerHTML = '<div style="padding:14px;border:1px solid #fed7aa;background:#fffbeb;border-radius:10px;color:#78716c;">저장된 예약 시도 로그가 없습니다.</div>';
-            return;
-        }
+        // 한 번의 정상 예약에서 여러 슬롯이 동시에 생성되는 것은 정상이다.
+        // requestId가 같으면 하나의 예약 묶음으로 취급한다.
+        const groups = {};
+        reservations.forEach(r => {
+            const identity = r.uid || r.phone || r.name || 'unknown';
+            const groupKey = r.requestId || `legacy_${r.id}`;
+            if (!groups[groupKey]) groups[groupKey] = {
+                groupKey, requestId: r.requestId || '', identity,
+                uid: r.uid || '', name: r.name || '', phone: r.phone || '',
+                clientId: r.clientId || '', source: r.source || '', atMs: toMs(r.at), slots: []
+            };
+            groups[groupKey].slots.push({ court: r.court, time: r.time, date: r.date, center: r.center, id: r.id });
+            groups[groupKey].atMs = Math.max(groups[groupKey].atMs, toMs(r.at));
+        });
+        const reservationGroups = Object.values(groups).sort((a,b) => b.atMs - a.atMs);
+
+        // 서로 다른 requestId가 2초 안에 연속 성공한 경우만 '다중 요청 폭주'로 본다.
+        const byIdentityGroups = {};
+        reservationGroups.forEach(g => {
+            if (!byIdentityGroups[g.identity]) byIdentityGroups[g.identity] = [];
+            byIdentityGroups[g.identity].push(g);
+        });
+        const anomaliesByIdentity = {};
+        Object.entries(byIdentityGroups).forEach(([identity, arr]) => {
+            arr.sort((a,b) => b.atMs - a.atMs);
+            let burstCount = 0;
+            for (let i=0; i<arr.length-1; i++) {
+                if (arr[i].requestId && arr[i+1].requestId && arr[i].requestId !== arr[i+1].requestId && Math.abs(arr[i].atMs-arr[i+1].atMs) <= 2000) burstCount++;
+            }
+            const unlogged = arr.filter(g => g.requestId && !successRequestIds.has(g.requestId)).length;
+            const noTrace = arr.filter(g => !g.requestId).length;
+            anomaliesByIdentity[identity] = { burstCount, unlogged, noTrace };
+        });
 
         const byUser = {};
         logs.forEach(l => {
-            if (!byUser[l.uid]) byUser[l.uid] = [];
-            byUser[l.uid].push(l);
+            const key = l.uid || l.phone || l.name || 'unknown';
+            if (!byUser[key]) byUser[key] = [];
+            byUser[key].push(l);
         });
+        reservationGroups.forEach(g => { if (!byUser[g.identity]) byUser[g.identity] = []; });
 
-        const suspicious = Object.keys(byUser).map(uid => {
-            const userLogs = byUser[uid];
-            const latest = userLogs[0] || {};
-            const score = calcMacroScore(userLogs);
-            const failCount = userLogs.filter(x => x.result === 'FAIL').length;
-            const tryCount = userLogs.filter(x => x.result === 'TRY').length;
-            const successCount = userLogs.filter(x => x.result === 'SUCCESS').length;
-            return { uid, latest, score, failCount, tryCount, successCount, count: userLogs.length, blocked: !!blockedMap[uid] };
-        }).sort((a,b) => b.score - a.score || b.count - a.count);
+        const suspicious = Object.keys(byUser).map(identity => {
+            const userLogs = byUser[identity] || [];
+            const latestLog = userLogs[0] || {};
+            const latestGroup = (byIdentityGroups[identity] || [])[0] || {};
+            const anomaly = anomaliesByIdentity[identity] || { burstCount:0, unlogged:0, noTrace:0 };
+            let score = calcMacroScore(userLogs);
+            score += anomaly.burstCount * 40 + anomaly.unlogged * 45 + anomaly.noTrace * 15;
+            return {
+                identity,
+                uid: latestLog.uid || latestGroup.uid || '',
+                name: latestLog.name || latestGroup.name || '(이름없음)',
+                phone: latestLog.phone || latestGroup.phone || '-',
+                score, anomaly, logs: userLogs,
+                blocked: !!blockedMap[latestLog.uid || latestGroup.uid || '']
+            };
+        }).sort((a,b) => b.score-a.score);
 
-        const suspiciousHtml = suspicious.filter(x => x.score >= MACRO_LIMITS.SUSPICIOUS_SCORE || x.blocked).slice(0, 12).map(x => {
-            const nm = x.latest.name || '(이름없음)';
-            const phone = x.latest.phone || '-';
-            const blockBtn = x.blocked
-              ? `<button onclick="unblockUser('${x.uid}')" style="margin-top:6px;background:#16a34a;color:#fff;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;">차단 해제</button>`
-              : `<button onclick="blockUser('${x.uid}')" style="margin-top:6px;background:#dc2626;color:#fff;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;">즉시 차단</button>`;
-            return `<div style="padding:10px;border:1px solid ${x.blocked ? '#fecaca' : '#fed7aa'};background:${x.blocked ? '#fef2f2' : '#fff7ed'};border-radius:10px;margin-bottom:8px;">
-                <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;">
-                    <div style="font-weight:700;color:#7c2d12;">${nm}</div>
-                    <div>${scoreBadge(x.score)}</div>
-                </div>
-                <div style="font-size:0.78rem;color:#57534e;margin-top:6px;line-height:1.45;">
-                    UID: ${x.uid}<br>전화번호: ${phone}<br>로그 ${x.count}건 / 성공 ${x.successCount} / 실패 ${x.failCount} / 시도 ${x.tryCount}
-                </div>
-                ${blockBtn}
+        const suspiciousHtml = suspicious
+          .filter(x => x.score >= MACRO_LIMITS.SUSPICIOUS_SCORE || x.blocked || x.anomaly.burstCount || x.anomaly.unlogged)
+          .slice(0, 15).map(x => {
+            const uid = x.uid;
+            const blockBtn = uid ? (x.blocked
+              ? `<button onclick="unblockUser('${esc(uid)}')" style="margin-top:6px;background:#16a34a;color:#fff;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;">차단 해제</button>`
+              : `<button onclick="blockUser('${esc(uid)}')" style="margin-top:6px;background:#dc2626;color:#fff;border:none;border-radius:8px;padding:6px 10px;cursor:pointer;">즉시 차단</button>`) : '';
+            const reasons = [];
+            if (x.anomaly.burstCount) reasons.push(`2초 내 서로 다른 예약요청 ${x.anomaly.burstCount}회`);
+            if (x.anomaly.unlogged) reasons.push(`성공 로그 없는 앱 requestId ${x.anomaly.unlogged}건`);
+            if (x.anomaly.noTrace) reasons.push(`추적정보 없는 예약 ${x.anomaly.noTrace}건(구버전 포함)`);
+            return `<div style="padding:10px;border:1px solid #fed7aa;background:#fff7ed;border-radius:10px;margin-bottom:8px;">
+                <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;"><b style="color:#7c2d12;">${esc(x.name)}</b>${scoreBadge(x.score)}</div>
+                <div style="font-size:.78rem;color:#57534e;margin-top:6px;line-height:1.45;">UID: ${esc(uid || '-')}<br>전화번호: ${esc(x.phone)}<br>${esc(reasons.join(' / ') || '반복 시도 로그 점수')}</div>${blockBtn}
+            </div>`;
+          }).join('');
+
+        const timelineHtml = reservationGroups.slice(0, 35).map(g => {
+            const when = g.atMs ? new Date(g.atMs).toLocaleString() : '-';
+            const slotText = g.slots.sort((a,b)=>(a.court-b.court)||(a.time-b.time)).map(s => `${s.court}코트 ${s.time}시`).join(', ');
+            let label = '<span style="background:#16a34a;color:white;padding:2px 7px;border-radius:999px;font-size:.68rem;">정상 앱 묶음</span>';
+            let border = '#bbf7d0';
+            if (!g.requestId) {
+                label = '<span style="background:#64748b;color:white;padding:2px 7px;border-radius:999px;font-size:.68rem;">추적정보 없음</span>';
+                border = '#cbd5e1';
+            } else if (!successRequestIds.has(g.requestId)) {
+                label = '<span style="background:#dc2626;color:white;padding:2px 7px;border-radius:999px;font-size:.68rem;">성공 로그 불일치</span>';
+                border = '#fecaca';
+            }
+            return `<div style="padding:8px;border-bottom:1px solid ${border};font-size:.76rem;line-height:1.45;">
+                <div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap;"><b>${esc(g.name)} (${esc(g.phone)})</b>${label}</div>
+                <div>${esc(slotText)} · ${g.slots.length}칸</div>
+                <div style="color:#78716c;">${esc(when)} · requestId: ${esc(g.requestId || '없음')}</div>
             </div>`;
         }).join('');
 
-        const recentHtml = logs.slice(0, 20).map(l => {
-            const ts = l.createdAt && l.createdAt.toDate ? l.createdAt.toDate() : null;
-            const when = ts ? ts.toLocaleString() : '-';
-            const color = l.result === 'SUCCESS' ? '#16a34a' : (l.result === 'FAIL' ? '#dc2626' : '#2563eb');
+        const recentHtml = logs.slice(0, 25).map(l => {
+            const ms = toMs(l.createdAt);
+            const when = ms ? new Date(ms).toLocaleString() : '-';
+            const color = l.result === 'SUCCESS' ? '#16a34a' : (String(l.result).includes('FAIL') ? '#dc2626' : '#2563eb');
             const slotText = Array.isArray(l.slots) ? l.slots.map(s => `${s.court}코트 ${s.time}시`).join(', ') : '-';
-            return `<div style="padding:8px 0;border-bottom:1px solid #fde68a;font-size:0.78rem;line-height:1.45;">
-                <div style="display:flex;justify-content:space-between;gap:8px;">
-                    <b style="color:${color};">${l.result}</b><span style="color:#78716c;">${when}</span>
-                </div>
-                <div style="color:#44403c;">${l.name || '(이름없음)'} / ${slotText}</div>
-                <div style="color:#78716c;">${l.reason || ''}</div>
-            </div>`;
+            return `<div style="padding:8px 0;border-bottom:1px solid #fde68a;font-size:.76rem;line-height:1.45;"><div style="display:flex;justify-content:space-between"><b style="color:${color}">${esc(l.result)}</b><span>${esc(when)}</span></div><div>${esc(l.name || '(이름없음)')} / ${esc(slotText)}</div><div style="color:#78716c">${esc(l.reason || '')}</div></div>`;
         }).join('');
 
-        const summary = `<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px;">
-                <div style="background:#fff;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center;"><div style="font-size:0.72rem;color:#78716c;">최근 로그</div><div style="font-weight:800;color:#9a3412;font-size:1.05rem;">${logs.length}건</div></div>
-                <div style="background:#fff;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center;"><div style="font-size:0.72rem;color:#78716c;">의심 사용자</div><div style="font-weight:800;color:#b45309;font-size:1.05rem;">${suspicious.filter(x => x.score >= MACRO_LIMITS.SUSPICIOUS_SCORE).length}명</div></div>
-                <div style="background:#fff;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center;"><div style="font-size:0.72rem;color:#78716c;">차단 사용자</div><div style="font-weight:800;color:#dc2626;font-size:1.05rem;">${Object.keys(blockedMap).length}명</div></div>
-                <div style="background:#fff;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center;"><div style="font-size:0.72rem;color:#78716c;">감시 갱신 방식</div><div style="font-weight:800;color:#2563eb;font-size:1.05rem;">수동</div></div>
-            </div>`;
-
-        box.innerHTML = `${summary}
-            <div style="margin-bottom:12px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
-                    <div style="font-weight:800;color:#9a3412;">🚨 의심 사용자 수동 조회</div>
-                    <button onclick="loadMacroMonitor()" style="background:#fff;border:1px solid #fdba74;color:#9a3412;border-radius:8px;padding:6px 10px;cursor:pointer;font-size:0.78rem;font-weight:700;">새로고침</button>
-                </div>
-                ${suspiciousHtml || '<div style="padding:12px;border:1px solid #d9f99d;background:#f7fee7;border-radius:10px;color:#3f6212;">현재 자동 감지된 의심 사용자가 없습니다.</div>'}
-            </div>
-            <div style="margin-top:16px;">
-                <div style="font-weight:800;color:#9a3412;margin-bottom:8px;">📜 최근 예약 시도 로그</div>
-                <div style="max-height:280px;overflow:auto;border:1px solid #fed7aa;background:#fffaf0;padding:10px;border-radius:10px;">${recentHtml}</div>
-            </div>`;
+        const anomalyCount = suspicious.filter(x => x.anomaly.burstCount || x.anomaly.unlogged).length;
+        box.innerHTML = `<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:14px;">
+            <div style="background:#fff;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center"><small>시도 로그</small><div style="font-weight:800;color:#9a3412">${logs.length}건</div></div>
+            <div style="background:#fff;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center"><small>예약 묶음</small><div style="font-weight:800;color:#2563eb">${reservationGroups.length}건</div></div>
+            <div style="background:#fff;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center"><small>우회 의심</small><div style="font-weight:800;color:#dc2626">${anomalyCount}명</div></div>
+            <div style="background:#fff;border:1px solid #fed7aa;border-radius:10px;padding:10px;text-align:center"><small>차단</small><div style="font-weight:800;color:#dc2626">${Object.keys(blockedMap).length}명</div></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="color:#9a3412">🚨 의심 사용자 자동 표시</b><button onclick="loadMacroMonitor()" style="background:#fff;border:1px solid #fdba74;color:#9a3412;border-radius:8px;padding:6px 10px;cursor:pointer">새로고침</button></div>
+        ${suspiciousHtml || '<div style="padding:12px;border:1px solid #d9f99d;background:#f7fee7;border-radius:10px;color:#3f6212">현재 명확한 우회/폭주 징후가 없습니다.</div>'}
+        <div style="margin-top:16px"><b style="color:#9a3412">🧾 실제 예약 성공 타임라인</b><div style="margin-top:8px;max-height:330px;overflow:auto;border:1px solid #fed7aa;background:white;border-radius:10px;padding:8px">${timelineHtml || '최근 예약 없음'}</div></div>
+        <div style="margin-top:16px"><b style="color:#9a3412">📜 예약 시도 로그</b><div style="margin-top:8px;max-height:260px;overflow:auto;border:1px solid #fed7aa;background:#fffaf0;border-radius:10px;padding:10px">${recentHtml || '시도 로그 없음'}</div></div>
+        <div style="margin-top:10px;font-size:.72rem;color:#78716c;line-height:1.5">※ 같은 requestId로 여러 코트·시간이 동시에 생성된 것은 사용자가 한 번에 여러 칸을 선택한 정상 예약일 수 있습니다. 서로 다른 requestId의 초단기 연속 성공이나 성공 로그 불일치를 우선 확인하세요.</div>`;
     } catch (err) {
         console.error('macro monitor load error', err);
-        box.innerHTML = `<div style="padding:14px;border:1px solid #fecaca;background:#fef2f2;border-radius:10px;color:#b91c1c;">감시 로그를 불러오지 못했습니다.<br>${err.message || err}</div>`;
+        box.innerHTML = `<div style="padding:14px;border:1px solid #fecaca;background:#fef2f2;border-radius:10px;color:#b91c1c;">감시 자료를 불러오지 못했습니다.<br>${esc(err.message || err)}</div>`;
     }
 }
 
