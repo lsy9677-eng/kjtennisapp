@@ -168,37 +168,70 @@ function checkRequestedBlock(court, block, occupiedMap, openTime, lastStartTime)
 
 
 
-// ===== v8 정밀 상호작용 증거 수집 =====
+// ===== v11 정밀 상호작용 증거 수집 =====
 var macroInteractionBuffer = window.macroInteractionBuffer = window.macroInteractionBuffer || [];
 var macroInteractionInstalled = window.macroInteractionInstalled || false;
+var macroLastMoveRecordedAt = 0;
 
 function installMacroInteractionRecorder() {
     if (window.macroInteractionInstalled) return;
     window.macroInteractionInstalled = true;
-    const record = function(ev) {
+
+    const pushEvent = function(ev, forcedType) {
         try {
             const now = Date.now();
             const target = ev && ev.target;
             const cell = target && target.closest ? target.closest('.data-cell') : null;
             const bookBtn = target && target.closest ? target.closest('#btnMainBook, #btnBookAction, [onclick*="openBook"], [onclick*="doPay"]') : null;
-            const relevant = !!cell || !!bookBtn || (ev && ev.type === 'keydown');
+            const bookingArea = target && target.closest ? target.closest('#gridArea, #modalBook, .footer-bar') : null;
+            const type = String(forcedType || (ev && ev.type) || '');
+
+            // pointermove는 성능 부담을 피하기 위해 예약 영역 안에서 150ms마다만 표본 수집합니다.
+            if (type === 'pointermove') {
+                if (!bookingArea) return;
+                if (now - macroLastMoveRecordedAt < 150) return;
+                macroLastMoveRecordedAt = now;
+            }
+
+            const relevant = !!cell || !!bookBtn || !!bookingArea || ['keydown','focusin','visibilitychange'].includes(type);
             if (!relevant) return;
+
             macroInteractionBuffer.push({
                 atMs: now,
-                type: String(ev.type || ''),
-                trusted: ev.isTrusted === true,
-                pointerType: String(ev.pointerType || ''),
-                key: ev.type === 'keydown' ? String(ev.key || '') : '',
-                target: cell ? String(cell.id || 'grid-cell') : (bookBtn ? String(bookBtn.id || 'book-action') : String((target && target.id) || ''))
+                type,
+                trusted: ev ? ev.isTrusted === true : true,
+                pointerType: String((ev && ev.pointerType) || ''),
+                key: type === 'keydown' ? String((ev && ev.key) || '') : '',
+                target: cell ? String(cell.id || 'grid-cell') : (bookBtn ? String(bookBtn.id || 'book-action') : String((target && target.id) || (bookingArea && bookingArea.id) || 'document')),
+                x: Number.isFinite(ev && ev.clientX) ? Math.round(ev.clientX) : null,
+                y: Number.isFinite(ev && ev.clientY) ? Math.round(ev.clientY) : null,
+                visibility: document.visibilityState || ''
             });
+
             const cutoff = now - 120000;
             while (macroInteractionBuffer.length && macroInteractionBuffer[0].atMs < cutoff) macroInteractionBuffer.shift();
-            if (macroInteractionBuffer.length > 300) macroInteractionBuffer.splice(0, macroInteractionBuffer.length - 300);
+            if (macroInteractionBuffer.length > 500) macroInteractionBuffer.splice(0, macroInteractionBuffer.length - 500);
         } catch (_) {}
     };
-    ['pointerdown','click','keydown','touchstart'].forEach(type => {
-        document.addEventListener(type, record, { capture: true, passive: true });
+
+    ['pointerdown','pointerup','click','keydown','touchstart','focusin','pointermove'].forEach(type => {
+        document.addEventListener(type, ev => pushEvent(ev), { capture: true, passive: true });
     });
+    document.addEventListener('visibilitychange', ev => pushEvent(ev, 'visibilitychange'), { capture: true, passive: true });
+}
+
+function _macroMedian(values) {
+    const arr = (values || []).filter(Number.isFinite).slice().sort((a,b)=>a-b);
+    if (!arr.length) return 0;
+    const mid = Math.floor(arr.length / 2);
+    return arr.length % 2 ? arr[mid] : Math.round((arr[mid-1] + arr[mid]) / 2);
+}
+
+function _macroStdDev(values) {
+    const arr = (values || []).filter(Number.isFinite);
+    if (arr.length < 2) return 0;
+    const mean = arr.reduce((a,b)=>a+b,0) / arr.length;
+    return Math.sqrt(arr.reduce((sum,v)=>sum + Math.pow(v-mean,2),0) / arr.length);
 }
 
 function getBookingInteractionEvidence() {
@@ -207,20 +240,66 @@ function getBookingInteractionEvidence() {
     const recent = macroInteractionBuffer.filter(x => now - Number(x.atMs || 0) <= 60000);
     const trusted = recent.filter(x => x.trusted);
     const gridTrusted = trusted.filter(x => String(x.target || '').startsWith('c-'));
+    const pointerDowns = trusted.filter(x => x.type === 'pointerdown' || x.type === 'touchstart');
+    const clicks = trusted.filter(x => x.type === 'click');
+    const moves = trusted.filter(x => x.type === 'pointermove' && Number.isFinite(x.x) && Number.isFinite(x.y));
+    const keydowns = trusted.filter(x => x.type === 'keydown');
+    const focuses = trusted.filter(x => x.type === 'focusin');
     const last = recent.length ? recent[recent.length - 1] : null;
     const lastTrusted = trusted.length ? trusted[trusted.length - 1] : null;
-    const gaps = [];
-    for (let i = 1; i < gridTrusted.length; i++) gaps.push(gridTrusted[i].atMs - gridTrusted[i-1].atMs);
+
+    const gridGaps = [];
+    for (let i = 1; i < gridTrusted.length; i++) gridGaps.push(gridTrusted[i].atMs - gridTrusted[i-1].atMs);
+    const clickGaps = [];
+    for (let i = 1; i < clicks.length; i++) clickGaps.push(clicks[i].atMs - clicks[i-1].atMs);
+
+    let pointerTravelPx = 0;
+    for (let i = 1; i < moves.length; i++) {
+        const dx = moves[i].x - moves[i-1].x;
+        const dy = moves[i].y - moves[i-1].y;
+        pointerTravelPx += Math.sqrt(dx*dx + dy*dy);
+    }
+    pointerTravelPx = Math.round(pointerTravelPx);
+
+    const clickMedian = _macroMedian(clickGaps);
+    const clickStd = Math.round(_macroStdDev(clickGaps));
+    const clickCv = clickMedian > 0 ? Number((clickStd / clickMedian).toFixed(3)) : 0;
+    const distinctGridCells = new Set(gridTrusted.map(x => x.target).filter(Boolean)).size;
+
+    // '사람 입력 근거 점수'는 유죄 판단이 아니라 UI 상호작용 흔적의 풍부함만 나타냅니다.
+    let humanEvidenceScore = 0;
+    if (pointerDowns.length) humanEvidenceScore += 20;
+    if (clicks.length) humanEvidenceScore += 15;
+    if (gridTrusted.length >= 2) humanEvidenceScore += 20;
+    if (moves.length >= 2) humanEvidenceScore += 15;
+    if (pointerTravelPx >= 80) humanEvidenceScore += 15;
+    if (focuses.length || keydowns.length) humanEvidenceScore += 5;
+    if (lastTrusted && now - lastTrusted.atMs <= 5000) humanEvidenceScore += 10;
+    humanEvidenceScore = Math.min(100, humanEvidenceScore);
+
     return {
+        evidenceVersion: 'v11-human-input',
         interactionCount60s: recent.length,
         trustedInteractionCount60s: trusted.length,
         trustedGridInteractionCount60s: gridTrusted.length,
+        trustedPointerDownCount60s: pointerDowns.length,
+        trustedClickCount60s: clicks.length,
+        trustedMoveCount60s: moves.length,
+        trustedKeyCount60s: keydowns.length,
+        focusCount60s: focuses.length,
+        distinctGridCells60s: distinctGridCells,
         untrustedInteractionCount60s: recent.length - trusted.length,
         lastInteractionAgoMs: last ? Math.max(0, now - last.atMs) : -1,
         lastTrustedInteractionAgoMs: lastTrusted ? Math.max(0, now - lastTrusted.atMs) : -1,
         lastPointerType: last ? String(last.pointerType || '') : '',
-        gridIntervalMinMs: gaps.length ? Math.min.apply(null, gaps) : 0,
-        gridIntervalMedianMs: gaps.length ? gaps.slice().sort((a,b)=>a-b)[Math.floor(gaps.length/2)] : 0
+        gridIntervalMinMs: gridGaps.length ? Math.min.apply(null, gridGaps) : 0,
+        gridIntervalMedianMs: _macroMedian(gridGaps),
+        clickIntervalMinMs: clickGaps.length ? Math.min.apply(null, clickGaps) : 0,
+        clickIntervalMedianMs: clickMedian,
+        clickIntervalStdDevMs: clickStd,
+        clickIntervalCv: clickCv,
+        pointerTravelPx60s: pointerTravelPx,
+        humanEvidenceScore
     };
 }
 
@@ -246,7 +325,7 @@ function getForensicOpenState(nowMs) {
         active,
         openDeltaMs: delta,
         openEpochMs: now.getTime() - delta,
-        forensicVersion: 'v10-open-forensic',
+        forensicVersion: 'v11-open-forensic',
         windowBeforeMs: FORENSIC_BEFORE_MS,
         windowAfterMs: FORENSIC_AFTER_MS
     };
