@@ -1270,45 +1270,26 @@ function forceReload() {
 
 /* step4-utils-extracted: hashPassword moved to ./js/utils.js */
 
-/* ▼▼▼ [수정] 캐시 자동 삭제 및 강제 업데이트 스크립트 ▼▼▼ */
-if ('serviceWorker' in navigator) {
-    // 1. sw.js 뒤에 ?v=날짜를 붙여서 매번 파일이 달라진 것처럼 인식시킴 (개발 중에만 유용, 배포 후엔 버전 관리 필요)
-    navigator.serviceWorker.register('./sw.js?v=' + new Date().getTime()).then(reg => {
-        
-        // 2. 주기적으로 업데이트가 있는지 확인 (1시간 마다)
-        setInterval(() => {
-            reg.update();
-        }, 60 * 60 * 1000);
+/* ▼▼▼ [v10.2 안정화] 서비스워커 무한 새로고침 방지 ▼▼▼ */
+(function stabilizeServiceWorker() {
+    if (!('serviceWorker' in navigator)) return;
 
-        reg.addEventListener('updatefound', () => {
-            const newWorker = reg.installing;
-            newWorker.addEventListener('statechange', () => {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    // [핵심] 사용자에게 묻지 않고 바로 캐시 비우고 새로고침
-                    // 기존의 confirm 창을 없애고 바로 리로드
-                    console.log("새 버전 발견! 자동 업데이트 실행");
-                    
-                    // 캐시 저장소 이름들을 싹 지우고 리로드
-                    caches.keys().then(function(names) {
-                        for (let name of names) caches.delete(name);
-                    });
-                    
-                    window.location.reload(); 
-                }
-            });
-        });
-    }).catch(err => {
-        console.warn('ServiceWorker 등록 실패:', err);
-    });
+    // 이전 버전의 updatefound/controllerchange 자동 새로고침 루프를 제거합니다.
+    // 기존 서비스워커가 남아 있으면 이 브라우저 세션에서 한 번만 해제하고,
+    // 현재 페이지는 다시 새로고침하지 않습니다.
+    if (sessionStorage.getItem('tenniskj_sw_cleanup_v10_2') === 'done') return;
+    sessionStorage.setItem('tenniskj_sw_cleanup_v10_2', 'done');
 
-    // 3. 새로고침 시 즉시 새 버전 적용되도록 설정
-    let refreshing;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (refreshing) return;
-        window.location.reload();
-        refreshing = true;
-    });
-}        
+    navigator.serviceWorker.getRegistrations()
+        .then(registrations => Promise.all(registrations.map(reg => reg.unregister())))
+        .then(() => {
+            if (!('caches' in window)) return;
+            return caches.keys().then(names => Promise.all(names.map(name => caches.delete(name))));
+        })
+        .then(() => console.log('서비스워커 자동 새로고침 루프 정리 완료'))
+        .catch(err => console.warn('서비스워커 정리 실패:', err));
+})();
+/* ▲▲▲ [v10.2 안정화 끝] ▲▲▲ */
        /* [수정 완료] 새로고침 시 관리자 상태 복구 및 설정 버튼 표시 */
         if(localStorage.getItem('isAdm') === 'true') {
             isAdmin = true;
