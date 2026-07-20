@@ -168,7 +168,7 @@ function checkRequestedBlock(court, block, occupiedMap, openTime, lastStartTime)
 
 
 
-// ===== v11 정밀 상호작용 증거 수집 =====
+// ===== v12 정밀 상호작용·예약 전후 증거 수집 =====
 var macroInteractionBuffer = window.macroInteractionBuffer = window.macroInteractionBuffer || [];
 var macroInteractionInstalled = window.macroInteractionInstalled || false;
 var macroLastMoveRecordedAt = 0;
@@ -237,7 +237,7 @@ function _macroStdDev(values) {
 function getBookingInteractionEvidence() {
     installMacroInteractionRecorder();
     const now = Date.now();
-    const recent = macroInteractionBuffer.filter(x => now - Number(x.atMs || 0) <= 60000);
+    const recent = macroInteractionBuffer.filter(x => now - Number(x.atMs || 0) <= 120000);
     const trusted = recent.filter(x => x.trusted);
     const gridTrusted = trusted.filter(x => String(x.target || '').startsWith('c-'));
     const pointerDowns = trusted.filter(x => x.type === 'pointerdown' || x.type === 'touchstart');
@@ -245,6 +245,7 @@ function getBookingInteractionEvidence() {
     const moves = trusted.filter(x => x.type === 'pointermove' && Number.isFinite(x.x) && Number.isFinite(x.y));
     const keydowns = trusted.filter(x => x.type === 'keydown');
     const focuses = trusted.filter(x => x.type === 'focusin');
+    const visibilityEvents = recent.filter(x => x.type === 'visibilitychange');
     const last = recent.length ? recent[recent.length - 1] : null;
     const lastTrusted = trusted.length ? trusted[trusted.length - 1] : null;
 
@@ -254,12 +255,39 @@ function getBookingInteractionEvidence() {
     for (let i = 1; i < clicks.length; i++) clickGaps.push(clicks[i].atMs - clicks[i-1].atMs);
 
     let pointerTravelPx = 0;
+    const moveSpeeds = [];
+    let pointerPauseCount = 0;
+    let directionChangeCount = 0;
+    let previousAngle = null;
     for (let i = 1; i < moves.length; i++) {
         const dx = moves[i].x - moves[i-1].x;
         const dy = moves[i].y - moves[i-1].y;
-        pointerTravelPx += Math.sqrt(dx*dx + dy*dy);
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        const dt = Math.max(1, moves[i].atMs - moves[i-1].atMs);
+        pointerTravelPx += dist;
+        moveSpeeds.push(dist / dt * 1000);
+        if (dt >= 450) pointerPauseCount++;
+        if (dist >= 2) {
+            const angle = Math.atan2(dy, dx);
+            if (previousAngle !== null) {
+                let delta = Math.abs(angle - previousAngle);
+                if (delta > Math.PI) delta = Math.PI * 2 - delta;
+                if (delta >= 0.55) directionChangeCount++;
+            }
+            previousAngle = angle;
+        }
     }
     pointerTravelPx = Math.round(pointerTravelPx);
+    let pointerStraightDistancePx = 0;
+    if (moves.length >= 2) {
+        const dx = moves[moves.length-1].x - moves[0].x;
+        const dy = moves[moves.length-1].y - moves[0].y;
+        pointerStraightDistancePx = Math.round(Math.sqrt(dx*dx + dy*dy));
+    }
+    const pointerPathEfficiency = pointerTravelPx > 0 ? Number((pointerStraightDistancePx / pointerTravelPx).toFixed(3)) : 0;
+    const pointerSpeedMedianPxSec = Math.round(_macroMedian(moveSpeeds));
+    const pointerSpeedStdDevPxSec = Math.round(_macroStdDev(moveSpeeds));
+    const pointerSpeedCv = pointerSpeedMedianPxSec > 0 ? Number((pointerSpeedStdDevPxSec / pointerSpeedMedianPxSec).toFixed(3)) : 0;
 
     const clickMedian = _macroMedian(clickGaps);
     const clickStd = Math.round(_macroStdDev(clickGaps));
@@ -277,8 +305,21 @@ function getBookingInteractionEvidence() {
     if (lastTrusted && now - lastTrusted.atMs <= 5000) humanEvidenceScore += 10;
     humanEvidenceScore = Math.min(100, humanEvidenceScore);
 
+    const timeline = recent.slice(-100).map(x => ({
+        a: Number(x.atMs || 0),
+        t: String(x.type || '').slice(0, 18),
+        tr: x.trusted === true,
+        p: String(x.pointerType || '').slice(0, 12),
+        k: String(x.key || '').slice(0, 16),
+        el: String(x.target || '').slice(0, 48),
+        x: Number.isFinite(x.x) ? Number(x.x) : null,
+        y: Number.isFinite(x.y) ? Number(x.y) : null,
+        v: String(x.visibility || '').slice(0, 12)
+    }));
+
     return {
-        evidenceVersion: 'v11-human-input',
+        evidenceVersion: 'v12-human-input',
+        interactionWindowMs: 120000,
         interactionCount60s: recent.length,
         trustedInteractionCount60s: trusted.length,
         trustedGridInteractionCount60s: gridTrusted.length,
@@ -299,7 +340,17 @@ function getBookingInteractionEvidence() {
         clickIntervalStdDevMs: clickStd,
         clickIntervalCv: clickCv,
         pointerTravelPx60s: pointerTravelPx,
-        humanEvidenceScore
+        pointerStraightDistancePx,
+        pointerPathEfficiency,
+        pointerSpeedMedianPxSec,
+        pointerSpeedStdDevPxSec,
+        pointerSpeedCv,
+        pointerPauseCount,
+        directionChangeCount,
+        visibilityChangeCount: visibilityEvents.length,
+        hiddenVisibilityCount: visibilityEvents.filter(x => String(x.visibility || '') === 'hidden').length,
+        humanEvidenceScore,
+        interactionTimeline: timeline
     };
 }
 
@@ -325,7 +376,7 @@ function getForensicOpenState(nowMs) {
         active,
         openDeltaMs: delta,
         openEpochMs: now.getTime() - delta,
-        forensicVersion: 'v11-open-forensic',
+        forensicVersion: 'v12-open-forensic',
         windowBeforeMs: FORENSIC_BEFORE_MS,
         windowAfterMs: FORENSIC_AFTER_MS
     };
@@ -345,7 +396,10 @@ function getForensicEventSnapshot() {
             tr: x.trusted === true,
             p: String(x.pointerType || '').slice(0,12),
             k: String(x.key || '').slice(0,12),
-            el: String(x.target || '').slice(0,48)
+            el: String(x.target || '').slice(0,48),
+            x: Number.isFinite(x.x) ? Number(x.x) : null,
+            y: Number.isFinite(x.y) ? Number(x.y) : null,
+            v: String(x.visibility || '').slice(0,12)
         }));
     return { ...state, events };
 }
@@ -389,6 +443,21 @@ function nextMacroClientSequence() {
     return seq;
 }
 
+function getCoarseDeviceProfile() {
+    const raw = [
+        navigator.userAgent || '', navigator.platform || '', navigator.language || '',
+        Number(navigator.hardwareConcurrency || 0), Number(navigator.deviceMemory || 0),
+        Number(navigator.maxTouchPoints || 0), Number((screen && screen.width) || 0),
+        Number((screen && screen.height) || 0), (Intl && Intl.DateTimeFormat) ? Intl.DateTimeFormat().resolvedOptions().timeZone : ''
+    ].join('|');
+    let hash = 2166136261;
+    for (let i = 0; i < raw.length; i++) {
+        hash ^= raw.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return 'dev_' + (hash >>> 0).toString(36);
+}
+
 async function logBookingAttempt(payload) {
     try {
         await db.collection('booking_attempt_logs').add({
@@ -405,6 +474,7 @@ async function logBookingAttempt(payload) {
             deviceMemory: Number(navigator.deviceMemory || 0),
             maxTouchPoints: Number(navigator.maxTouchPoints || 0),
             webdriver: navigator.webdriver === true,
+            coarseDeviceProfile: getCoarseDeviceProfile(),
             screenWidth: Number((window.screen && window.screen.width) || 0),
             screenHeight: Number((window.screen && window.screen.height) || 0),
             viewportWidth: Number(window.innerWidth || 0),

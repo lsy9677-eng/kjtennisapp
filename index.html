@@ -974,8 +974,8 @@
 <script src="./js/auth.js?v=20260619-step20"></script>
 <script src="./js/calendar.js?v=20260619-step20"></script>
 <script src="./js/reservation-ui.js?v=20260619-step20"></script>
-<script src="./js/booking-helpers.js?v=20260716-macro-v11"></script>
-<script src="./js/booking-core.js?v=20260716-macro-v11"></script>
+<script src="./js/booking-helpers.js?v=20260716-macro-v12"></script>
+<script src="./js/booking-core.js?v=20260716-macro-v12"></script>
 <script src="./js/admin-actions.js?v=20260619-step20"></script>
 
 <script>
@@ -1855,19 +1855,19 @@ window.downloadMacroEvidenceCsv = function() {
         '이름','UID','전화번호','점수','판정','최근활동','24시간시도','24시간성공','24시간실패','7일시도','7일성공','7일실패','7일성공률%',
         '최단간격ms','중앙간격ms','간격표준편차ms','간격변동계수','3초내최대요청','300ms이하','800ms이하',
         '신뢰사용자입력없는시도','webdriver감지','성공로그불일치','2초내연속성공','추적정보없는예약','최대슬롯묶음','평균슬롯묶음',
-        '처리최단ms','처리중앙ms','클라이언트수','세션수','브라우저수','v11정밀로그수','사람입력근거중앙점수','포인터이동거리중앙px','클릭최단간격ms','클릭간격변동계수중앙','직접호출의심건수','분석로그수','분석예약묶음수','판정근거'
+        '처리최단ms','처리중앙ms','클라이언트수','세션수','브라우저수','v12정밀로그수','사람입력근거중앙점수','포인터이동거리중앙px','클릭최단간격ms','클릭간격변동계수중앙','경로효율중앙','포인터속도변동계수중앙','멈춤횟수중앙','방향전환횟수중앙','화면숨김횟수','직접호출의심건수','분석로그수','분석예약묶음수','판정근거'
     ];
     const csvEscape = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
     const lines = [headers.map(csvEscape).join(',')].concat(rows.map(r => [
         r.name,r.uid,r.phone,r.score,r.confidence,r.lastActivityText,r.try24,r.success24,r.fail24,r.try7d,r.success7d,r.fail7d,r.successRate7d,
         r.minIntervalMs,r.medianIntervalMs,r.intervalStdDevMs,r.intervalCv,r.maxIn3s,r.sub300,r.sub800,
         r.noTrustedTryCount,r.webdriverCount,r.unlogged,r.successBurst,r.noTrace,r.maxSlotsPerRequest,r.avgSlotsPerRequest,
-        r.successElapsedMin,r.successElapsedMedian,r.clientCount,r.sessionCount,r.userAgents,r.v11TryCount,r.humanEvidenceMedian,r.pointerTravelMedian,r.clickIntervalMinMsV11,r.clickIntervalCvMedian,r.directCallSuspectCount,r.analysisLogCount,r.analysisReservationCount,(r.reasons || []).join(' / ')
+        r.successElapsedMin,r.successElapsedMedian,r.clientCount,r.sessionCount,r.userAgents,r.v12TryCount,r.humanEvidenceMedian,r.pointerTravelMedian,r.clickIntervalMinMsV12,r.clickIntervalCvMedian,r.pathEfficiencyMedian,r.pointerSpeedCvMedian,r.pointerPauseMedian,r.directionChangeMedian,r.hiddenVisibilityCount,r.directCallSuspectCount,r.analysisLogCount,r.analysisReservationCount,(r.reasons || []).join(' / ')
     ].map(csvEscape).join(',')));
     const blob = new Blob(['\ufeff' + lines.join('\n')], { type:'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'macro_evidence_v11_' + new Date().toISOString().slice(0,10) + '.csv';
+    a.download = 'macro_evidence_v12_' + new Date().toISOString().slice(0,10) + '.csv';
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 };
@@ -2053,16 +2053,25 @@ async function loadMacroMonitor() {
             // 구버전 로그에는 상호작용 필드가 없으므로 0으로 오탐 처리하지 않는다.
             const instrumentedTries=uniqueTries.filter(l=>('trustedInteractionCount60s' in l)||('interactionEvidence' in l)||String(l.appVersion||'').includes('macro-v9'));
             const noTrustedTryCount=instrumentedTries.filter(l=>Number(l.trustedInteractionCount60s||0)===0 && Number((l.interactionEvidence&&l.interactionEvidence.trustedInteractionCount60s)||0)===0).length;
-            const v11Tries=uniqueTries.filter(l=>String(l.evidenceVersion||'')==='v11-human-input'||String(l.appVersion||'').includes('macro-v11'));
-            const v11HumanScores=v11Tries.map(l=>Number(l.humanEvidenceScore||0)).filter(Number.isFinite);
-            const v11PointerTravel=v11Tries.map(l=>Number(l.pointerTravelPx60s||0)).filter(Number.isFinite);
-            const v11ClickMins=v11Tries.map(l=>Number(l.clickIntervalMinMs||0)).filter(x=>x>0);
-            const v11ClickCvs=v11Tries.map(l=>Number(l.clickIntervalCv||0)).filter(x=>x>0);
-            const humanEvidenceMedian=median(v11HumanScores);
-            const pointerTravelMedian=median(v11PointerTravel);
-            const clickIntervalMinMsV11=v11ClickMins.length?Math.min(...v11ClickMins):0;
-            const clickIntervalCvMedian=median(v11ClickCvs);
-            const directCallSuspectCount=v11Tries.filter(l=>Number(l.trustedPointerDownCount60s||0)===0&&Number(l.trustedClickCount60s||0)===0&&Number(l.trustedGridInteractionCount60s||0)===0).length;
+            const v12Tries=uniqueTries.filter(l=>String(l.evidenceVersion||'')==='v12-human-input'||String(l.appVersion||'').includes('macro-v12'));
+            const v12HumanScores=v12Tries.map(l=>Number(l.humanEvidenceScore||0)).filter(Number.isFinite);
+            const v12PointerTravel=v12Tries.map(l=>Number(l.pointerTravelPx60s||0)).filter(Number.isFinite);
+            const v12ClickMins=v12Tries.map(l=>Number(l.clickIntervalMinMs||0)).filter(x=>x>0);
+            const v12ClickCvs=v12Tries.map(l=>Number(l.clickIntervalCv||0)).filter(x=>x>0);
+            const v12PathEfficiency=v12Tries.map(l=>Number(l.pointerPathEfficiency||0)).filter(x=>x>0);
+            const v12SpeedCv=v12Tries.map(l=>Number(l.pointerSpeedCv||0)).filter(x=>x>0);
+            const v12Pauses=v12Tries.map(l=>Number(l.pointerPauseCount||0)).filter(Number.isFinite);
+            const v12DirectionChanges=v12Tries.map(l=>Number(l.directionChangeCount||0)).filter(Number.isFinite);
+            const humanEvidenceMedian=median(v12HumanScores);
+            const pointerTravelMedian=median(v12PointerTravel);
+            const clickIntervalMinMsV12=v12ClickMins.length?Math.min(...v12ClickMins):0;
+            const clickIntervalCvMedian=median(v12ClickCvs);
+            const pathEfficiencyMedian=median(v12PathEfficiency);
+            const pointerSpeedCvMedian=median(v12SpeedCv);
+            const pointerPauseMedian=median(v12Pauses);
+            const directionChangeMedian=median(v12DirectionChanges);
+            const hiddenVisibilityCount=v12Tries.reduce((sum,l)=>sum+Number(l.hiddenVisibilityCount||0),0);
+            const directCallSuspectCount=v12Tries.filter(l=>Number(l.trustedPointerDownCount60s||0)===0&&Number(l.trustedClickCount60s||0)===0&&Number(l.trustedGridInteractionCount60s||0)===0).length;
             const webdriverCount=uniqueTries.filter(l=>l.webdriver===true).length;
             const slotCounts=uniqueTries.map(l=>Number(l.slotCount)||((Array.isArray(l.slots)&&l.slots.length)||0)).filter(x=>x>0);
             const maxSlotsPerRequest=slotCounts.length?Math.max(...slotCounts):0,avgSlotsPerRequest=slotCounts.length?Number(mean(slotCounts).toFixed(2)):0;
@@ -2076,10 +2085,14 @@ async function loadMacroMonitor() {
             if(sub300>=2){score+=Math.min(55,sub300*16);reasons.push(`300ms 이하 반복 ${sub300}회`);} if(sub800>=3){score+=Math.min(42,sub800*8);reasons.push(`800ms 이하 반복 ${sub800}회`);}
             if(intervals.length>=4&&medianIntervalMs<2000&&intervalCv>0&&intervalCv<0.12){score+=45;reasons.push(`기계적으로 일정한 간격 CV ${intervalCv}`);}else if(intervals.length>=4&&medianIntervalMs<3000&&intervalCv>0&&intervalCv<0.22){score+=22;reasons.push(`반복 간격 일정 CV ${intervalCv}`);}
             if(noTrustedTryCount>=3){score+=45;reasons.push(`신뢰 사용자 입력 없는 요청 ${noTrustedTryCount}건`);}else if(noTrustedTryCount>=1&&instrumentedTries.length>=3){score+=15;reasons.push(`사용자 입력 흔적 부족 ${noTrustedTryCount}건`);}
-            if(v11Tries.length>=2&&directCallSuspectCount>=2){score+=55;reasons.push(`v11 입력 흔적 없는 직접호출 의심 ${directCallSuspectCount}건`);}else if(v11Tries.length>=1&&directCallSuspectCount>=1){score+=18;reasons.push(`v11 입력 흔적 부족 ${directCallSuspectCount}건`);}
-            if(v11ClickMins.length&&clickIntervalMinMsV11<80){score+=60;reasons.push(`신뢰 클릭 최단 ${clickIntervalMinMsV11}ms`);}else if(v11ClickMins.length&&clickIntervalMinMsV11<150){score+=32;reasons.push(`신뢰 클릭 최단 ${clickIntervalMinMsV11}ms`);}
-            if(v11ClickCvs.length>=2&&clickIntervalCvMedian>0&&clickIntervalCvMedian<0.08){score+=35;reasons.push(`클릭 간격이 지나치게 일정 CV ${clickIntervalCvMedian}`);}
-            if(v11Tries.length>=3&&humanEvidenceMedian<20){score+=30;reasons.push(`사람 입력 근거 중앙 ${humanEvidenceMedian}점`);}
+            if(v12Tries.length>=2&&directCallSuspectCount>=2){score+=55;reasons.push(`v12 입력 흔적 없는 직접호출 의심 ${directCallSuspectCount}건`);}else if(v12Tries.length>=1&&directCallSuspectCount>=1){score+=18;reasons.push(`v12 입력 흔적 부족 ${directCallSuspectCount}건`);}
+            if(v12ClickMins.length&&clickIntervalMinMsV12<80){score+=60;reasons.push(`신뢰 클릭 최단 ${clickIntervalMinMsV12}ms`);}else if(v12ClickMins.length&&clickIntervalMinMsV12<150){score+=32;reasons.push(`신뢰 클릭 최단 ${clickIntervalMinMsV12}ms`);}
+            if(v12ClickCvs.length>=2&&clickIntervalCvMedian>0&&clickIntervalCvMedian<0.08){score+=35;reasons.push(`클릭 간격이 지나치게 일정 CV ${clickIntervalCvMedian}`);}
+            if(v12Tries.length>=3&&humanEvidenceMedian<20){score+=30;reasons.push(`사람 입력 근거 중앙 ${humanEvidenceMedian}점`);}
+            if(v12Tries.length>=2&&pathEfficiencyMedian>=0.985&&pointerTravelMedian>200){score+=18;reasons.push(`포인터 경로가 지나치게 직선적 ${pathEfficiencyMedian}`);}
+            if(v12Tries.length>=2&&pointerSpeedCvMedian>0&&pointerSpeedCvMedian<0.08){score+=22;reasons.push(`포인터 속도가 지나치게 일정 CV ${pointerSpeedCvMedian}`);}
+            if(v12Tries.length>=2&&pointerPauseMedian===0&&directionChangeMedian===0&&pointerTravelMedian>300){score+=15;reasons.push('이동 중 멈춤·방향전환 흔적 부족');}
+            if(hiddenVisibilityCount>=2){score+=8;reasons.push(`예약 직전 화면 이탈 ${hiddenVisibilityCount}회`);}
             if(webdriverCount){score+=80;reasons.push(`WebDriver 자동화 신호 ${webdriverCount}건`);}
             if(tries7.length>=5&&successRate7d>=90){score+=28;reasons.push(`7일 성공률 ${successRate7d}%`);}else if(tries7.length>=8&&successRate7d>=70){score+=15;reasons.push(`7일 높은 성공률 ${successRate7d}%`);}
             if(successes7.length>=3&&elapsed.length&&Math.min(...elapsed)<1000){score+=20;reasons.push(`1초 미만 처리 ${elapsed.filter(x=>x<1000).length}건`);}
@@ -2090,6 +2103,15 @@ async function loadMacroMonitor() {
             const replayEvents=[];
             recent7d.forEach(l=>replayEvents.push({ms:eventMs(l),type:l.result||'LOG',label:`${l.name||''} / ${(l.slots||[]).map(s=>`${s.court}코트 ${s.time}시`).join(', ')} ${l.reason||''}`,requestId:l.requestId||''}));
             userGroups.filter(g=>now-g.atMs<=WEEK).forEach(g=>replayEvents.push({ms:g.atMs,type:'RESERVATION',label:`실제 저장: ${g.slots.map(s=>`${s.court}코트 ${s.time}시`).join(', ')}`,requestId:g.requestId||''}));
+            v12Tries.forEach(l=>{
+                const timeline=Array.isArray(l.interactionTimeline)?l.interactionTimeline:[];
+                timeline.forEach(ev=>{
+                    const ms=Number(ev.a||0);
+                    if(!ms) return;
+                    const coord=(Number.isFinite(ev.x)&&Number.isFinite(ev.y))?` (${ev.x},${ev.y})`:'';
+                    replayEvents.push({ms,type:'INPUT',label:`${ev.t||'event'} ${ev.el||''}${coord} ${ev.tr?'신뢰입력':'비신뢰입력'}${ev.v?` · ${ev.v}`:''}`,requestId:l.requestId||''});
+                });
+            });
             const resolvedUid=String(latest.uid||latestGroup.uid||'');
             const resolvedName=latest.name||latestGroup.name||'(이름없음)';
             const resolvedPhone=latest.phone||latestGroup.phone||'-';
@@ -2099,7 +2121,7 @@ async function loadMacroMonitor() {
             const forensicMinDelta = forensicDeltas.length ? Math.min(...forensicDeltas) : 0;
             const forensicEventCount = forensicLogs.reduce((sum, l) => sum + (Array.isArray(l.forensicOpen.events) ? l.forensicOpen.events.length : 0), 0);
             window.macroReplayData[replayId]={name:resolvedName,phone:resolvedPhone,uid:resolvedUid,events:replayEvents.filter(e=>e.ms)};
-            return {identity,replayId,uid:resolvedUid,name:resolvedName,phone:resolvedPhone,score,confidence,reasons,anomaly,blocked:!!blockedMap[resolvedUid],try24:tries24.length,success24:successes24.length,fail24:fails24.length,try7d:tries7.length,success7d:successes7.length,fail7d:fails7.length,successRate7d,minIntervalMs,medianIntervalMs,intervalStdDevMs,intervalCv,intervals,sub300,sub800,maxIn3s,successElapsedMin:elapsed.length?Math.min(...elapsed):0,successElapsedMedian:median(elapsed),clientCount,sessionCount,userAgents,noTrustedTryCount,webdriverCount,maxSlotsPerRequest,avgSlotsPerRequest,unlogged:anomaly.unlogged,successBurst:anomaly.successBurst,noTrace:anomaly.noTrace,lastActivityMs,lastActivityText:fmtExact(lastActivityMs),analysisLogCount:userLogs.length,analysisReservationCount:userGroups.length,forensicLogCount:forensicLogs.length,forensicMinDelta,forensicEventCount,v11TryCount:v11Tries.length,humanEvidenceMedian,pointerTravelMedian,clickIntervalMinMsV11,clickIntervalCvMedian,directCallSuspectCount};
+            return {identity,replayId,uid:resolvedUid,name:resolvedName,phone:resolvedPhone,score,confidence,reasons,anomaly,blocked:!!blockedMap[resolvedUid],try24:tries24.length,success24:successes24.length,fail24:fails24.length,try7d:tries7.length,success7d:successes7.length,fail7d:fails7.length,successRate7d,minIntervalMs,medianIntervalMs,intervalStdDevMs,intervalCv,intervals,sub300,sub800,maxIn3s,successElapsedMin:elapsed.length?Math.min(...elapsed):0,successElapsedMedian:median(elapsed),clientCount,sessionCount,userAgents,noTrustedTryCount,webdriverCount,maxSlotsPerRequest,avgSlotsPerRequest,unlogged:anomaly.unlogged,successBurst:anomaly.successBurst,noTrace:anomaly.noTrace,lastActivityMs,lastActivityText:fmtExact(lastActivityMs),analysisLogCount:userLogs.length,analysisReservationCount:userGroups.length,forensicLogCount:forensicLogs.length,forensicMinDelta,forensicEventCount,v12TryCount:v12Tries.length,humanEvidenceMedian,pointerTravelMedian,clickIntervalMinMsV12,clickIntervalCvMedian,pathEfficiencyMedian,pointerSpeedCvMedian,pointerPauseMedian,directionChangeMedian,hiddenVisibilityCount,directCallSuspectCount};
         }).sort((a,b)=>b.score-a.score || b.lastActivityMs-a.lastActivityMs);
         window.macroEvidenceRows=evidence;
 
@@ -2114,7 +2136,7 @@ async function loadMacroMonitor() {
                 <div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">최단 <b>${fmtMs(x.minIntervalMs)}</b></div><div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">중앙 <b>${fmtMs(x.medianIntervalMs)}</b></div><div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">로그 <b>${x.analysisLogCount}</b></div><div style="background:#fff;padding:6px;border-radius:7px;text-align:center;">예약묶음 <b>${x.analysisReservationCount}</b></div>
               </div>${miniBars(x.intervals)}
               <div style="font-size:.72rem;color:#7c2d12;margin-top:7px;line-height:1.5;">${esc(x.reasons.join(' / ')||'관찰 데이터 축적 중')}</div>
-              <div style="font-size:.67rem;color:#78716c;margin-top:5px;">사용자 입력 없음 ${x.noTrustedTryCount} · WebDriver ${x.webdriverCount} · 성공로그 불일치 ${x.unlogged} · 별도 예약 폭주 ${x.successBurst} · 최대 묶음 ${x.maxSlotsPerRequest}칸<br>오픈 포렌식 로그 ${x.forensicLogCount}건 · 오픈 최근접 ${fmtMs(x.forensicMinDelta)} · 포렌식 입력 ${x.forensicEventCount}건<br><b>v11 정밀로그 ${x.v11TryCount}건</b> · 사람입력 근거 중앙 ${x.humanEvidenceMedian}점 · 포인터 이동 중앙 ${x.pointerTravelMedian}px · 클릭 최단 ${fmtMs(x.clickIntervalMinMsV11)} · 직접호출 의심 ${x.directCallSuspectCount}건</div>
+              <div style="font-size:.67rem;color:#78716c;margin-top:5px;">사용자 입력 없음 ${x.noTrustedTryCount} · WebDriver ${x.webdriverCount} · 성공로그 불일치 ${x.unlogged} · 별도 예약 폭주 ${x.successBurst} · 최대 묶음 ${x.maxSlotsPerRequest}칸<br>오픈 포렌식 로그 ${x.forensicLogCount}건 · 오픈 최근접 ${fmtMs(x.forensicMinDelta)} · 포렌식 입력 ${x.forensicEventCount}건<br><b>v12 정밀로그 ${x.v12TryCount}건</b> · 사람입력 근거 중앙 ${x.humanEvidenceMedian}점 · 포인터 이동 중앙 ${x.pointerTravelMedian}px · 클릭 최단 ${fmtMs(x.clickIntervalMinMsV12)} · 직접호출 의심 ${x.directCallSuspectCount}건<br>경로효율 ${x.pathEfficiencyMedian} · 속도CV ${x.pointerSpeedCvMedian} · 멈춤 ${x.pointerPauseMedian} · 방향전환 ${x.directionChangeMedian} · 화면이탈 ${x.hiddenVisibilityCount}</div>
               <div style="display:flex;gap:6px;margin-top:8px;"><button onclick="openMacroReplay('${x.replayId}')" style="flex:1;background:#7c3aed;color:#fff;border:none;border-radius:8px;padding:7px 10px;cursor:pointer;font-weight:800;">▶ 7일 행동 리플레이</button>${blockBtn}</div>
             </div>`;
         }).join('');
@@ -2129,8 +2151,8 @@ async function loadMacroMonitor() {
         const recentHtml=logs.slice(0,100).map(l=>{const ms=eventMs(l),color=l.result==='SUCCESS'?'#16a34a':(String(l.result).includes('FAIL')?'#dc2626':'#2563eb'),slotText=Array.isArray(l.slots)?l.slots.map(s=>`${s.court}코트 ${s.time}시`).join(', '):'-';return `<div style="padding:8px 0;border-bottom:1px solid #fde68a;font-size:.73rem;line-height:1.45;"><div style="display:flex;justify-content:space-between"><b style="color:${color}">${esc(l.result)}</b><span style="font-variant-numeric:tabular-nums;">${esc(fmtExact(ms))}</span></div><div>${esc(l.name||'(이름없음)')} / ${esc(slotText)}</div><div style="color:#78716c">${esc(l.reason||'')}${l.elapsedMs?` · 처리 ${esc(l.elapsedMs)}ms`:''}${l.forensicOpen&&l.forensicOpen.active?` · 오픈대비 ${esc(l.forensicOpen.openDeltaMs)}ms · 포렌식이벤트 ${esc((l.forensicOpen.events||[]).length)}`:''} · requestId ${esc(l.requestId||'-')}</div></div>`;}).join('');
         const anomalyCount=evidence.filter(x=>x.anomaly.unlogged||x.anomaly.successBurst||x.score>=95).length;
         box.innerHTML=`<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;margin-bottom:13px;"><div style="background:#fff;border:1px solid #fed7aa;border-radius:9px;padding:9px;text-align:center"><small>로그</small><div style="font-weight:800;color:#9a3412">${logs.length}</div></div><div style="background:#fff;border:1px solid #fed7aa;border-radius:9px;padding:9px;text-align:center"><small>예약묶음</small><div style="font-weight:800;color:#2563eb">${reservationGroups.length}</div></div><div style="background:#fff;border:1px solid #fed7aa;border-radius:9px;padding:9px;text-align:center"><small>강한징후</small><div style="font-weight:800;color:#dc2626">${anomalyCount}</div></div><div style="background:#fff;border:1px solid #fed7aa;border-radius:9px;padding:9px;text-align:center"><small>차단</small><div style="font-weight:800;color:#dc2626">${Object.keys(blockedMap).length}</div></div></div>
-          <div style="display:flex;justify-content:space-between;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap"><b style="color:#9a3412">🕵️ v11 사람입력·자동화 정밀 분석</b><div><button onclick="downloadMacroEvidenceCsv()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:6px 9px;cursor:pointer;margin-right:4px">증거 CSV</button><button onclick="loadMacroMonitor()" style="background:#fff;border:1px solid #fdba74;color:#9a3412;border-radius:8px;padding:6px 9px;cursor:pointer">새로고침</button></div></div>
-          <div style="font-size:.68rem;color:#78716c;margin-bottom:8px;line-height:1.45;">v10.1 정밀 로그는 매일 00:00 예약 오픈 전 30초부터 오픈 후 90초까지의 신뢰 입력, 요청 간격, 오픈시각 대비 지연을 별도로 기록합니다. 구버전 자료는 참고용이며 자동화 판정 근거에서는 분리해 확인하세요.</div>
+          <div style="display:flex;justify-content:space-between;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap"><b style="color:#9a3412">🕵️ v12 예약 전후 행동·자동화 정밀 분석</b><div><button onclick="downloadMacroEvidenceCsv()" style="background:#2563eb;color:#fff;border:none;border-radius:8px;padding:6px 9px;cursor:pointer;margin-right:4px">증거 CSV</button><button onclick="loadMacroMonitor()" style="background:#fff;border:1px solid #fdba74;color:#9a3412;border-radius:8px;padding:6px 9px;cursor:pointer">새로고침</button></div></div>
+          <div style="font-size:.68rem;color:#78716c;margin-bottom:8px;line-height:1.45;">v12는 예약 전후 120초 동안의 신뢰 입력, 셀 선택 순서, 클릭 좌표, 포인터 이동·멈춤·방향전환, 화면 이탈과 00:00 오픈 전후 포렌식 기록을 함께 저장합니다. 이 수치는 자동 판정이 아닌 관리자 참고 증거입니다.</div>
           ${suspiciousHtml||'<div style="padding:12px;border:1px solid #d9f99d;background:#f7fee7;border-radius:10px;color:#3f6212">현재 강한 자동화 징후가 없습니다.</div>'}
           <div style="margin-top:16px"><b style="color:#9a3412">🧾 실제 예약 성공 타임라인(ms)</b><div style="margin-top:8px;max-height:390px;overflow:auto;border:1px solid #fed7aa;background:white;border-radius:10px;padding:8px">${timelineHtml||'최근 예약 없음'}</div></div>
           <div style="margin-top:16px"><b style="color:#9a3412">📜 예약 시도 원본 로그(ms)</b><div style="margin-top:8px;max-height:360px;overflow:auto;border:1px solid #fed7aa;background:#fffaf0;border-radius:10px;padding:10px">${recentHtml||'시도 로그 없음'}</div></div>
