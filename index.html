@@ -82,6 +82,19 @@
   }
   #mobileBookingBar .mobile-booking-bar-handle span::before{content:'▼';}
   #mobileBookingBar.is-collapsed .mobile-booking-bar-handle span::before{content:'▲';}
+  /* v12.3: transform 충돌과 무관하게 실제로 접히도록 내용 자체를 숨김 */
+  #mobileBookingBar.is-collapsed{
+    min-height:8px !important;
+    height:8px !important;
+    padding:0 !important;
+    background:transparent !important;
+    border:0 !important;
+    box-shadow:none !important;
+    overflow:visible !important;
+    pointer-events:none !important;
+  }
+  #mobileBookingBar.is-collapsed > :not(.mobile-booking-bar-handle){display:none !important;}
+  #mobileBookingBar.is-collapsed .mobile-booking-bar-handle{pointer-events:auto !important;}
 }
 </style>
 </head>
@@ -4455,112 +4468,107 @@ function getAvailableCourtsAtHour(hour){
 })();
 </script>
 
-<script id="mobile-booking-bar-draggable-v12-2">
+<script id="mobile-booking-bar-draggable-v12-3">
 (function(){
   'use strict';
-  var STORAGE_KEY='tenniskj_mobile_booking_bar_v12_2';
+  var STORAGE_KEY='tenniskj_mobile_booking_bar_v12_3';
   var mq=window.matchMedia('(max-width: 768px)');
-  var bar=null, handle=null, currentOffset=0, maxOffset=0;
-  var dragging=false, moved=false, startY=0, startOffset=0, suppressClickUntil=0;
+  var bar=null, handle=null, collapsed=false;
+  var dragging=false, moved=false, startY=0, startBottom=0, currentBottom=0;
+  var minBottom=58, maxBottom=240, suppressClickUntil=0;
 
-  function clamp(v){ return Math.max(0, Math.min(Number(v)||0, maxOffset)); }
   function readState(){
-    try{ return JSON.parse(localStorage.getItem(STORAGE_KEY)||'null'); }catch(_){ return null; }
+    try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'null');}catch(_){return null;}
   }
   function saveState(){
-    if(!bar) return;
-    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({collapsed:bar.classList.contains('is-collapsed')})); }catch(_){}
+    try{localStorage.setItem(STORAGE_KEY,JSON.stringify({collapsed:collapsed,bottom:currentBottom}));}catch(_){}
   }
-  function apply(){
-    if(!bar) return;
-    currentOffset=clamp(currentOffset);
-    bar.style.transform='translate3d(0,'+Math.round(currentOffset)+'px,0)';
-    var collapsed=maxOffset>0 && currentOffset>=maxOffset-6;
+  function clampBottom(v){return Math.max(minBottom,Math.min(Number(v)||minBottom,maxBottom));}
+  function applyBottom(){
+    if(!bar||!mq.matches)return;
+    currentBottom=clampBottom(currentBottom);
+    bar.style.setProperty('bottom','calc('+Math.round(currentBottom)+'px + env(safe-area-inset-bottom, 0px))','important');
+  }
+  function applyCollapsed(value,remember){
+    if(!bar)return;
+    collapsed=!!value;
     bar.classList.toggle('is-collapsed',collapsed);
-    if(handle){
-      handle.setAttribute('aria-expanded',collapsed?'false':'true');
-      handle.setAttribute('aria-label',collapsed?'예약 도구 모음 펼치기':'예약 도구 모음 접기');
-      handle.title=collapsed?'눌러서 펼치기 · 위로 밀어 펼치기':'눌러서 접기 · 아래로 밀어 접기';
-    }
+    handle.setAttribute('aria-expanded',collapsed?'false':'true');
+    handle.setAttribute('aria-label',collapsed?'예약 도구 모음 펼치기':'예약 도구 모음 접기');
+    handle.title=collapsed?'눌러서 펼치기':'눌러서 접기 · 위아래로 끌어 이동';
+    applyBottom();
+    if(remember!==false)saveState();
   }
-  function measure(){
-    if(!bar) return;
-    maxOffset=Math.max(0,bar.getBoundingClientRect().height-28);
-    currentOffset=bar.classList.contains('is-collapsed')?maxOffset:clamp(currentOffset);
-    apply();
+  function toggle(){applyCollapsed(!collapsed,true);}
+  function yOf(ev){
+    if(ev.touches&&ev.touches.length)return ev.touches[0].clientY;
+    if(ev.changedTouches&&ev.changedTouches.length)return ev.changedTouches[0].clientY;
+    return Number(ev.clientY)||0;
   }
-  function setCollapsed(collapsed,remember){
-    measure();
-    currentOffset=collapsed?maxOffset:0;
-    apply();
-    if(remember!==false) saveState();
-  }
-  function toggle(){ setCollapsed(!bar.classList.contains('is-collapsed'),true); }
-  function clientY(ev){
-    if(ev.touches&&ev.touches.length) return ev.touches[0].clientY;
-    if(ev.changedTouches&&ev.changedTouches.length) return ev.changedTouches[0].clientY;
-    return ev.clientY;
-  }
-  function startDrag(ev){
-    if(!mq.matches||!bar||!handle) return;
-    dragging=true; moved=false; startY=clientY(ev); startOffset=currentOffset;
+  function begin(ev){
+    if(!mq.matches||!bar||!handle)return;
+    dragging=true;moved=false;startY=yOf(ev);startBottom=currentBottom;
     bar.classList.add('is-dragging');
-    if(ev.cancelable) ev.preventDefault();
+    if(ev.cancelable)ev.preventDefault();
   }
-  function moveDrag(ev){
-    if(!dragging) return;
-    var y=clientY(ev),dy=y-startY;
-    if(Math.abs(dy)>6) moved=true;
-    currentOffset=clamp(startOffset+dy);
-    apply();
-    if(ev.cancelable) ev.preventDefault();
+  function move(ev){
+    if(!dragging)return;
+    var dy=yOf(ev)-startY;
+    if(Math.abs(dy)>7)moved=true;
+    // 손가락을 위로 올리면 바도 위로 이동(bottom 증가)
+    currentBottom=clampBottom(startBottom-dy);
+    applyBottom();
+    if(ev.cancelable)ev.preventDefault();
   }
-  function endDrag(ev){
-    if(!dragging) return;
-    dragging=false; bar.classList.remove('is-dragging');
-    suppressClickUntil=Date.now()+600;
-    if(moved) setCollapsed(currentOffset>maxOffset*0.45,true);
-    else toggle();
-    if(ev&&ev.cancelable) ev.preventDefault();
+  function finish(ev){
+    if(!dragging)return;
+    dragging=false;bar.classList.remove('is-dragging');
+    suppressClickUntil=Date.now()+450;
+    if(moved){saveState();}
+    else{toggle();}
+    if(ev&&ev.cancelable)ev.preventDefault();
   }
   function init(){
     bar=document.getElementById('mobileBookingBar');
     handle=document.getElementById('mobileBookingBarHandle');
-    if(!bar||!handle) return;
-    var state=readState();
-    measure();
-    setCollapsed(!!(state&&state.collapsed),false);
+    if(!bar||!handle)return;
+    var st=readState()||{};
+    currentBottom=clampBottom(st.bottom==null?minBottom:st.bottom);
+    applyCollapsed(!!st.collapsed,false);
 
-    // 삼성 인터넷/구형 WebView 대응: touch, mouse, click을 각각 직접 처리
-    handle.addEventListener('touchstart',startDrag,{passive:false});
-    document.addEventListener('touchmove',moveDrag,{passive:false});
-    document.addEventListener('touchend',endDrag,{passive:false});
-    document.addEventListener('touchcancel',endDrag,{passive:false});
-
-    handle.addEventListener('mousedown',startDrag,false);
-    document.addEventListener('mousemove',moveDrag,false);
-    document.addEventListener('mouseup',endDrag,false);
-
+    // Pointer Events 우선. 삼성 브라우저 구형 대응으로 touch/mouse도 보조 등록.
+    if(window.PointerEvent){
+      handle.addEventListener('pointerdown',begin,{passive:false});
+      document.addEventListener('pointermove',move,{passive:false});
+      document.addEventListener('pointerup',finish,{passive:false});
+      document.addEventListener('pointercancel',finish,{passive:false});
+    }else{
+      handle.addEventListener('touchstart',begin,{passive:false});
+      document.addEventListener('touchmove',move,{passive:false});
+      document.addEventListener('touchend',finish,{passive:false});
+      document.addEventListener('touchcancel',finish,{passive:false});
+      handle.addEventListener('mousedown',begin,false);
+      document.addEventListener('mousemove',move,false);
+      document.addEventListener('mouseup',finish,false);
+    }
     handle.addEventListener('click',function(ev){
-      ev.preventDefault(); ev.stopPropagation();
-      if(Date.now()<suppressClickUntil) return;
+      ev.preventDefault();ev.stopPropagation();
+      if(Date.now()<suppressClickUntil)return;
       toggle();
     },false);
     handle.addEventListener('keydown',function(ev){
       if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();toggle();}
-      else if(ev.key==='ArrowDown'){ev.preventDefault();setCollapsed(true,true);}
-      else if(ev.key==='ArrowUp'){ev.preventDefault();setCollapsed(false,true);}
+      else if(ev.key==='ArrowUp'){ev.preventDefault();currentBottom=clampBottom(currentBottom+30);applyBottom();saveState();}
+      else if(ev.key==='ArrowDown'){ev.preventDefault();currentBottom=clampBottom(currentBottom-30);applyBottom();saveState();}
     });
-
-    window.addEventListener('resize',measure,{passive:true});
-    window.addEventListener('orientationchange',function(){setTimeout(measure,250);},{passive:true});
-    if(window.ResizeObserver){ try{ new ResizeObserver(measure).observe(bar); }catch(_){} }
-    if(mq.addEventListener) mq.addEventListener('change',function(){
-      if(!mq.matches){bar.style.transform='';bar.classList.remove('is-collapsed','is-dragging');}
-      else{var st=readState();measure();setCollapsed(!!(st&&st.collapsed),false);}
+    window.addEventListener('resize',applyBottom,{passive:true});
+    window.addEventListener('orientationchange',function(){setTimeout(applyBottom,250);},{passive:true});
+    if(mq.addEventListener)mq.addEventListener('change',function(){
+      if(!mq.matches){bar.style.removeProperty('bottom');bar.classList.remove('is-collapsed','is-dragging');}
+      else{var x=readState()||{};currentBottom=clampBottom(x.bottom==null?minBottom:x.bottom);applyCollapsed(!!x.collapsed,false);}
     });
   }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init,{once:true});
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init,{once:true});
   else init();
 })();
 </script>
