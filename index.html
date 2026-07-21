@@ -24,7 +24,66 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script async="" defer="" src="https://www.google.com/recaptcha/api.js"></script>
 <link as="style" crossorigin="" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" rel="stylesheet">
-</link></head>
+</link>
+<style id="mobile-booking-bar-draggable-style">
+/* v12.1 모바일 예약 하단바: 아래로 끌어 숨기기 + 탭 접기/펼치기 */
+.mobile-booking-bar-handle{display:none;}
+@media (max-width: 768px){
+  #view-res{padding-bottom:calc(104px + env(safe-area-inset-bottom, 0px));}
+  #gridArea{scroll-padding-bottom:calc(120px + env(safe-area-inset-bottom, 0px));}
+  #mobileBookingBar.footer-bar{
+    position:fixed !important;
+    left:8px !important;
+    right:8px !important;
+    bottom:calc(58px + env(safe-area-inset-bottom, 0px)) !important;
+    width:auto !important;
+    z-index:999 !important;
+    touch-action:none;
+    will-change:transform;
+    transition:transform .22s ease;
+    box-shadow:0 -4px 18px rgba(15,23,42,.18);
+    border-radius:18px 18px 14px 14px;
+    overflow:visible;
+  }
+  #mobileBookingBar.is-dragging{transition:none !important;}
+  #mobileBookingBar .mobile-booking-bar-handle{
+    display:flex;
+    position:absolute;
+    left:50%;
+    top:-20px;
+    transform:translateX(-50%);
+    width:82px;
+    height:26px;
+    border-radius:14px 14px 8px 8px;
+    align-items:center;
+    justify-content:center;
+    background:rgba(248,250,252,.98);
+    border:1px solid #cbd5e1;
+    border-bottom:0;
+    box-shadow:0 -3px 8px rgba(15,23,42,.12);
+    cursor:grab;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  #mobileBookingBar .mobile-booking-bar-handle:active{cursor:grabbing;}
+  #mobileBookingBar .mobile-booking-bar-handle span{
+    width:34px;
+    height:4px;
+    border-radius:999px;
+    background:#94a3b8;
+  }
+  #mobileBookingBar.is-collapsed .mobile-booking-bar-handle span::after{
+    content:'▲';
+    position:absolute;
+    left:50%;
+    top:5px;
+    transform:translateX(-50%);
+    font-size:9px;
+    color:#64748b;
+  }
+}
+</style>
+</head>
 <body>
 <div id="androidAppBanner" style="display:none; background:#f0fdf4; border-bottom:1px solid #bbf7d0; padding:12px; text-align:center; animation: slideDown 0.5s ease-out; position:relative;">
 <div style="max-width: 600px; margin: 0 auto; display:flex; align-items:center; justify-content:space-between; gap:10px;">
@@ -201,7 +260,8 @@
 <div class="grid-area" id="gridArea">
 <div class="schedule-table" id="schTable"></div>
 </div>
-<div class="footer-bar">
+<div class="footer-bar" id="mobileBookingBar">
+<div class="mobile-booking-bar-handle" id="mobileBookingBarHandle" role="button" tabindex="0" aria-label="예약 도구 모음 접기 또는 펼치기" title="끌어서 이동 · 눌러서 접기/펼치기"><span></span></div>
 <div class="sel-info">선택 <span><span id="selCnt">0</span></span>칸</div>
 <div class="footer-actions-inline">
 <button aria-label="예약 규칙 안내" class="footer-info-btn" onclick="openBookingRuleInfo()" type="button">i</button>
@@ -4391,6 +4451,107 @@ function getAvailableCourtsAtHour(hour){
   }
   setTimeout(killLegacyAdminToolbar, 50);
   setTimeout(killLegacyAdminToolbar, 300);
+})();
+</script>
+
+<script id="mobile-booking-bar-draggable-v12-1">
+(function(){
+  'use strict';
+  var STORAGE_KEY='tenniskj_mobile_booking_bar_v12_1';
+  var mq=window.matchMedia('(max-width: 768px)');
+  var bar, handle, dragStartY=0, startOffset=0, currentOffset=0, maxOffset=0, moved=false;
+
+  function readState(){
+    try{
+      var raw=localStorage.getItem(STORAGE_KEY);
+      if(!raw) return null;
+      var parsed=JSON.parse(raw);
+      return parsed && typeof parsed.offset==='number' ? parsed : null;
+    }catch(_){ return null; }
+  }
+  function saveState(){
+    try{localStorage.setItem(STORAGE_KEY, JSON.stringify({offset:currentOffset, collapsed:bar.classList.contains('is-collapsed')}));}catch(_){}
+  }
+  function measure(){
+    if(!bar) return;
+    maxOffset=Math.max(0, bar.offsetHeight-34);
+    currentOffset=Math.max(0, Math.min(currentOffset,maxOffset));
+    apply();
+  }
+  function apply(){
+    if(!bar) return;
+    bar.style.transform='translate3d(0,'+Math.round(currentOffset)+'px,0)';
+    bar.classList.toggle('is-collapsed', maxOffset>0 && currentOffset>=maxOffset-8);
+    if(handle){
+      handle.setAttribute('aria-expanded', bar.classList.contains('is-collapsed') ? 'false':'true');
+      handle.setAttribute('aria-label', bar.classList.contains('is-collapsed') ? '예약 도구 모음 펼치기':'예약 도구 모음 접기');
+    }
+  }
+  function setCollapsed(collapsed){
+    measure();
+    currentOffset=collapsed?maxOffset:0;
+    apply();
+    saveState();
+  }
+  function onStart(clientY){
+    if(!mq.matches) return;
+    moved=false;
+    dragStartY=clientY;
+    startOffset=currentOffset;
+    bar.classList.add('is-dragging');
+  }
+  function onMove(clientY){
+    if(!bar.classList.contains('is-dragging')) return;
+    var dy=clientY-dragStartY;
+    if(Math.abs(dy)>4) moved=true;
+    currentOffset=Math.max(0,Math.min(maxOffset,startOffset+dy));
+    apply();
+  }
+  function onEnd(){
+    if(!bar || !bar.classList.contains('is-dragging')) return;
+    bar.classList.remove('is-dragging');
+    if(moved){
+      setCollapsed(currentOffset>maxOffset*0.48);
+    }
+  }
+  function init(){
+    bar=document.getElementById('mobileBookingBar');
+    handle=document.getElementById('mobileBookingBarHandle');
+    if(!bar||!handle) return;
+    var state=readState();
+    currentOffset=state&&state.collapsed?9999:0;
+    measure();
+    if(state&&state.collapsed) currentOffset=maxOffset;
+    else if(state) currentOffset=Math.max(0,Math.min(state.offset,maxOffset));
+    apply();
+
+    handle.addEventListener('pointerdown',function(e){
+      if(!mq.matches) return;
+      try{handle.setPointerCapture(e.pointerId);}catch(_){}
+      onStart(e.clientY);
+      e.preventDefault();
+    });
+    handle.addEventListener('pointermove',function(e){onMove(e.clientY);});
+    handle.addEventListener('pointerup',function(e){
+      try{handle.releasePointerCapture(e.pointerId);}catch(_){}
+      var wasMoved=moved;
+      onEnd();
+      if(!wasMoved) setCollapsed(!bar.classList.contains('is-collapsed'));
+    });
+    handle.addEventListener('pointercancel',onEnd);
+    handle.addEventListener('keydown',function(e){
+      if(e.key==='Enter'||e.key===' '){e.preventDefault();setCollapsed(!bar.classList.contains('is-collapsed'));}
+      if(e.key==='ArrowDown'){e.preventDefault();setCollapsed(true);}
+      if(e.key==='ArrowUp'){e.preventDefault();setCollapsed(false);}
+    });
+    window.addEventListener('resize',measure,{passive:true});
+    if(mq.addEventListener) mq.addEventListener('change',function(){
+      if(!mq.matches){bar.style.transform='';bar.classList.remove('is-collapsed','is-dragging');}
+      else{measure();}
+    });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init);
+  else init();
 })();
 </script>
 </body>
