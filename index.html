@@ -26,7 +26,7 @@
 <link as="style" crossorigin="" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" rel="stylesheet">
 </link>
 <style id="mobile-booking-bar-draggable-style">
-/* v12.1 모바일 예약 하단바: 아래로 끌어 숨기기 + 탭 접기/펼치기 */
+/* v12.2 모바일 예약 하단바: 삼성 브라우저 호환 터치/클릭 접기·펼치기 */
 .mobile-booking-bar-handle{display:none;}
 @media (max-width: 768px){
   #view-res{padding-bottom:calc(104px + env(safe-area-inset-bottom, 0px));}
@@ -48,6 +48,9 @@
   #mobileBookingBar.is-dragging{transition:none !important;}
   #mobileBookingBar .mobile-booking-bar-handle{
     display:flex;
+    z-index:1002;
+    pointer-events:auto;
+    touch-action:none;
     position:absolute;
     left:50%;
     top:-20px;
@@ -67,20 +70,18 @@
   }
   #mobileBookingBar .mobile-booking-bar-handle:active{cursor:grabbing;}
   #mobileBookingBar .mobile-booking-bar-handle span{
-    width:34px;
-    height:4px;
-    border-radius:999px;
-    background:#94a3b8;
-  }
-  #mobileBookingBar.is-collapsed .mobile-booking-bar-handle span::after{
-    content:'▲';
-    position:absolute;
-    left:50%;
-    top:5px;
-    transform:translateX(-50%);
-    font-size:9px;
+    width:42px;
+    height:18px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
     color:#64748b;
+    font-size:15px;
+    line-height:1;
+    font-weight:900;
   }
+  #mobileBookingBar .mobile-booking-bar-handle span::before{content:'▼';}
+  #mobileBookingBar.is-collapsed .mobile-booking-bar-handle span::before{content:'▲';}
 }
 </style>
 </head>
@@ -4454,103 +4455,112 @@ function getAvailableCourtsAtHour(hour){
 })();
 </script>
 
-<script id="mobile-booking-bar-draggable-v12-1">
+<script id="mobile-booking-bar-draggable-v12-2">
 (function(){
   'use strict';
-  var STORAGE_KEY='tenniskj_mobile_booking_bar_v12_1';
+  var STORAGE_KEY='tenniskj_mobile_booking_bar_v12_2';
   var mq=window.matchMedia('(max-width: 768px)');
-  var bar, handle, dragStartY=0, startOffset=0, currentOffset=0, maxOffset=0, moved=false;
+  var bar=null, handle=null, currentOffset=0, maxOffset=0;
+  var dragging=false, moved=false, startY=0, startOffset=0, suppressClickUntil=0;
 
+  function clamp(v){ return Math.max(0, Math.min(Number(v)||0, maxOffset)); }
   function readState(){
-    try{
-      var raw=localStorage.getItem(STORAGE_KEY);
-      if(!raw) return null;
-      var parsed=JSON.parse(raw);
-      return parsed && typeof parsed.offset==='number' ? parsed : null;
-    }catch(_){ return null; }
+    try{ return JSON.parse(localStorage.getItem(STORAGE_KEY)||'null'); }catch(_){ return null; }
   }
   function saveState(){
-    try{localStorage.setItem(STORAGE_KEY, JSON.stringify({offset:currentOffset, collapsed:bar.classList.contains('is-collapsed')}));}catch(_){}
-  }
-  function measure(){
     if(!bar) return;
-    maxOffset=Math.max(0, bar.offsetHeight-34);
-    currentOffset=Math.max(0, Math.min(currentOffset,maxOffset));
-    apply();
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify({collapsed:bar.classList.contains('is-collapsed')})); }catch(_){}
   }
   function apply(){
     if(!bar) return;
+    currentOffset=clamp(currentOffset);
     bar.style.transform='translate3d(0,'+Math.round(currentOffset)+'px,0)';
-    bar.classList.toggle('is-collapsed', maxOffset>0 && currentOffset>=maxOffset-8);
+    var collapsed=maxOffset>0 && currentOffset>=maxOffset-6;
+    bar.classList.toggle('is-collapsed',collapsed);
     if(handle){
-      handle.setAttribute('aria-expanded', bar.classList.contains('is-collapsed') ? 'false':'true');
-      handle.setAttribute('aria-label', bar.classList.contains('is-collapsed') ? '예약 도구 모음 펼치기':'예약 도구 모음 접기');
+      handle.setAttribute('aria-expanded',collapsed?'false':'true');
+      handle.setAttribute('aria-label',collapsed?'예약 도구 모음 펼치기':'예약 도구 모음 접기');
+      handle.title=collapsed?'눌러서 펼치기 · 위로 밀어 펼치기':'눌러서 접기 · 아래로 밀어 접기';
     }
   }
-  function setCollapsed(collapsed){
+  function measure(){
+    if(!bar) return;
+    maxOffset=Math.max(0,bar.getBoundingClientRect().height-28);
+    currentOffset=bar.classList.contains('is-collapsed')?maxOffset:clamp(currentOffset);
+    apply();
+  }
+  function setCollapsed(collapsed,remember){
     measure();
     currentOffset=collapsed?maxOffset:0;
     apply();
-    saveState();
+    if(remember!==false) saveState();
   }
-  function onStart(clientY){
-    if(!mq.matches) return;
-    moved=false;
-    dragStartY=clientY;
-    startOffset=currentOffset;
+  function toggle(){ setCollapsed(!bar.classList.contains('is-collapsed'),true); }
+  function clientY(ev){
+    if(ev.touches&&ev.touches.length) return ev.touches[0].clientY;
+    if(ev.changedTouches&&ev.changedTouches.length) return ev.changedTouches[0].clientY;
+    return ev.clientY;
+  }
+  function startDrag(ev){
+    if(!mq.matches||!bar||!handle) return;
+    dragging=true; moved=false; startY=clientY(ev); startOffset=currentOffset;
     bar.classList.add('is-dragging');
+    if(ev.cancelable) ev.preventDefault();
   }
-  function onMove(clientY){
-    if(!bar.classList.contains('is-dragging')) return;
-    var dy=clientY-dragStartY;
-    if(Math.abs(dy)>4) moved=true;
-    currentOffset=Math.max(0,Math.min(maxOffset,startOffset+dy));
+  function moveDrag(ev){
+    if(!dragging) return;
+    var y=clientY(ev),dy=y-startY;
+    if(Math.abs(dy)>6) moved=true;
+    currentOffset=clamp(startOffset+dy);
     apply();
+    if(ev.cancelable) ev.preventDefault();
   }
-  function onEnd(){
-    if(!bar || !bar.classList.contains('is-dragging')) return;
-    bar.classList.remove('is-dragging');
-    if(moved){
-      setCollapsed(currentOffset>maxOffset*0.48);
-    }
+  function endDrag(ev){
+    if(!dragging) return;
+    dragging=false; bar.classList.remove('is-dragging');
+    suppressClickUntil=Date.now()+600;
+    if(moved) setCollapsed(currentOffset>maxOffset*0.45,true);
+    else toggle();
+    if(ev&&ev.cancelable) ev.preventDefault();
   }
   function init(){
     bar=document.getElementById('mobileBookingBar');
     handle=document.getElementById('mobileBookingBarHandle');
     if(!bar||!handle) return;
     var state=readState();
-    currentOffset=state&&state.collapsed?9999:0;
     measure();
-    if(state&&state.collapsed) currentOffset=maxOffset;
-    else if(state) currentOffset=Math.max(0,Math.min(state.offset,maxOffset));
-    apply();
+    setCollapsed(!!(state&&state.collapsed),false);
 
-    handle.addEventListener('pointerdown',function(e){
-      if(!mq.matches) return;
-      try{handle.setPointerCapture(e.pointerId);}catch(_){}
-      onStart(e.clientY);
-      e.preventDefault();
+    // 삼성 인터넷/구형 WebView 대응: touch, mouse, click을 각각 직접 처리
+    handle.addEventListener('touchstart',startDrag,{passive:false});
+    document.addEventListener('touchmove',moveDrag,{passive:false});
+    document.addEventListener('touchend',endDrag,{passive:false});
+    document.addEventListener('touchcancel',endDrag,{passive:false});
+
+    handle.addEventListener('mousedown',startDrag,false);
+    document.addEventListener('mousemove',moveDrag,false);
+    document.addEventListener('mouseup',endDrag,false);
+
+    handle.addEventListener('click',function(ev){
+      ev.preventDefault(); ev.stopPropagation();
+      if(Date.now()<suppressClickUntil) return;
+      toggle();
+    },false);
+    handle.addEventListener('keydown',function(ev){
+      if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();toggle();}
+      else if(ev.key==='ArrowDown'){ev.preventDefault();setCollapsed(true,true);}
+      else if(ev.key==='ArrowUp'){ev.preventDefault();setCollapsed(false,true);}
     });
-    handle.addEventListener('pointermove',function(e){onMove(e.clientY);});
-    handle.addEventListener('pointerup',function(e){
-      try{handle.releasePointerCapture(e.pointerId);}catch(_){}
-      var wasMoved=moved;
-      onEnd();
-      if(!wasMoved) setCollapsed(!bar.classList.contains('is-collapsed'));
-    });
-    handle.addEventListener('pointercancel',onEnd);
-    handle.addEventListener('keydown',function(e){
-      if(e.key==='Enter'||e.key===' '){e.preventDefault();setCollapsed(!bar.classList.contains('is-collapsed'));}
-      if(e.key==='ArrowDown'){e.preventDefault();setCollapsed(true);}
-      if(e.key==='ArrowUp'){e.preventDefault();setCollapsed(false);}
-    });
+
     window.addEventListener('resize',measure,{passive:true});
+    window.addEventListener('orientationchange',function(){setTimeout(measure,250);},{passive:true});
+    if(window.ResizeObserver){ try{ new ResizeObserver(measure).observe(bar); }catch(_){} }
     if(mq.addEventListener) mq.addEventListener('change',function(){
       if(!mq.matches){bar.style.transform='';bar.classList.remove('is-collapsed','is-dragging');}
-      else{measure();}
+      else{var st=readState();measure();setCollapsed(!!(st&&st.collapsed),false);}
     });
   }
-  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init);
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init,{once:true});
   else init();
 })();
 </script>
