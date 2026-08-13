@@ -874,8 +874,9 @@
 <div style="background:#f0fdf4; padding:15px; border-radius:12px; border:1px solid #bbf7d0; margin-bottom:15px;">
 <label style="font-weight:bold; color:#15803d; display:block; margin-bottom:10px;">💾 데이터 백업 및 복구</label>
 <p style="font-size:0.75rem; color:#166534; margin-bottom:10px;">
-        전체 데이터(예약, 회원, 게시글, 설정)를 파일로 저장하거나, 저장된 파일로 복구합니다.
+        자동 복구점으로 실수 삭제를 되돌리고, JSON 파일 백업은 대규모 장애 대비용으로 사용합니다.
     </p>
+<button class="btn-full" onclick="openRecoveryCenter()" style="background:#0f766e; margin-top:0; margin-bottom:8px;">🛟 복구센터 열기</button>
 <div style="display:flex; gap:10px;">
 <button class="btn-full" onclick="backupData()" style="background:#16a34a; margin-top:0;">데이터 백업 (다운로드)</button>
 <button class="btn-full" onclick="document.getElementById('fileRestore').click()" style="background:#ca8a04; margin-top:0;">데이터 복구 (업로드)</button>
@@ -1047,10 +1048,11 @@
 <script src="./js/reservation-data.js?v=20260619-step20"></script>
 <script src="./js/auth.js?v=20260619-step20"></script>
 <script src="./js/calendar.js?v=20260619-step20"></script>
-<script src="./js/reservation-ui.js?v=20260619-step20"></script>
+<script src="./js/reservation-ui.js?v=20260813-court-time-popup-v1"></script>
 <script src="./js/booking-helpers.js?v=20260716-macro-v12"></script>
 <script src="./js/booking-core.js?v=20260716-macro-v12"></script>
-<script src="./js/admin-actions.js?v=20260619-step20"></script>
+<script src="./js/recovery-center.js?v=20260813-recovery-v1"></script>
+<script src="./js/admin-actions.js?v=20260813-recovery-v1"></script>
 
 <script>
 /* step20-release-candidate: admin settings, my reservations, booking core separated; release candidate generated. */
@@ -1195,6 +1197,12 @@
         if (uniqueIds.length === 0) return 0;
 
         const docs = await Promise.all(uniqueIds.map(id => db.collection('reservations').doc(id).get()));
+
+        // [복구센터 v1] 관리자 삭제 직전 예약 + slot_locks 자동 복구점 생성
+        if (typeof isAdmin !== 'undefined' && isAdmin && !window.__RECOVERY_RESTORING__ && typeof recoveryBackupReservationsByIds === 'function') {
+            await recoveryBackupReservationsByIds(uniqueIds, window.__RECOVERY_LABEL__ || `예약 ${uniqueIds.length}건 삭제 전`, 'RESERVATION_DELETE');
+        }
+
         let batch = db.batch();
         let count = 0;
         const commits = [];
@@ -3074,16 +3082,25 @@ function openEditFromList(id, name, phone, coll) {
     openModal('modalCancel');
 }
 
-function cancelFromList(id, coll) {
-    if(confirm("정말 이 예약을 취소하시겠습니까?")) {
-        db.collection(coll).doc(id).delete().then(() => {
-            alert("취소되었습니다.");
-            
-            // 현재 활성화된 탭 확인해서 새로고침
-            if(document.getElementById('btnListAll').classList.contains('bg-blue')) loadAllRes('all');
-            else if(document.getElementById('btnListFix').classList.contains('bg-blue')) loadAllRes('recurring');
-            else loadAllRes('general');
-        });
+async function cancelFromList(id, coll) {
+    if(!confirm("정말 이 예약을 취소하시겠습니까?")) return;
+    try {
+        if (coll === 'recurring') {
+            if (typeof recoveryBackupCollectionIds === 'function') {
+                await recoveryBackupCollectionIds('recurring', [id], '정기예약 1건 삭제 전', 'RECURRING_DELETE');
+            }
+            await db.collection('recurring').doc(id).delete();
+            if (typeof _invalidateRecurringCache === 'function') _invalidateRecurringCache(currentCenter);
+        } else {
+            window.__RECOVERY_LABEL__ = '예약 목록에서 1건 취소 전';
+            try { await deleteReservationsWithLocksByIds([id]); } finally { window.__RECOVERY_LABEL__ = ''; }
+        }
+        alert("취소되었습니다.");
+        if(document.getElementById('btnListAll').classList.contains('bg-blue')) loadAllRes('all');
+        else if(document.getElementById('btnListFix').classList.contains('bg-blue')) loadAllRes('recurring');
+        else loadAllRes('general');
+    } catch(err) {
+        alert('취소 실패: ' + err.message);
     }
 }
 /* step13-booking-core-extracted: setPayMethod/copyAcc moved to ./js/booking-core.js */
@@ -3120,7 +3137,7 @@ async function doListBatchDelete() {
     if(checked.length === 0) return;
 
     if(!confirm(`선택한 ${checked.length}건의 예약을 정말 삭제하시겠습니까?
-(복구할 수 없습니다)`)) return;
+(삭제 전 자동 복구점이 생성됩니다)`)) return;
 
     try {
         const reservationIds = [];
@@ -3132,13 +3149,17 @@ async function doListBatchDelete() {
         });
 
         if (recurringIds.length) {
+            if (typeof recoveryBackupCollectionIds === 'function') {
+                await recoveryBackupCollectionIds('recurring', recurringIds, `예약현황 정기예약 ${recurringIds.length}건 삭제 전`, 'RECURRING_DELETE');
+            }
             const batch = db.batch();
             recurringIds.forEach(id => batch.delete(db.collection('recurring').doc(id)));
             await batch.commit();
             _invalidateRecurringCache(currentCenter); // 고정예약 삭제 → recurring 캐시 무효화
         }
         if (reservationIds.length) {
-            await deleteReservationsWithLocksByIds(reservationIds);
+            window.__RECOVERY_LABEL__ = `예약현황 일반예약 ${reservationIds.length}건 삭제 전`;
+            try { await deleteReservationsWithLocksByIds(reservationIds); } finally { window.__RECOVERY_LABEL__ = ''; }
             _invalidateReservationsCache(currentCenter); // 예약 삭제 → 캐시 무효화
             _invalidateMyReservedDatesCache(currentCenter);
         }
@@ -3206,10 +3227,11 @@ async function backupData() {
         const backupObj = {
             _meta: {
                 exportedAt: new Date().toISOString(),
-                note: "시민인증 사진(Storage 파일)과 citizen_audit 로그는 백업되지 않습니다. 시민 인증 상태는 users 데이터로 복구됩니다."
+                note: "예약/정기예약/슬롯잠금/회원/게시글/설정을 백업합니다. Firebase Authentication 로그인 계정 자체, 시민인증 사진(Storage), citizen_audit 및 게시글 댓글 하위컬렉션은 포함되지 않습니다."
             }
         };
         const collections = ["reservations", "recurring", "users", "posts", "settings"];
+        if (typeof slotLocksEnabled !== 'undefined' && slotLocksEnabled) collections.splice(2, 0, "slot_locks");
 
         for (const colName of collections) {
             const snapshot = await db.collection(colName).get();
@@ -3523,7 +3545,7 @@ let scoreChart = null;
 <script src="./js/admin-settings.js?v=20260619-step20"></script>
 <script src="./js/my-reservations.js?v=20260619-step20"></script>
 <script src="./js/board.js?v=20260619-step20"></script>
-<script src="./js/notice-popup.js?v=20260621-step23"></script>
+<script src="./js/notice-popup.js?v=20260813-court-time-popup-v1"></script>
 <div class="modal-mask" id="modalDailyStatus">
 <div class="modal-win" style="max-width:96vw; width:96vw; padding:14px;">
 <span class="modal-close" onclick="closeModal('modalDailyStatus')">×</span>

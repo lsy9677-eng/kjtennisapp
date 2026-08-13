@@ -187,7 +187,9 @@ async function doRangeDelete() {
     if(snap.empty) return alert('삭제할 예약이 없습니다.');
 
     const ids = snap.docs.map(doc => doc.id);
-    const deletedCount = await deleteReservationsWithLocksByIds(ids);
+    window.__RECOVERY_LABEL__ = `기간 일괄삭제 ${startStr}~${endStr} (${ids.length}건) 실행 전`;
+    let deletedCount = 0;
+    try { deletedCount = await deleteReservationsWithLocksByIds(ids); } finally { window.__RECOVERY_LABEL__ = ''; }
     alert(`${deletedCount}건 삭제 완료!`);
     closeModal('modalSet');
     scheduleLoadDB(0);
@@ -478,13 +480,17 @@ async function processAdminCancel(mode) {
             if(target.coll === 'recurring') {
                 if(!confirm(`[정기 예약 1건 제외]\n\n시간: ${target.time}시\n\n이 시간만 휴강 처리하시겠습니까?`)) return;
                 
+                if (typeof recoveryBackupSnapshots === 'function') {
+                    await recoveryBackupSnapshots('recurring', [docSnap], `정기예약 ${target.date} ${target.time}시 휴강 처리 전`, 'RECURRING_EXCEPTION');
+                }
                 await docRef.update({
                     exceptionDates: firebase.firestore.FieldValue.arrayUnion(target.date)
                 });
                 alert("선택하신 시간만 제외되었습니다.");
             } else {
                 if(!confirm(`[일반 예약 1건 취소]\n\n시간: ${target.time}시\n\n이 예약만 취소하시겠습니까?`)) return;
-                await deleteReservationsWithLocksByIds([target.id]);
+                window.__RECOVERY_LABEL__ = `일반예약 ${target.date} ${target.time}시 1건 취소 전`;
+                try { await deleteReservationsWithLocksByIds([target.id]); } finally { window.__RECOVERY_LABEL__ = ''; }
                 alert('취소되었습니다.');
             }
         } 
@@ -527,6 +533,9 @@ async function processAdminCancel(mode) {
 
                 if(!confirm(msg)) return; // 취소 누르면 중단
 
+                if (typeof recoveryBackupSnapshots === 'function') {
+                    await recoveryBackupSnapshots('recurring', targetDocs, `정기예약 ${searchName} ${target.date} 당일 휴강 처리 전`, 'RECURRING_EXCEPTION');
+                }
                 const batch = db.batch();
                 targetDocs.forEach(doc => {
                     batch.update(doc.ref, {
@@ -562,7 +571,8 @@ async function processAdminCancel(mode) {
                 if(!confirm(msg)) return;
 
                 const ids = snap.docs.map(doc => doc.id);
-                await deleteReservationsWithLocksByIds(ids);
+                window.__RECOVERY_LABEL__ = `${searchName} ${target.date} 당일 예약 ${ids.length}건 취소 전`;
+                try { await deleteReservationsWithLocksByIds(ids); } finally { window.__RECOVERY_LABEL__ = ''; }
                 alert('일괄 취소되었습니다.');
             }
         } 
@@ -603,6 +613,9 @@ async function processAdminCancel(mode) {
 
             if(!confirm(msg)) return;
 
+            if (typeof recoveryBackupSnapshots === 'function') {
+                await recoveryBackupSnapshots('recurring', targetDocs, `${searchName} 정기예약 ${targetDocs.length}건 영구삭제 전`, 'RECURRING_DELETE');
+            }
             const batch = db.batch();
             targetDocs.forEach(doc => batch.delete(doc.ref));
             await batch.commit();
@@ -760,6 +773,9 @@ async function doBatchDelete() {
 
     try {
         if (recurringQueue.length) {
+            if (typeof recoveryBackupCollectionIds === 'function') {
+                await recoveryBackupCollectionIds('recurring', recurringQueue.map(item => item.id), `달력 일괄처리 정기예약 ${recurringQueue.length}건 변경 전`, 'RECURRING_EXCEPTION');
+            }
             const batch = db.batch();
             recurringQueue.forEach(item => {
                 const ref = db.collection(item.coll).doc(item.id);
@@ -771,7 +787,8 @@ async function doBatchDelete() {
         }
 
         if (reservationIds.length) {
-            await deleteReservationsWithLocksByIds(reservationIds);
+            window.__RECOVERY_LABEL__ = `달력 일괄삭제 일반예약 ${reservationIds.length}건 실행 전`;
+            try { await deleteReservationsWithLocksByIds(reservationIds); } finally { window.__RECOVERY_LABEL__ = ''; }
         }
 
         alert('처리가 완료되었습니다.');
@@ -837,7 +854,10 @@ async function deleteGroupBooking(ids, collectionName) {
             }
         }
         
-        // 삭제 실행
+        // 삭제 실행 전 자동 복구점
+        if (typeof recoveryBackupCollectionIds === 'function') {
+            await recoveryBackupCollectionIds('recurring', idsToDelete, `${targetName} 정기예약 ${idsToDelete.length}건 삭제 전`, 'RECURRING_DELETE');
+        }
         const batch = db.batch();
         idsToDelete.forEach(id => {
             batch.delete(db.collection('recurring').doc(id));
@@ -863,6 +883,7 @@ async function deleteGroupBooking(ids, collectionName) {
     if(!confirm(msg)) return;
     
     const uniqueIds = [...new Set(ids)];
+    window.__RECOVERY_LABEL__ = `그룹 일반예약 ${uniqueIds.length}건 삭제 전`;
     deleteReservationsWithLocksByIds(uniqueIds).then(() => {
         alert('삭제되었습니다.');
         // 화면 새로고침
@@ -872,7 +893,8 @@ async function deleteGroupBooking(ids, collectionName) {
         
         if(document.getElementById('view-res')?.classList.contains('active')) loadDB();
 
-    }).catch(err => alert('삭제 실패: ' + err.message));
+    }).catch(err => alert('삭제 실패: ' + err.message))
+      .finally(() => { window.__RECOVERY_LABEL__ = ''; });
 }
 
 function openGroupDetail(jsonStr) {
@@ -942,11 +964,17 @@ async function doPartialGroupDelete() {
 
     try {
         if (collectionName === 'recurring') {
+            const idsToDelete = Array.from(checked).map(el => el.value);
+            if (typeof recoveryBackupCollectionIds === 'function') {
+                await recoveryBackupCollectionIds('recurring', idsToDelete, `정기예약 부분삭제 ${idsToDelete.length}건 실행 전`, 'RECURRING_DELETE');
+            }
             const batch = db.batch();
             checked.forEach(el => batch.delete(db.collection(collectionName).doc(el.value)));
             await batch.commit();
         } else {
-            await deleteReservationsWithLocksByIds(Array.from(checked).map(el => el.value));
+            const idsToDelete = Array.from(checked).map(el => el.value);
+            window.__RECOVERY_LABEL__ = `일반예약 부분삭제 ${idsToDelete.length}건 실행 전`;
+            try { await deleteReservationsWithLocksByIds(idsToDelete); } finally { window.__RECOVERY_LABEL__ = ''; }
         }
 
         alert('선택한 항목이 취소되었습니다.');
@@ -1050,8 +1078,11 @@ async function doEdit() {
     if(!confirm("정보를 수정하시겠습니까?")) return;
 
     try {
-        const batch = db.batch();
         const ids = target.ids || [target.id];
+        if (typeof recoveryBackupCollectionIds === 'function') {
+            await recoveryBackupCollectionIds(target.coll, ids, `예약 정보 수정 전 (${ids.length}건)`, 'ADMIN_EDIT');
+        }
+        const batch = db.batch();
         
         ids.forEach(docId => {
             const ref = db.collection(target.coll).doc(docId);
@@ -1180,7 +1211,7 @@ function openGroupEdit(jsonStr) {
     openModal('modalCancel');
 }
 
-function updateRecurFee(docId) {
+async function updateRecurFee(docId) {
     const input = document.getElementById(`fee-${docId}`);
     const newFee = parseInt(input.value);
 
@@ -1188,16 +1219,18 @@ function updateRecurFee(docId) {
 
     if (!confirm(`이 정기 예약의 월 이용료를 ${newFee.toLocaleString()}원으로 설정하시겠습니까?`)) return;
 
-    db.collection("recurring").doc(docId).update({
-        monthlyFee: newFee
-    }).then(() => {
+    try {
+        if (typeof recoveryBackupCollectionIds === 'function') {
+            await recoveryBackupCollectionIds('recurring', [docId], '정기예약 월 이용료 수정 전', 'RECURRING_FEE_EDIT');
+        }
+        await db.collection("recurring").doc(docId).update({ monthlyFee: newFee });
         _invalidateRecurringCache(currentCenter); // 고정예약 수정 → recurring 캐시 무효화
         alert("저장되었습니다. 통계가 다시 계산됩니다.");
-        loadMonthlyStats(); // 통계 새로고침
-        closeModal('modalStatsDetail'); // 창 닫기 (또는 다시 열어서 갱신된 값 보여주기)
-    }).catch(err => {
+        loadMonthlyStats();
+        closeModal('modalStatsDetail');
+    } catch(err) {
         alert("오류 발생: " + err.message);
-    });
+    }
 }
 
 async function updateRecurFeeByName(name, docIdsStr) {
@@ -1212,6 +1245,9 @@ async function updateRecurFeeByName(name, docIdsStr) {
     if (!confirm(`${name}님의 모든 정기 예약 월 이용료를 ${newFee.toLocaleString()}원으로 설정하시겠습니까?\n(${docIds.length}개 예약 일괄 적용)`)) return;
 
     try {
+        if (typeof recoveryBackupCollectionIds === 'function') {
+            await recoveryBackupCollectionIds('recurring', docIds, `${name} 정기예약 월 이용료 일괄수정 전`, 'RECURRING_FEE_EDIT');
+        }
         const batch = db.batch();
         
         // 같은 이름의 모든 정기 예약에 동일한 월 이용료 적용
@@ -1236,6 +1272,7 @@ async function updateRecurFeeByName(name, docIdsStr) {
 function deleteFromStats(id) {
     if(!confirm("정말 이 내역을 삭제하시겠습니까?\n(매출 통계에서도 제외됩니다)")) return;
 
+    window.__RECOVERY_LABEL__ = '매출 통계에서 예약 1건 삭제 전';
     deleteReservationsWithLocksByIds([id]).then(() => {
         alert('삭제되었습니다.');
         loadMonthlyStats().then(() => {
@@ -1243,5 +1280,6 @@ function deleteFromStats(id) {
                 openStatsDetail('general');
             }
         });
-    }).catch(err => alert("삭제 실패: " + err.message));
+    }).catch(err => alert("삭제 실패: " + err.message))
+      .finally(() => { window.__RECOVERY_LABEL__ = ''; });
 }

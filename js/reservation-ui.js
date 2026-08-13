@@ -376,6 +376,18 @@ function onCellClick(e) {
     }
     if(el.classList.contains('past')) return;
 
+    // 코트(시간)별 안내 팝업: 빈 예약칸을 실제로 선택하기 직전에만 표시
+    if(!isAdmin && typeof window.maybeShowCourtTimePopup === 'function') {
+        const currentDate = document.getElementById('hiddenDate').value;
+        const intercepted = window.maybeShowCourtTimePopup({
+            date: currentDate,
+            center: currentCenter,
+            court: c,
+            time: t
+        }, function(){ el.click(); });
+        if(intercepted) return;
+    }
+
     const courtStats = {}; 
     selected.forEach(s => { if (!courtStats[s.c]) courtStats[s.c] = []; courtStats[s.c].push(s.t); });
     const isSelected = selected.some(s => s.c === c && s.t === t);

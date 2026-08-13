@@ -6,7 +6,11 @@
 (function(){
   const NOTICE_DOC_PATH = ['settings', 'notice_popup'];
   const NOTICE_DISMISS_PREFIX = 'tenniskj_notice_popup_dismiss_';
+  const COURT_TIME_POPUP_DOC_PATH = ['settings', 'court_time_popups'];
   let noticePopupCheckedOnce = false;
+  let courtTimePopupRules = [];
+  let courtTimePopupLoadedAt = 0;
+  const COURT_TIME_POPUP_TTL = 5 * 60 * 1000;
 
   function todayStrLocal(){
     const d = new Date();
@@ -48,6 +52,111 @@
     if(!String(data.title || '').trim() && !String(data.text || '').trim() && !String(data.imageUrl || '').trim()) return false;
     return true;
   }
+
+  function getCourtTimePopupRef(){
+    if(typeof db === 'undefined') throw new Error('Firestore가 아직 준비되지 않았습니다.');
+    return db.collection(COURT_TIME_POPUP_DOC_PATH[0]).doc(COURT_TIME_POPUP_DOC_PATH[1]);
+  }
+
+  function normalizeCourtTimeRule(rule){
+    const r = rule || {};
+    return {
+      id: String(r.id || ''),
+      enabled: r.enabled !== false,
+      center: String(r.center || '국제'),
+      courts: Array.isArray(r.courts) ? r.courts.map(Number).filter(Number.isFinite) : [],
+      times: Array.isArray(r.times) ? r.times.map(Number).filter(Number.isFinite) : [],
+      startDate: String(r.startDate || ''),
+      endDate: String(r.endDate || ''),
+      title: String(r.title || ''),
+      text: String(r.text || '')
+    };
+  }
+
+  async function loadCourtTimePopupRules(force){
+    const now = Date.now();
+    if(!force && courtTimePopupLoadedAt && (now - courtTimePopupLoadedAt < COURT_TIME_POPUP_TTL)) return courtTimePopupRules;
+    try{
+      const snap = await getCourtTimePopupRef().get();
+      const data = snap.exists ? (snap.data() || {}) : {};
+      courtTimePopupRules = Array.isArray(data.rules) ? data.rules.map(normalizeCourtTimeRule) : [];
+      courtTimePopupLoadedAt = now;
+    }catch(err){
+      console.warn('코트(시간)별 팝업 설정 불러오기 실패:', err);
+    }
+    return courtTimePopupRules;
+  }
+
+  function findCourtTimePopupRule(ctx){
+    const date = String(ctx.date || '');
+    const center = String(ctx.center || '국제');
+    const court = Number(ctx.court);
+    const time = Number(ctx.time);
+    return courtTimePopupRules.find(rule => {
+      if(!rule.enabled) return false;
+      if(rule.center && rule.center !== center) return false;
+      if(rule.startDate && date < rule.startDate) return false;
+      if(rule.endDate && date > rule.endDate) return false;
+      if(rule.courts.length && !rule.courts.includes(court)) return false;
+      if(rule.times.length && !rule.times.includes(time)) return false;
+      return !!(rule.title.trim() || rule.text.trim());
+    }) || null;
+  }
+
+  function ensureCourtTimeUserModal(){
+    if(document.getElementById('modalCourtTimeNotice')) return;
+    const modal = document.createElement('div');
+    modal.id = 'modalCourtTimeNotice';
+    modal.className = 'modal-mask';
+    modal.innerHTML = `
+      <div class="modal-win" style="max-width:420px;">
+        <span class="modal-close" onclick="closeCourtTimePopupNotice()">&times;</span>
+        <div class="modal-head" id="courtTimeNoticeTitle">🎾 코트 이용 안내</div>
+        <div id="courtTimeNoticeMeta" style="background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; padding:9px 11px; border-radius:10px; font-size:.82rem; font-weight:800; margin-bottom:12px;"></div>
+        <div id="courtTimeNoticeText" style="white-space:pre-wrap; line-height:1.65; color:#334155; font-size:.95rem; background:#f8fafc; border:1px solid #e2e8f0; padding:14px; border-radius:12px;"></div>
+        <button type="button" class="btn-full bg-blue" style="margin-top:15px;" onclick="confirmCourtTimePopupNotice()">확인하고 선택</button>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+
+  let pendingCourtTimeContinue = null;
+  window.closeCourtTimePopupNotice = function(){
+    const modal = document.getElementById('modalCourtTimeNotice');
+    if(modal) modal.style.display = 'none';
+    pendingCourtTimeContinue = null;
+  };
+
+  window.confirmCourtTimePopupNotice = function(){
+    const cb = pendingCourtTimeContinue;
+    pendingCourtTimeContinue = null;
+    const modal = document.getElementById('modalCourtTimeNotice');
+    if(modal) modal.style.display = 'none';
+    if(typeof cb === 'function') setTimeout(cb, 0);
+  };
+
+  window.maybeShowCourtTimePopup = function(ctx, continueFn){
+    const key = `${ctx.center || ''}|${ctx.date || ''}|${ctx.court}|${ctx.time}`;
+    if(window.__courtTimePopupSkipOnce === key){
+      window.__courtTimePopupSkipOnce = '';
+      return false;
+    }
+    const rule = findCourtTimePopupRule(ctx || {});
+    if(!rule) return false;
+    ensureCourtTimeUserModal();
+    const titleEl = document.getElementById('courtTimeNoticeTitle');
+    const metaEl = document.getElementById('courtTimeNoticeMeta');
+    const textEl = document.getElementById('courtTimeNoticeText');
+    if(titleEl) titleEl.textContent = rule.title.trim() || '🎾 코트 이용 안내';
+    if(metaEl) metaEl.textContent = `${ctx.date} · ${ctx.court}코트 · ${String(ctx.time).padStart(2,'0')}:00~${String(Number(ctx.time)+1).padStart(2,'0')}:00`;
+    if(textEl) textEl.textContent = rule.text.trim() || '해당 코트 이용 안내를 확인해 주세요.';
+    pendingCourtTimeContinue = function(){
+      window.__courtTimePopupSkipOnce = key;
+      if(typeof continueFn === 'function') continueFn();
+    };
+    const modal = document.getElementById('modalCourtTimeNotice');
+    if(modal) modal.style.display = 'flex';
+    return true;
+  };
 
   function ensureUserNoticeModal(){
     if(document.getElementById('modalNoticePopup')) return;
@@ -151,6 +260,7 @@
           <button type="button" class="notice-admin-small danger" onclick="clearNoticePopupImage()">이미지 제거</button>
           <div class="notice-admin-help">새 이미지를 선택하면 저장 시 Firebase Storage에 업로드됩니다.</div>
         </div>
+        <button type="button" class="btn-full" style="background:#0f766e; margin-top:8px;" onclick="openCourtTimePopupAdmin()">🎾 코트(시간)별 팝업 설정</button>
         <div class="notice-admin-actions">
           <button type="button" class="btn-full bg-gray" onclick="previewNoticePopupAdmin()">미리보기</button>
           <button type="button" class="btn-full" style="background:#ef4444;" onclick="disableNoticePopupQuick()">팝업 끄기</button>
@@ -307,6 +417,154 @@
     }
   };
 
+  let editingCourtTimeRuleId = '';
+
+  function ensureCourtTimeAdminModal(){
+    if(document.getElementById('modalCourtTimePopupAdmin')) return;
+    const modal = document.createElement('div');
+    modal.id = 'modalCourtTimePopupAdmin';
+    modal.className = 'modal-mask';
+    modal.innerHTML = `
+      <div class="modal-win" style="max-width:520px; max-height:90vh; overflow-y:auto;">
+        <span class="modal-close" onclick="closeModal('modalCourtTimePopupAdmin')">&times;</span>
+        <div class="modal-head">🎾 코트(시간)별 팝업 설정</div>
+        <div style="background:#ecfeff; border:1px solid #a5f3fc; padding:11px; border-radius:10px; color:#155e75; font-size:.82rem; line-height:1.5; margin-bottom:14px;">설정한 기간·코트·시간의 빈 예약칸을 회원이 직접 클릭할 때만 안내 팝업이 표시됩니다.</div>
+        <div class="inp-row"><label>적용 지점</label><select id="courtTimePopupCenter" style="width:100%; padding:12px; border:1px solid #cbd5e1; border-radius:10px;"></select></div>
+        <div class="notice-admin-card"><label style="font-weight:800; display:block; margin-bottom:8px;">적용 코트</label><div id="courtTimePopupCourts" style="display:flex; flex-wrap:wrap; gap:8px;"></div></div>
+        <div class="notice-admin-card"><label style="font-weight:800; display:block; margin-bottom:8px;">적용 시간</label><div id="courtTimePopupTimes" style="display:grid; grid-template-columns:repeat(4,1fr); gap:6px;"></div></div>
+        <div class="notice-admin-dates">
+          <div class="inp-row"><label>시작일</label><input type="date" id="courtTimePopupStart"></div>
+          <div class="inp-row"><label>종료일</label><input type="date" id="courtTimePopupEnd"></div>
+        </div>
+        <div class="inp-row"><label>팝업 제목</label><input type="text" id="courtTimePopupTitle" placeholder="예: 대회 준비로 이용 제한 안내"></div>
+        <div class="inp-row"><label>팝업 내용</label><textarea id="courtTimePopupText" rows="5" placeholder="해당 코트/시간을 클릭했을 때 보여줄 내용을 입력하세요."></textarea></div>
+        <label style="display:flex; align-items:center; gap:8px; font-size:.9rem; font-weight:800; margin:6px 0 12px;"><input type="checkbox" id="courtTimePopupEnabled" checked style="width:19px; height:19px;"> 사용</label>
+        <div style="display:flex; gap:8px;">
+          <button type="button" class="btn-full bg-gray" onclick="resetCourtTimePopupForm()" style="margin-top:0;">새 설정</button>
+          <button type="button" class="btn-full bg-blue" id="btnSaveCourtTimePopup" onclick="saveCourtTimePopupRule()" style="margin-top:0;">추가 저장</button>
+        </div>
+        <div style="border-top:1px solid #e2e8f0; margin:18px 0 12px;"></div>
+        <div style="font-weight:900; margin-bottom:8px; color:#334155;">등록된 설정</div>
+        <div id="courtTimePopupRuleList"></div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+
+  function buildCourtTimeAdminChoices(center){
+    const courtBox = document.getElementById('courtTimePopupCourts');
+    const timeBox = document.getElementById('courtTimePopupTimes');
+    const centerSel = document.getElementById('courtTimePopupCenter');
+    if(centerSel){
+      const centers = (typeof CENTERS === 'object' && CENTERS) ? Object.keys(CENTERS) : ['국제'];
+      centerSel.innerHTML = centers.map(k => `<option value="${escapeHtml(k)}">${escapeHtml((CENTERS[k] && CENTERS[k].name) || k)}</option>`).join('');
+      centerSel.value = centers.includes(center) ? center : centers[0];
+    }
+    const selectedCenter = centerSel ? centerSel.value : (center || '국제');
+    const maxCourts = (typeof CENTERS === 'object' && CENTERS[selectedCenter] && CENTERS[selectedCenter].courts) ? Number(CENTERS[selectedCenter].courts) : 8;
+    if(courtBox) courtBox.innerHTML = Array.from({length:maxCourts}, (_,i) => `<label style="display:flex; align-items:center; gap:4px; border:1px solid #cbd5e1; border-radius:8px; padding:6px 9px; background:#fff;"><input type="checkbox" class="court-time-popup-court" value="${i+1}">${i+1}코트</label>`).join('');
+    if(timeBox) timeBox.innerHTML = Array.from({length:16}, (_,i) => i+6).map(t => `<label style="display:flex; align-items:center; gap:4px; border:1px solid #cbd5e1; border-radius:7px; padding:6px; font-size:.78rem; background:#fff;"><input type="checkbox" class="court-time-popup-time" value="${t}">${String(t).padStart(2,'0')}~${String(t+1).padStart(2,'0')}</label>`).join('');
+    if(centerSel && !centerSel.__courtTimeBound){
+      centerSel.addEventListener('change', function(){ buildCourtTimeAdminChoices(this.value); });
+      centerSel.__courtTimeBound = true;
+    }
+  }
+
+  function renderCourtTimeRuleList(){
+    const box = document.getElementById('courtTimePopupRuleList');
+    if(!box) return;
+    if(!courtTimePopupRules.length){ box.innerHTML = '<div style="padding:15px; text-align:center; color:#94a3b8; background:#f8fafc; border-radius:10px;">등록된 설정이 없습니다.</div>'; return; }
+    box.innerHTML = courtTimePopupRules.map(rule => {
+      const courts = rule.courts.length ? rule.courts.join(', ') + '코트' : '전체 코트';
+      const times = rule.times.length ? rule.times.map(t => `${String(t).padStart(2,'0')}~${String(t+1).padStart(2,'0')}`).join(', ') : '전체 시간';
+      const period = `${rule.startDate || '제한없음'} ~ ${rule.endDate || '제한없음'}`;
+      return `<div style="border:1px solid #e2e8f0; border-radius:11px; padding:11px; margin-bottom:8px; background:${rule.enabled ? '#fff' : '#f8fafc'}; opacity:${rule.enabled ? '1' : '.65'};">
+        <div style="display:flex; justify-content:space-between; gap:8px; align-items:flex-start;"><div><b>${escapeHtml(rule.title || '제목 없음')}</b><div style="font-size:.75rem; color:#64748b; margin-top:4px;">${escapeHtml(rule.center)} · ${escapeHtml(courts)}<br>${escapeHtml(times)}<br>${escapeHtml(period)}</div></div><span style="font-size:.72rem; font-weight:900; color:${rule.enabled ? '#059669' : '#94a3b8'};">${rule.enabled ? 'ON' : 'OFF'}</span></div>
+        <div style="display:flex; gap:6px; margin-top:9px;"><button type="button" class="notice-admin-small" onclick="editCourtTimePopupRule('${escapeHtml(rule.id)}')">수정</button><button type="button" class="notice-admin-small danger" onclick="deleteCourtTimePopupRule('${escapeHtml(rule.id)}')">삭제</button></div>
+      </div>`;
+    }).join('');
+  }
+
+  window.resetCourtTimePopupForm = function(){
+    editingCourtTimeRuleId = '';
+    const today = todayStrLocal();
+    buildCourtTimeAdminChoices((typeof currentCenter !== 'undefined' && currentCenter) ? currentCenter : '국제');
+    document.getElementById('courtTimePopupStart').value = today;
+    document.getElementById('courtTimePopupEnd').value = today;
+    document.getElementById('courtTimePopupTitle').value = '';
+    document.getElementById('courtTimePopupText').value = '';
+    document.getElementById('courtTimePopupEnabled').checked = true;
+    const btn = document.getElementById('btnSaveCourtTimePopup'); if(btn) btn.innerText = '추가 저장';
+  };
+
+  window.openCourtTimePopupAdmin = async function(){
+    if(!isAdmin) return alert('관리자만 사용할 수 있습니다.');
+    ensureCourtTimeAdminModal();
+    await loadCourtTimePopupRules(true);
+    window.resetCourtTimePopupForm();
+    renderCourtTimeRuleList();
+    closeModal('modalNoticePopupAdmin');
+    openModal('modalCourtTimePopupAdmin');
+  };
+
+  window.editCourtTimePopupRule = function(id){
+    const rule = courtTimePopupRules.find(r => r.id === id); if(!rule) return;
+    editingCourtTimeRuleId = id;
+    buildCourtTimeAdminChoices(rule.center || '국제');
+    document.getElementById('courtTimePopupCenter').value = rule.center || '국제';
+    buildCourtTimeAdminChoices(rule.center || '국제');
+    document.querySelectorAll('.court-time-popup-court').forEach(el => el.checked = rule.courts.includes(Number(el.value)));
+    document.querySelectorAll('.court-time-popup-time').forEach(el => el.checked = rule.times.includes(Number(el.value)));
+    document.getElementById('courtTimePopupStart').value = rule.startDate || '';
+    document.getElementById('courtTimePopupEnd').value = rule.endDate || '';
+    document.getElementById('courtTimePopupTitle').value = rule.title || '';
+    document.getElementById('courtTimePopupText').value = rule.text || '';
+    document.getElementById('courtTimePopupEnabled').checked = rule.enabled !== false;
+    const btn = document.getElementById('btnSaveCourtTimePopup'); if(btn) btn.innerText = '수정 저장';
+    const modal = document.getElementById('modalCourtTimePopupAdmin'); if(modal) modal.scrollTop = 0;
+  };
+
+  window.saveCourtTimePopupRule = async function(){
+    if(!isAdmin) return;
+    const courts = Array.from(document.querySelectorAll('.court-time-popup-court:checked')).map(el => Number(el.value));
+    const times = Array.from(document.querySelectorAll('.court-time-popup-time:checked')).map(el => Number(el.value));
+    const startDate = document.getElementById('courtTimePopupStart').value;
+    const endDate = document.getElementById('courtTimePopupEnd').value;
+    const title = document.getElementById('courtTimePopupTitle').value.trim();
+    const text = document.getElementById('courtTimePopupText').value.trim();
+    if(!courts.length) return alert('적용할 코트를 1개 이상 선택해주세요.');
+    if(!times.length) return alert('적용할 시간을 1개 이상 선택해주세요.');
+    if(startDate && endDate && startDate > endDate) return alert('종료일이 시작일보다 빠를 수 없습니다.');
+    if(!title && !text) return alert('팝업 제목 또는 내용을 입력해주세요.');
+    const id = editingCourtTimeRuleId || `ctp_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+    const rule = normalizeCourtTimeRule({ id, enabled:document.getElementById('courtTimePopupEnabled').checked, center:document.getElementById('courtTimePopupCenter').value || '국제', courts, times, startDate, endDate, title, text });
+    const idx = courtTimePopupRules.findIndex(r => r.id === id);
+    if(idx >= 0) courtTimePopupRules[idx] = rule; else courtTimePopupRules.push(rule);
+    const btn = document.getElementById('btnSaveCourtTimePopup'); const old = btn ? btn.innerText : '';
+    try{
+      if(btn){ btn.disabled = true; btn.innerText = '저장 중...'; }
+      await getCourtTimePopupRef().set({ rules:courtTimePopupRules, updatedAt:firebase.firestore.FieldValue.serverTimestamp(), updatedBy:(auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : 'local-admin' }, { merge:true });
+      courtTimePopupLoadedAt = Date.now();
+      editingCourtTimeRuleId = '';
+      renderCourtTimeRuleList();
+      window.resetCourtTimePopupForm();
+      alert('코트(시간)별 팝업 설정이 저장되었습니다.');
+    }catch(err){ console.error(err); alert('저장 실패: ' + (err.message || err)); }
+    finally{ if(btn){ btn.disabled = false; btn.innerText = old || '추가 저장'; } }
+  };
+
+  window.deleteCourtTimePopupRule = async function(id){
+    if(!isAdmin) return;
+    const rule = courtTimePopupRules.find(r => r.id === id);
+    if(!rule || !confirm(`“${rule.title || '이 설정'}”을 삭제하시겠습니까?`)) return;
+    const next = courtTimePopupRules.filter(r => r.id !== id);
+    try{
+      await getCourtTimePopupRef().set({ rules:next, updatedAt:firebase.firestore.FieldValue.serverTimestamp(), updatedBy:(auth.currentUser && auth.currentUser.uid) ? auth.currentUser.uid : 'local-admin' }, { merge:true });
+      courtTimePopupRules = next; courtTimePopupLoadedAt = Date.now();
+      if(editingCourtTimeRuleId === id) window.resetCourtTimePopupForm();
+      renderCourtTimeRuleList();
+    }catch(err){ alert('삭제 실패: ' + (err.message || err)); }
+  };
+
   function injectNoticePopupAdminButton(){
     if(!isAdmin) return;
     if(document.getElementById('btnNoticePopupAdmin')) return;
@@ -338,6 +596,9 @@
   window.initNoticePopupFeature = function(){
     ensureUserNoticeModal();
     ensureAdminModal();
+    ensureCourtTimeUserModal();
+    ensureCourtTimeAdminModal();
+    loadCourtTimePopupRules(false);
     patchOpenConf();
     setTimeout(checkNoticePopup, 550);
   };
