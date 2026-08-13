@@ -428,7 +428,7 @@ body.dark-mode .cal-date.my-reserved::before {
 /* [복구] 표의 전체 틀을 잡아주는 핵심 코드 (이게 없어서 깨진 겁니다!) */
 .schedule-table { 
     display: grid; 
-    grid-template-columns: 50px repeat(15, 46px); 
+    grid-template-columns: 50px repeat(16, 46px); 
     width: max-content; 
     padding-bottom: 120px; /* 하단바 가림 방지 */
 }
@@ -2786,7 +2786,7 @@ body.dark-mode .weather-banner-link:hover{
   }
 
   .schedule-table{
-    grid-template-columns:56px repeat(15, 52px) !important;
+    grid-template-columns:56px repeat(16, 52px) !important;
   }
 
   .data-cell,
@@ -2911,7 +2911,7 @@ body.dark-mode .weather-banner-link:hover{
     grid-template-columns:320px minmax(0,1fr) !important;
   }
   .schedule-table{
-    grid-template-columns:64px repeat(15, 58px) !important;
+    grid-template-columns:64px repeat(16, 58px) !important;
   }
 }
 
@@ -3001,7 +3001,7 @@ body.dark-mode .weather-banner-link:hover{
     min-height:auto !important;
     height:auto !important;
   }
-  .schedule-table{grid-template-columns:50px repeat(15, 48px) !important;}
+  .schedule-table{grid-template-columns:50px repeat(16, 48px) !important;}
   .corner,.head-time{
     height:22px !important;
     min-height:22px !important;
@@ -3101,7 +3101,7 @@ body.dark-mode .weather-banner-link:hover{
 
   #gridArea .schedule-table{
     padding-bottom:0 !important;
-    grid-template-columns:50px repeat(15, 48px) !important;
+    grid-template-columns:50px repeat(16, 48px) !important;
   }
 
   #gridArea .corner,
@@ -3263,7 +3263,7 @@ body.dark-mode .calendar-fold-btn{
   }
   #gridArea .schedule-table{
     padding-bottom:14px !important;
-    grid-template-columns:50px repeat(15,48px) !important;
+    grid-template-columns:50px repeat(16,48px) !important;
   }
   #gridArea .head-court,
   #gridArea .data-cell{
@@ -3731,7 +3731,7 @@ body.admin-mode #view-res.content-area.active > #adminToolbar.admin-toolbar-lega
 
   #view-res #schTable.schedule-table{
     display:grid !important;
-    grid-template-columns:76px repeat(15,minmax(62px,1fr)) !important;
+    grid-template-columns:76px repeat(16,minmax(62px,1fr)) !important;
     width:100% !important;
     min-width:1120px !important;
     padding:0 0 14px 0 !important;
@@ -4065,7 +4065,7 @@ body.admin-mode #view-res.content-area.active > #adminToolbar.admin-toolbar-lega
 
   body:has(#view-list.content-area.active) #view-res #schTable.schedule-table,
   body:has(#view-board.content-area.active) #view-res #schTable.schedule-table{
-    grid-template-columns:58px repeat(15,54px) !important;
+    grid-template-columns:58px repeat(16,54px) !important;
     width:max-content !important;
     min-width:868px !important;
     padding:0 0 12px 0 !important;

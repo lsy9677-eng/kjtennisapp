@@ -342,7 +342,7 @@ async function getReservationPrice(center, dateStr, time, court) {
         price: priceInfo.price,
         isNight: priceInfo.isNight,
         timeLabel: priceInfo.isNight ? '🌙 야간 (라이트)' : '☀️ 주간',
-        hourRange: priceInfo.isNight ? `${String(priceInfo.nightStart).padStart(2,'0')}:00 ~ 23:59` : `07:00 ~ ${String(Math.max(priceInfo.nightStart - 1, 7)).padStart(2,'0')}:59`
+        hourRange: priceInfo.isNight ? `${String(priceInfo.nightStart).padStart(2,'0')}:00 ~ 23:59` : `06:00 ~ ${String(Math.max(priceInfo.nightStart - 1, 6)).padStart(2,'0')}:59`
     };
     // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 }

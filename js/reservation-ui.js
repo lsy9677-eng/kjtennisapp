@@ -34,7 +34,7 @@ function drawGrid() {
     const tbl = document.getElementById('schTable');
     let h = `<div class="corner">코트</div>`;
     
-    for(let t=7; t<22; t++) {
+    for(let t=6; t<22; t++) {
         h += `<div class="cell head-time">${String(t).padStart(2,'0')}~${String(t+1).padStart(2,'0')}</div>`;
     }
     
@@ -43,7 +43,7 @@ function drawGrid() {
     for(let c=1; c <= maxCourts; c++) {
         h += `<div class="cell head-court" id="row-head-${c}" onclick="showMap(${c})" title="배치도 보기">${c}코트 <span style="font-size:0.7rem; margin-left:2px;">🔍</span></div>`;
         
-        for(let t=7; t<22; t++) {
+        for(let t=6; t<22; t++) {
             h += `<div class="cell data-cell row-cell-${c}" id="c-${c}-${t}" data-c="${c}" data-t="${t}"></div>`;
         }
     }
@@ -134,7 +134,7 @@ function updateMyReservations() {
     let myReservations = [];
     
     // 모든 셀을 순회하며 내 예약 찾기
-    for (let t = 7; t < 22; t++) {
+    for (let t = 6; t < 22; t++) {
         for (let c = 1; c <= maxCourts; c++) {
             const cell = document.getElementById(`c-${c}-${t}`);
             if (!cell) continue;
@@ -211,7 +211,7 @@ function scrollToMyFirstReservation() {
     const maxCourts = CENTERS[currentCenter].courts;
     
     // 시간순으로 첫 번째 예약 찾기
-    for (let t = 7; t < 22; t++) {
+    for (let t = 6; t < 22; t++) {
         for (let c = 1; c <= maxCourts; c++) {
             const cell = document.getElementById(`c-${c}-${t}`);
             if (cell && cell.dataset.ph === myPhone) {
@@ -235,7 +235,7 @@ function shareMyReservation(method) {
     let myReservations = [];
     
     // 내 예약 정보 수집
-    for (let t = 7; t < 22; t++) {
+    for (let t = 6; t < 22; t++) {
         for (let c = 1; c <= maxCourts; c++) {
             const cell = document.getElementById(`c-${c}-${t}`);
             if (!cell) continue;
@@ -498,7 +498,7 @@ function validateSelection() {
 
 function autoScroll() {
         const h = new Date().getHours();
-        if(h>7) document.getElementById('gridArea').scrollLeft = (h-7)*40;
+        if(h>6) document.getElementById('gridArea').scrollLeft = (h-6)*40;
     }
 
 function paint(d, id, coll) {

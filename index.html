@@ -851,7 +851,7 @@
 <div style="margin-bottom:10px;">
 <label style="font-size:0.8rem; color:#64748b;">시간 범위 (예: 7~22)</label>
 <div style="display:flex; gap:5px; align-items:center;">
-<input id="bulkTimeStart" max="22" min="7" style="width:50px; padding:5px;" type="number" value="7"/>
+<input id="bulkTimeStart" max="22" min="6" style="width:50px; padding:5px;" type="number" value="6"/>
 <span>시 부터</span>
 <input id="bulkTimeEnd" max="22" min="8" style="width:50px; padding:5px;" type="number" value="22"/>
 <span>시 까지</span>
@@ -2536,7 +2536,7 @@ let myChart = null; // 차트 객체 전역 변수
     safeSetChecked('setOpenCenter', isCenterOpen);
 
     if (d.dayStartHour !== undefined) { window.dayStartHour = d.dayStartHour; safeSetInputValue('settingDayStart', d.dayStartHour); }
-    else window.dayStartHour = 7;
+    else window.dayStartHour = 6;
     if (d.nightStartHour !== undefined) { window.nightStartHour = d.nightStartHour; safeSetInputValue('settingNightStart', d.nightStartHour); }
     else window.nightStartHour = 19;
     if (d.dayPrice !== undefined) { window.dayPrice = d.dayPrice; safeSetInputValue('settingDayPrice', d.dayPrice); }
@@ -3862,7 +3862,7 @@ let scoreChart = null;
     var today = new Date();
     var todayStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
     var currentHour = today.getHours();
-    for(var t=7;t<22;t++){
+    for(var t=6;t<22;t++){
       if(selectedDate && selectedDate === todayStr && t < currentHour) continue;
       if(selectedDate && selectedDate < todayStr) continue;
       var freeCount = 0;
@@ -4250,7 +4250,7 @@ function getAvailableCourtsAtHour(hour){
       return hours;
     }
 
-    if(hours.length === 1 && baseHour > 7 && canUsePickerSlot(court, baseHour - 1)){
+    if(hours.length === 1 && baseHour > 6 && canUsePickerSlot(court, baseHour - 1)){
       return [baseHour - 1, baseHour].sort(function(a,b){ return a-b; });
     }
 
@@ -4348,7 +4348,7 @@ function getAvailableCourtsAtHour(hour){
     if(dateEl) dateEl.textContent = date;
     var counts = {예약:0, 정기:0, 가승인:0, 예약불가:0, 빈칸:0};
     for(var c=1;c<=maxCourts;c++){
-      for(var t=7;t<22;t++){
+      for(var t=6;t<22;t++){
         var cell = document.getElementById('c-' + c + '-' + t);
         var status = getSlotStatus(cell);
         counts[status] = (counts[status]||0) + 1;
