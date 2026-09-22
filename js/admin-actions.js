@@ -1373,17 +1373,33 @@ function deleteFromStats(id) {
         return String(v || '');
     };
 
+    function dedupeMemberRows(rows){
+        // 동일 회원 문서가 중복 생성되어 있어도 관리자 검색 목록에는 한 번만 표시한다.
+        // 이름+정규화 전화번호가 같으면 같은 후보로 보고, 승인/시민인증 정보가 있는 문서를 우선한다.
+        const map = new Map();
+        for(const u of (rows || [])){
+            const key = `${normName(u.name).toLowerCase()}|${normPhone(u.phone)}`;
+            // 전화번호가 없는 회원은 UID까지 포함해 서로 다른 문서를 임의로 합치지 않는다.
+            const safeKey = normPhone(u.phone) ? key : `${key}|${u.uid || ''}`;
+            const prev = map.get(safeKey);
+            if(!prev){ map.set(safeKey, u); continue; }
+            const score = x => (x?.isCitizen === true ? 4 : 0) + (x?.approvedAt ? 2 : 0) + (x?.email ? 1 : 0);
+            if(score(u) > score(prev)) map.set(safeKey, u);
+        }
+        return [...map.values()];
+    }
+
     async function searchMembers(term){
         term = normName(term);
         if(!term || typeof db === 'undefined') return [];
         try {
-            const snap = await db.collection('users').orderBy('name').startAt(term).endAt(term + '\\uf8ff').limit(8).get();
-            return snap.docs.map(d => ({uid:d.id, ...(d.data()||{})}));
+            const snap = await db.collection('users').orderBy('name').startAt(term).endAt(term + '\\uf8ff').limit(20).get();
+            return dedupeMemberRows(snap.docs.map(d => ({uid:d.id, ...(d.data()||{})}))).slice(0,8);
         } catch(e) {
             console.warn('회원 이름 검색 실패:', e);
             try {
-                const snap = await db.collection('users').where('name','==',term).limit(8).get();
-                return snap.docs.map(d => ({uid:d.id, ...(d.data()||{})}));
+                const snap = await db.collection('users').where('name','==',term).limit(20).get();
+                return dedupeMemberRows(snap.docs.map(d => ({uid:d.id, ...(d.data()||{})}))).slice(0,8);
             } catch(_) { return []; }
         }
     }
