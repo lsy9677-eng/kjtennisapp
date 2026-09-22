@@ -836,6 +836,11 @@
 </table>
 <div style="margin-top:25px; padding-top:20px; border-top:2px solid #e2e8f0;">
 <h3 style="font-size:1rem; color:var(--danger); margin-bottom:15px;">🛠️ 관리자 특수 도구</h3>
+<div style="background:#eff6ff; padding:15px; border-radius:12px; border:1px solid #bfdbfe; margin-bottom:15px;">
+<label style="font-weight:bold; color:#1d4ed8; display:block; margin-bottom:8px;">👤 회원 정보 관리</label>
+<p style="font-size:0.75rem; color:#475569; margin-bottom:10px; line-height:1.5;">이름·전화번호·회원정보 이메일을 검색하고 수정합니다. 로그인 계정 자체의 이메일은 변경하지 않습니다.</p>
+<button class="btn-full bg-blue" type="button" onclick="openMemberManager()" style="margin-top:0; font-size:0.85rem;">회원 정보 관리 열기</button>
+</div>
 <div style="background:#fefce8; padding:15px; border-radius:12px; border:1px solid #fef08a; margin-bottom:15px;">
 <label style="font-weight:bold; color:#854d0e; display:block; margin-bottom:10px;">🏢 단체 대관 (기간/코트 일괄 예약)</label>
 <div style="display:flex; gap:5px; margin-bottom:8px;">
@@ -3543,6 +3548,7 @@ let scoreChart = null;
 
 </script>
 <script src="./js/admin-settings.js?v=20260619-step20"></script>
+<script src="./js/member-manager.js?v=20260922-member-manager-v1"></script>
 <script src="./js/my-reservations.js?v=20260619-step20"></script>
 <script src="./js/board.js?v=20260619-step20"></script>
 <script src="./js/notice-popup.js?v=20260813-court-time-popup-v1"></script>
