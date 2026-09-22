@@ -120,6 +120,24 @@ async function refreshTodayMyReservationCard(forceDateSync = false, preloadedRes
     }
 }
 
+/* [2026-09-22] 관리자 대리예약 본인 판별 공통 함수
+ * UID가 없는 관리자 대리예약도 로그인 회원의 이름+전화번호가 모두 같으면 본인 예약으로 처리합니다.
+ * 전화번호의 하이픈/공백 차이는 무시합니다.
+ */
+function _reservationUiNormPhone(v) { return String(v || '').replace(/[^0-9]/g, ''); }
+function _reservationUiNormName(v) { return String(v || '').trim().replace(/\s+/g, ' '); }
+function _reservationUiIsMine(name, phone) {
+    if (!currentUser || isAdmin) return false;
+    const samePhone = _reservationUiNormPhone(phone) &&
+        _reservationUiNormPhone(phone) === _reservationUiNormPhone(currentUser.phone);
+    const sameName = _reservationUiNormName(name) &&
+        _reservationUiNormName(name) === _reservationUiNormName(currentUser.name);
+    return samePhone && sameName;
+}
+function _reservationUiCellIsMine(cell) {
+    return !!cell && _reservationUiIsMine(cell.dataset.info, cell.dataset.ph);
+}
+
 function updateMyReservations() {
     // 관리자이거나 로그인 안 했으면 카드 숨김
     if (!currentUser || isAdmin) {
@@ -140,7 +158,7 @@ function updateMyReservations() {
             if (!cell) continue;
             
             // 내 예약인지 확인
-            if (cell.dataset.ph === myPhone) {
+            if (_reservationUiCellIsMine(cell)) {
                 const isBooked = cell.classList.contains('booked') || 
                                cell.classList.contains('fixed') || 
                                cell.classList.contains('pending');
@@ -366,7 +384,7 @@ function onCellClick(e) {
     // 기존 코드 그대로 두시면 됩니다.
     
     // ▼▼▼ 아래는 기존 코드 유지용 (복사해서 덮어쓰실 때 참고하세요) ▼▼▼
-    if(currentUser && el.dataset.ph === currentUser.phone && !isAdmin) {
+    if(_reservationUiCellIsMine(el)) {
         openCancel(el); return; 
     }
     if(el.classList.contains('booked') || el.classList.contains('fixed') || el.classList.contains('pending')) {
@@ -549,8 +567,10 @@ function paint(d, id, coll) {
     el.dataset.status = d.status; 
     
     let txt = d.name;
-    // 관리자가 아니면 이름 마스킹 (단, 블락된 건 그대로 표시)
-    if(!isAdmin && txt && d.status !== 'BLOCKED') txt = txt.substring(0,1) + "**";
+    // 일반 이용자에게는 타인의 이름을 마스킹하되,
+    // 관리자 대리예약이라도 이름+전화번호가 로그인 회원과 모두 같으면 본인 이름은 그대로 표시합니다.
+    const isMyReservation = _reservationUiIsMine(d.name, d.phone);
+    if(!isAdmin && !isMyReservation && txt && d.status !== 'BLOCKED') txt = txt.substring(0,1) + "**";
     
     if(!txt) txt = (d.status === 'PENDING') ? "대기" : "확정";
     
