@@ -196,6 +196,11 @@ async function doRangeDelete() {
 }
 
 async function doBlock(isRecur) {
+    // [2026-09-22 hotfix] async 회원조회 전에 클릭 버튼을 먼저 보관합니다.
+    // await 이후 브라우저의 전역 event가 사라져 예약이 중단되는 문제 방지.
+    const actionBtn = (typeof event !== 'undefined' && event && event.target)
+        ? event.target
+        : document.activeElement;
     const date = document.getElementById('hiddenDate').value;
     const batch = db.batch();
     
@@ -251,10 +256,12 @@ async function doBlock(isRecur) {
         if(rStart > rEnd) return alert("종료일이 시작일보다 빠를 수 없습니다.");
     }
 
-    const btn = event.target;
-    const originTxt = btn.innerText;
-    btn.innerText = "처리 중...";
-    btn.disabled = true;
+    const btn = actionBtn;
+    const originTxt = (btn && typeof btn.innerText === 'string') ? btn.innerText : (isRecur ? '정기예약' : '예약하기');
+    if (btn) {
+        btn.innerText = "처리 중...";
+        btn.disabled = true;
+    }
 
     // (중복 검사 로직 생략 - 기존과 동일하게 진행한다고 가정하고 바로 저장으로 넘어갑니다)
     // 실제 코드 적용 시엔 기존의 중복 검사 로직(checkOverlap 호출 부분)을 그대로 두셔도 됩니다.
@@ -309,8 +316,10 @@ async function doBlock(isRecur) {
         scheduleLoadDB(0); 
     }).catch(err => alert("오류: " + err.message))
     .finally(() => {
-        btn.innerText = originTxt;
-        btn.disabled = false;
+        if (btn) {
+            btn.innerText = originTxt;
+            btn.disabled = false;
+        }
     });
 }
 
