@@ -1102,16 +1102,25 @@ async function doEdit() {
         });
         
         await batch.commit();
-        alert("수정되었습니다.");
-        closeModal('modalCancel');
-        
-        // 화면 새로고침
-        if(document.getElementById('view-list').classList.contains('active')) {
-            if(document.getElementById('btnListFix').classList.contains('bg-blue')) loadAllRes('recurring');
-            else loadAllRes('general');
+
+        // 수정 직후 화면에서 예전 캐시가 다시 그려지지 않도록 먼저 무효화합니다.
+        if (target.coll === 'recurring') {
+            if (typeof _invalidateRecurringCache === 'function') _invalidateRecurringCache(currentCenter);
         } else {
-            scheduleLoadDB(0); 
+            if (typeof _invalidateReservationsCache === 'function') _invalidateReservationsCache(currentCenter);
         }
+
+        closeModal('modalCancel');
+
+        // 저장 완료 즉시 현재 화면을 다시 읽어 수정 내용을 바로 표시합니다.
+        if(document.getElementById('view-list').classList.contains('active')) {
+            if(document.getElementById('btnListFix').classList.contains('bg-blue')) await loadAllRes('recurring');
+            else await loadAllRes('general');
+        } else {
+            scheduleLoadDB(0);
+        }
+
+        alert("수정되었습니다. 화면에 바로 반영했습니다.");
     } catch(err) {
         alert("수정 중 오류 발생: " + err.message);
     }
