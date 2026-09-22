@@ -9,6 +9,54 @@
  * - 개인 경기 기록/승률 차트
  */
 
+
+/* [2026-09-22] 관리자 대리예약도 내 예약으로 인식
+ * 우선순위: 본인 UID 예약 + 이름/전화번호가 모두 일치하는 예약.
+ * 전화번호는 하이픈 유무를 모두 허용하고, 이름은 공백을 정리해 비교한다.
+ */
+function _myResNormPhone(v) { return String(v || '').replace(/[^0-9]/g, ''); }
+function _myResNormName(v) { return String(v || '').trim().replace(/\\s+/g, ' '); }
+function _myResPhoneVariants(v) {
+    const raw = String(v || '').trim();
+    const digits = _myResNormPhone(raw);
+    const out = new Set();
+    if (raw) out.add(raw);
+    if (digits) {
+        out.add(digits);
+        if (digits.length === 11) out.add(`${digits.slice(0,3)}-${digits.slice(3,7)}-${digits.slice(7)}`);
+        else if (digits.length === 10) out.add(`${digits.slice(0,3)}-${digits.slice(3,6)}-${digits.slice(6)}`);
+    }
+    return [...out];
+}
+function _myResMatchesMember(d) {
+    if (!currentUser || !d) return false;
+    const myUid = String(currentUser.uid || '');
+    const rowUid = String(d.ownerId || d.uid || '');
+    if (myUid && rowUid === myUid) return true;
+    const sameName = _myResNormName(d.name) && _myResNormName(d.name) === _myResNormName(currentUser.name);
+    const samePhone = _myResNormPhone(d.phone) && _myResNormPhone(d.phone) === _myResNormPhone(currentUser.phone);
+    return sameName && samePhone;
+}
+async function _getMyReservationDocs() {
+    if (!currentUser) return [];
+    const jobs = [];
+    const myUid = String(currentUser.uid || '').trim();
+    if (myUid) {
+        jobs.push(db.collection('reservations').where('uid', '==', myUid).get().catch(() => null));
+        jobs.push(db.collection('reservations').where('ownerId', '==', myUid).get().catch(() => null));
+    }
+    _myResPhoneVariants(currentUser.phone).forEach(ph => {
+        jobs.push(db.collection('reservations').where('phone', '==', ph).get().catch(() => null));
+    });
+    const snaps = await Promise.all(jobs);
+    const map = new Map();
+    snaps.filter(Boolean).forEach(snap => snap.docs.forEach(doc => {
+        const d = doc.data();
+        if (_myResMatchesMember(d)) map.set(doc.id, doc);
+    }));
+    return [...map.values()];
+}
+
 function openMyResList() {
     if(!currentUser) return alert("로그인이 필요합니다.");
     openModal('modalMyRes');
@@ -64,7 +112,7 @@ function calcRefund(resDateStr, resTime) {
 }
 
 /* [수정] 나의 예약 목록 (통계 표시 + 캘린더 저장 버튼 추가) */
-function loadMyResData(isUpcoming) {
+async function loadMyResData(isUpcoming) {
     const list = document.getElementById('myResList');
     const batchArea = document.getElementById('batchCancelArea');
     list.innerHTML = "<div style='text-align:center; padding:20px;'>불러오는 중...</div>";
@@ -81,18 +129,28 @@ function loadMyResData(isUpcoming) {
     }
 
     const todayStr = new Date().toISOString().split('T')[0];
-    let query = db.collection("reservations").where("phone", "==", currentUser.phone);
 
     if(isUpcoming) {
-        query = query.where("date", ">=", todayStr).orderBy("date", "asc").orderBy("time", "asc");
-        statsBox.style.display = 'none'; // 예정 내역에선 통계 숨김 (취향따라 켜도 됨)
+        statsBox.style.display = 'none';
     } else {
-        // 지난 내역은 많이 불러와서 통계 냄 (최근 100개)
-        query = query.where("date", "<", todayStr).orderBy("date", "desc").orderBy("time", "desc").limit(100);
         statsBox.style.display = 'block';
     }
 
-    query.get().then(snap => {
+    try {
+        let docs = await _getMyReservationDocs();
+        docs = docs.filter(doc => {
+            const d = doc.data();
+            return isUpcoming ? String(d.date || '') >= todayStr : String(d.date || '') < todayStr;
+        });
+        docs.sort((a,b) => {
+            const A=a.data(), B=b.data();
+            const ka=`${A.date||''}-${String(A.time??'').padStart(2,'0')}`;
+            const kb=`${B.date||''}-${String(B.time??'').padStart(2,'0')}`;
+            return isUpcoming ? ka.localeCompare(kb) : kb.localeCompare(ka);
+        });
+        if(!isUpcoming) docs = docs.slice(0,100);
+        const snap = { empty: docs.length === 0, forEach: fn => docs.forEach(fn) };
+
         list.innerHTML = "";
         
         // [통계 계산]
@@ -212,7 +270,10 @@ function loadMyResData(isUpcoming) {
             `;
         }
 
-    }).catch(err => list.innerHTML = "오류 발생: " + err.message);
+    } catch(err) {
+        console.error("내 예약 불러오기 오류:", err);
+        list.innerHTML = "오류 발생: " + err.message;
+    }
 }
 
 async function openDutchPayModal(resData, resId) {
@@ -229,12 +290,11 @@ async function openDutchPayModal(resData, resId) {
         
         // ▼▼▼ [수정] 인덱스 없이 작동하도록 쿼리 변경 ▼▼▼
         // 먼저 phone과 date로만 조회 (인덱스 불필요)
-        const sameDateReservations = await db.collection('reservations')
-            .where('phone', '==', currentUser.phone)
-            .where('date', '==', resData.date)
-            .get();
+        const myReservationDocs = await _getMyReservationDocs();
+        const sameDateDocs = myReservationDocs.filter(doc => String(doc.data().date || '') === String(resData.date || ''));
+        const sameDateReservations = { docs: sameDateDocs };
         
-        console.log('같은 날짜 예약 개수 (필터 전):', sameDateReservations.docs.length);
+        console.log('같은 날짜 내 예약 개수:', sameDateReservations.docs.length);
         
         let totalPrice = 0;
         let timeSlots = [];
@@ -615,38 +675,21 @@ function openRefundPopup(targets) {
     openModal('modalRefund');
 }
 
-function checkUpcomingPopup() {
+async function checkUpcomingPopup() {
     if(!currentUser) return;
-
-    // 1. 한국 시간(KST) 기준으로 오늘 날짜 정확히 계산
-    // (기존 코드는 시차 때문에 오전 9시 이전에 어제로 인식될 수 있음)
-    const now = new Date();
-    const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-    const kstGap = 9 * 60 * 60 * 1000;
-    const todayStr = new Date(utc + kstGap).toISOString().split('T')[0];
-    
-    // 2. 검색 조건 강화 (색인을 확실히 타도록 orderBy 추가)
-    db.collection("reservations")
-      .where("phone", "==", currentUser.phone)
-      .where("date", ">=", todayStr)
-      .orderBy("date", "asc")  // [중요] 이 줄이 없으면 색인을 못 찾을 수 있음
-      .limit(1)
-      .get()
-      .then(snap => {
-          if(!snap.empty) {
-              // 예약이 있으면 팝업 열기
-              openMyResList();
-          }
-      })
-      .catch(err => {
-          // [중요] 만약 색인이 또 필요하다면 여기서 링크가 뜹니다!
-          if(err.message.includes("index")) {
-             // 에러 메시지 속에 있는 링크를 복사하기 쉽도록 띄움
-             alert("자동 팝업을 위한 추가 색인이 필요합니다.\n확인을 누르고 콘솔(F12)의 링크를 클릭하거나,\n아래 메시지를 참고하세요.\n\n" + err.message);
-          } else {
-             console.log("팝업 체크 중 오류:", err);
-          }
-      });
+    try {
+        const now = new Date();
+        const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+        const todayStr = new Date(utc + 9 * 60 * 60 * 1000).toISOString().split('T')[0];
+        const docs = await _getMyReservationDocs();
+        const hasUpcoming = docs.some(doc => {
+            const d = doc.data();
+            return d.status !== 'CANCELED' && String(d.date || '') >= todayStr;
+        });
+        if (hasUpcoming) openMyResList();
+    } catch(err) {
+        console.log('팝업 체크 중 오류:', err);
+    }
 }
 
 /* [신규] 스마트폰 캘린더에 일정 저장하기 (.ics 파일 생성) */

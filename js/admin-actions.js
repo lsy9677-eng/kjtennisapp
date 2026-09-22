@@ -205,6 +205,30 @@ async function doBlock(isRecur) {
     let inputPhone = document.getElementById('bkPhone').value.trim();
     if(!inputPhone) return alert("전화번호를 입력해주세요.");
 
+
+    // [2026-09-22] 관리자 대리예약: 이름+전화번호가 기존 회원과 정확히 일치하면 회원 UID 연결
+    // 기존 회원이 아니어도 예약은 정상 생성되며, 회원 가입 후에는 내 예약의 이름+전화번호 보조매칭으로 표시됩니다.
+    let matchedMemberUid = '';
+    try {
+        const normPhone = v => String(v || '').replace(/[^0-9]/g, '');
+        const normName = v => String(v || '').trim().replace(/\s+/g, ' ');
+        const digits = normPhone(inputPhone);
+        const variants = [...new Set([inputPhone, digits,
+            digits.length === 11 ? `${digits.slice(0,3)}-${digits.slice(3,7)}-${digits.slice(7)}` : '',
+            digits.length === 10 ? `${digits.slice(0,3)}-${digits.slice(3,6)}-${digits.slice(6)}` : ''
+        ].filter(Boolean))];
+        for (const ph of variants) {
+            const us = await db.collection('users').where('phone', '==', ph).limit(10).get();
+            const hit = us.docs.find(doc => {
+                const u = doc.data() || {};
+                return normName(u.name) === normName(inputName) && normPhone(u.phone) === digits;
+            });
+            if (hit) { matchedMemberUid = hit.id; break; }
+        }
+    } catch (e) {
+        console.warn('대리예약 회원 UID 연결 확인 실패(예약은 계속 진행):', e);
+    }
+
     let targetDays = [];
     let rStart = "";
     let rEnd = "";
@@ -259,7 +283,7 @@ async function doBlock(isRecur) {
                 center: currentCenter, 
                 date: date, court: s.c, time: s.t, 
                 name: inputName, phone: inputPhone, 
-                status: 'BOOKED', uid: 'ADMIN', at: new Date() 
+                status: 'BOOKED', uid: matchedMemberUid || 'ADMIN', ownerId: matchedMemberUid || null, at: new Date() 
             });
             if(slotLocksEnabled) {
                 batch.set(db.collection('slot_locks').doc(buildSlotLockId(currentCenter, date, s.c, s.t)), {
