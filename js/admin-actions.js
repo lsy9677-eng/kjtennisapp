@@ -1087,6 +1087,18 @@ async function doEdit() {
         ids.forEach(docId => {
             const ref = db.collection(target.coll).doc(docId);
             batch.update(ref, updateData);
+
+            // 관리자 1회 예약은 reservations와 slot_locks가 한 쌍입니다.
+            // 예약자 이름/전화번호 수정 시 잠금 문서도 같이 맞춰야
+            // 이후 화면 갱신/중복검사에서 예전 정보가 다시 보이지 않습니다.
+            if (target.coll === 'reservations' && typeof slotLocksEnabled !== 'undefined' && slotLocksEnabled) {
+                const lockRef = db.collection('slot_locks').doc(docId);
+                batch.set(lockRef, {
+                    name: newName,
+                    phone: newPhone,
+                    updatedAt: new Date()
+                }, { merge: true });
+            }
         });
         
         await batch.commit();
