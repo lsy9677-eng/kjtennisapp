@@ -208,12 +208,12 @@ async function doBlock(isRecur) {
     if(!inputName) inputName = "정기";
 
     let inputPhone = document.getElementById('bkPhone').value.trim();
-    if(!inputPhone) return alert("전화번호를 입력해주세요.");
+    // [2026-09-22 편의개선] 관리자 예약은 전화번호가 없어도 이름만으로 등록 가능
 
 
     // [2026-09-22] 관리자 대리예약: 이름+전화번호가 기존 회원과 정확히 일치하면 회원 UID 연결
     // 기존 회원이 아니어도 예약은 정상 생성되며, 회원 가입 후에는 내 예약의 이름+전화번호 보조매칭으로 표시됩니다.
-    let matchedMemberUid = '';
+    let matchedMemberUid = (document.getElementById('bkName')?.dataset.memberUid || '').trim();
     try {
         const normPhone = v => String(v || '').replace(/[^0-9]/g, '');
         const normName = v => String(v || '').trim().replace(/\s+/g, ' ');
@@ -222,7 +222,7 @@ async function doBlock(isRecur) {
             digits.length === 11 ? `${digits.slice(0,3)}-${digits.slice(3,7)}-${digits.slice(7)}` : '',
             digits.length === 10 ? `${digits.slice(0,3)}-${digits.slice(3,6)}-${digits.slice(6)}` : ''
         ].filter(Boolean))];
-        for (const ph of variants) {
+        if (!matchedMemberUid) for (const ph of variants) {
             const us = await db.collection('users').where('phone', '==', ph).limit(10).get();
             const hit = us.docs.find(doc => {
                 const u = doc.data() || {};
@@ -309,6 +309,7 @@ async function doBlock(isRecur) {
     });
 
     batch.commit().then(() => { 
+        window.__adminAdditionalBookingPreset = null;
         alert(isRecur ? "정기 예약(월 계약)이 설정되었습니다." : "예약 완료"); 
         closeModal('modalBook'); 
         _invalidateReservationsCache(currentCenter); // 예약 완료 → 캐시 무효화
@@ -384,6 +385,7 @@ function openCancel(el) {
     
     document.getElementById('dtInfo').value = name;
     document.getElementById('dtContact').value = phone;
+    document.getElementById('dtInfo').dataset.memberUid = (el.dataset.uid || el.dataset.ownerId || '');
     
     window.cancelTarget = { 
         id: id, coll: coll, name: name, phone: phone, date: date, time: time, court: parseInt(el.dataset.c), status: status
@@ -403,6 +405,9 @@ function openCancel(el) {
         document.getElementById('dtContact').readOnly = false;
         document.getElementById('dtInfo').style.background = "#fff";
         document.getElementById('dtContact').style.background = "#fff";
+        if (typeof window.prepareAdminReservationMemberTools === 'function') {
+            window.prepareAdminReservationMemberTools('edit');
+        }
         
         btnEdit.style.display = 'block';
         cancelGroup.style.display = 'flex'; 
@@ -1088,8 +1093,18 @@ async function doEdit() {
     const newPhone = document.getElementById('dtContact').value.trim();
     if(!newName || !newPhone) return alert("이름과 연락처를 입력해주세요.");
 
+    // [2026-09-22] 관리자 회원선택/이름+전화번호 일치 시 회원 UID까지 함께 연결
+    let editMemberUid = (document.getElementById('dtInfo').dataset.memberUid || '').trim();
+    if (!editMemberUid && typeof window.resolveAdminMemberByNamePhone === 'function') {
+        try {
+            const matched = await window.resolveAdminMemberByNamePhone(newName, newPhone);
+            if (matched) editMemberUid = matched.uid || '';
+        } catch(e) { console.warn('수정 회원 UID 확인 실패:', e); }
+    }
+
     // [추가] 정기 예약 관련 데이터 가져오기
     let updateData = { name: newName, phone: newPhone };
+    if (editMemberUid) { updateData.uid = editMemberUid; updateData.ownerId = editMemberUid; }
     
     if (target.isRecur) {
         const newStart = document.getElementById('editStart').value;
@@ -1129,6 +1144,7 @@ async function doEdit() {
                 batch.set(lockRef, {
                     name: newName,
                     phone: newPhone,
+                    ...(editMemberUid ? { uid: editMemberUid, ownerId: editMemberUid } : {}),
                     updatedAt: new Date()
                 }, { merge: true });
             }
@@ -1238,6 +1254,7 @@ function openGroupEdit(jsonStr) {
     
     document.getElementById('dtInfo').value = data.name;
     document.getElementById('dtContact').value = data.phone;
+    document.getElementById('dtInfo').dataset.memberUid = data.uid || data.ownerId || '';
     
     // 입력창 활성화
     document.getElementById('dtInfo').readOnly = false;
@@ -1337,3 +1354,146 @@ function deleteFromStats(id) {
     }).catch(err => alert("삭제 실패: " + err.message))
       .finally(() => { window.__RECOVERY_LABEL__ = ''; });
 }
+
+
+/* =========================================================
+ * 2026-09-22 관리자 예약자 빠른 선택 / 현황판 추가대관
+ * - 이름 일부 입력 → 가입회원 검색 → 선택 시 전화번호/UID 자동 입력
+ * - 현황판 예약 클릭 → 추가대관 → 기존 예약자 정보를 다음 예약창에 승계
+ * ========================================================= */
+(function(){
+    const state = { timers: new WeakMap() };
+    const esc = v => String(v ?? '').replace(/[&<>\"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#039;'}[m]));
+    const normPhone = v => String(v || '').replace(/[^0-9]/g, '');
+    const normName = v => String(v || '').trim().replace(/\\s+/g, ' ');
+    const phoneView = v => {
+        const d = normPhone(v);
+        if(d.length === 11) return `${d.slice(0,3)}-${d.slice(3,7)}-${d.slice(7)}`;
+        if(d.length === 10) return `${d.slice(0,3)}-${d.slice(3,6)}-${d.slice(6)}`;
+        return String(v || '');
+    };
+
+    async function searchMembers(term){
+        term = normName(term);
+        if(!term || typeof db === 'undefined') return [];
+        try {
+            const snap = await db.collection('users').orderBy('name').startAt(term).endAt(term + '\\uf8ff').limit(8).get();
+            return snap.docs.map(d => ({uid:d.id, ...(d.data()||{})}));
+        } catch(e) {
+            console.warn('회원 이름 검색 실패:', e);
+            try {
+                const snap = await db.collection('users').where('name','==',term).limit(8).get();
+                return snap.docs.map(d => ({uid:d.id, ...(d.data()||{})}));
+            } catch(_) { return []; }
+        }
+    }
+
+    window.resolveAdminMemberByNamePhone = async function(name, phone){
+        const targetName = normName(name), targetPhone = normPhone(phone);
+        if(!targetName || !targetPhone) return null;
+        const list = await searchMembers(targetName);
+        return list.find(u => normName(u.name) === targetName && normPhone(u.phone) === targetPhone) || null;
+    };
+
+    function ensureSuggestBox(input){
+        const id = input.id + '_memberSuggest';
+        let box = document.getElementById(id);
+        if(box) return box;
+        const wrap = input.parentElement;
+        if(getComputedStyle(wrap).position === 'static') wrap.style.position = 'relative';
+        box = document.createElement('div');
+        box.id = id;
+        box.style.cssText = 'display:none;position:absolute;left:0;right:0;top:100%;z-index:10050;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.18);max-height:240px;overflow:auto;margin-top:3px;';
+        wrap.appendChild(box);
+        return box;
+    }
+
+    function bindMemberSearch(nameInput, phoneInput){
+        if(!nameInput || !phoneInput || nameInput.dataset.memberSearchBound === '1') return;
+        nameInput.dataset.memberSearchBound = '1';
+        const box = ensureSuggestBox(nameInput);
+        const hide = () => setTimeout(() => { box.style.display='none'; }, 160);
+        nameInput.addEventListener('blur', hide);
+        nameInput.addEventListener('input', () => {
+            nameInput.dataset.memberUid = '';
+            clearTimeout(state.timers.get(nameInput));
+            const term = nameInput.value.trim();
+            if(!term){ box.style.display='none'; return; }
+            const timer = setTimeout(async () => {
+                const rows = await searchMembers(term);
+                const directBtn = `<button type="button" data-direct="1" style="display:block;width:100%;border:0;border-top:1px solid #dbeafe;background:#eff6ff;text-align:left;padding:10px;cursor:pointer;color:#1d4ed8;font-weight:800;">➕ ${esc(term)} · 신규 예약자로 사용 <span style="font-weight:500;font-size:.76rem;color:#64748b;">(전화번호 선택)</span></button>`;
+                if(!rows.length){
+                    box.innerHTML = `<div style="padding:8px 10px;color:#94a3b8;font-size:.78rem;">가입회원 검색 결과가 없습니다.</div>${directBtn}`;
+                } else {
+                    box.innerHTML = rows.map((u,i) => `<button type="button" data-i="${i}" style="display:block;width:100%;border:0;border-bottom:1px solid #f1f5f9;background:#fff;text-align:left;padding:9px 10px;cursor:pointer;"><b>${esc(u.name||'')}</b> <span style="color:#64748b;font-size:.8rem;">${esc(phoneView(u.phone))}</span></button>`).join('') + directBtn;
+                }
+                box.style.display='block';
+                box.querySelectorAll('button[data-i]').forEach(btn => btn.addEventListener('mousedown', ev => {
+                    ev.preventDefault();
+                    const u = rows[Number(btn.dataset.i)];
+                    nameInput.value = u.name || '';
+                    phoneInput.value = phoneView(u.phone);
+                    nameInput.dataset.memberUid = u.uid || '';
+                    box.style.display='none';
+                    nameInput.dispatchEvent(new Event('change',{bubbles:true}));
+                    phoneInput.dispatchEvent(new Event('change',{bubbles:true}));
+                }));
+                const direct = box.querySelector('button[data-direct]');
+                if(direct) direct.addEventListener('mousedown', ev => {
+                    ev.preventDefault();
+                    nameInput.value = term;
+                    nameInput.dataset.memberUid = '';
+                    // 다른 회원의 번호가 잘못 따라가는 것을 막기 위해 신규 예약자는 전화번호를 비워 둔다.
+                    phoneInput.value = '';
+                    box.style.display='none';
+                    nameInput.dispatchEvent(new Event('change',{bubbles:true}));
+                    phoneInput.dispatchEvent(new Event('change',{bubbles:true}));
+                });
+            }, 180);
+            state.timers.set(nameInput, timer);
+        });
+    }
+
+    function ensureAdditionalButton(){
+        if(!isAdmin) return;
+        const editBtn = document.getElementById('btnEditBook');
+        if(!editBtn || document.getElementById('btnAdminAdditionalBooking')) return;
+        const btn = document.createElement('button');
+        btn.id='btnAdminAdditionalBooking';
+        btn.type='button';
+        btn.className='btn-full';
+        btn.style.cssText='display:none;margin-bottom:10px;background:#0f766e;color:#fff;border:none;';
+        btn.textContent='➕ 이 예약자로 추가대관';
+        btn.onclick = window.startAdminAdditionalBooking;
+        editBtn.insertAdjacentElement('afterend',btn);
+    }
+
+    window.prepareAdminReservationMemberTools = function(mode){
+        if(!isAdmin) return;
+        if(mode === 'edit'){
+            bindMemberSearch(document.getElementById('dtInfo'), document.getElementById('dtContact'));
+            ensureAdditionalButton();
+            const b=document.getElementById('btnAdminAdditionalBooking'); if(b) b.style.display='block';
+        } else {
+            bindMemberSearch(document.getElementById('bkName'), document.getElementById('bkPhone'));
+        }
+    };
+
+    window.startAdminAdditionalBooking = function(){
+        if(!isAdmin) return;
+        const name = (document.getElementById('dtInfo')?.value || '').trim();
+        const phone = (document.getElementById('dtContact')?.value || '').trim();
+        const uid = document.getElementById('dtInfo')?.dataset.memberUid || window.cancelTarget?.uid || window.cancelTarget?.ownerId || '';
+        if(!name) return alert('예약자 이름이 필요합니다.');
+        window.__adminAdditionalBookingPreset = {name, phone, uid};
+        try { closeModal('modalCancel'); } catch(_) {}
+        if(Array.isArray(window.selected)) window.selected.length = 0;
+        else if(typeof selected !== 'undefined' && Array.isArray(selected)) selected.length = 0;
+        if(typeof updateSelectionUI === 'function') try{ updateSelectionUI(); }catch(_){}
+        alert(`${name}님의 추가대관 모드입니다.\
+빈 코트/시간을 선택한 뒤 [예약하기]를 누르세요.\
+전화번호가 있으면 자동 승계되며, 없어도 예약할 수 있습니다.`);
+    };
+
+    document.addEventListener('DOMContentLoaded', () => { ensureAdditionalButton(); });
+})();

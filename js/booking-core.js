@@ -177,14 +177,19 @@ function openBook() {
     const recurBox = document.getElementById('recurOptionBox');
 
     if(isAdmin) {
-        inpName.value = adminDefaultName || "관리자"; // 설정값 기반 관리자 기본 예약자명
+        const adminPreset = window.__adminAdditionalBookingPreset || null;
+        inpName.value = adminPreset?.name || adminDefaultName || "관리자"; // 추가대관이면 기존 예약자 승계
+        inpName.dataset.memberUid = adminPreset?.uid || '';
         inpName.readOnly = false;
         inpName.style.background = "#fff";
         
-        // ▼▼▼ [수정] admPh 변수가 없으면 빈칸("")으로 처리하여 undefined 방지
-        inpPhone.value = (typeof admPh !== 'undefined' && admPh) ? admPh : ""; 
+        // 추가대관이면 기존 예약자의 전화번호를 자동 승계
+        inpPhone.value = adminPreset?.phone || ((typeof admPh !== 'undefined' && admPh) ? admPh : ""); 
         inpPhone.readOnly = false; // 관리자는 수정 가능하게 설정
         inpPhone.style.background = "#fff";
+        if (typeof window.prepareAdminReservationMemberTools === 'function') {
+            window.prepareAdminReservationMemberTools('book');
+        }
         
         boxLocal.style.display = 'none';
         adminBtns.style.display = 'block';
@@ -392,8 +397,10 @@ async function saveBook(uid) {
     const bkName = isAdmin ? (rawAdminName || adminDefaultName || "관리자") : (currentUser ? currentUser.name : "회원");
     const bkPhone = isAdmin ? document.getElementById('bkPhone').value : (currentUser ? currentUser.phone : '');
 
-    if(!bkPhone) {
-        alert('전화번호가 입력되지 않았습니다.');
+    // [2026-09-22 편의개선] 관리자는 신규/대관 예약을 이름만으로도 등록 가능
+    // 일반 회원 예약은 기존 회원정보의 전화번호를 그대로 사용합니다.
+    if(!isAdmin && !bkPhone) {
+        alert('회원 전화번호 정보가 없습니다. 회원정보를 확인해주세요.');
         return;
     }
 
