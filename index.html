@@ -2692,20 +2692,69 @@ function renderReservations(snap, listElement, type) {
         }
     });
 
-    // 정렬: 가승인 우선 -> 날짜 -> 시간
+    // [2026-09-22] 일반 예약은 예정/지난 예약을 시각적으로 분리합니다.
+    // 오늘 예약은 예정된 예약에 포함하고, 지난 예약은 최근 날짜부터 표시합니다.
+    const nowLocal = new Date();
+    const todayLocal = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth()+1).padStart(2,'0')}-${String(nowLocal.getDate()).padStart(2,'0')}`;
+    renderList.forEach(item => {
+        item._isPast = (type !== 'recurring' && item.date && item.date < todayLocal);
+    });
+
     renderList.sort((a, b) => {
-        const scoreA = (a.theme === 'pending') ? 0 : 1;
-        const scoreB = (b.theme === 'pending') ? 0 : 1;
-        if (scoreA !== scoreB) return scoreA - scoreB;
-        if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+        if (type !== 'recurring') {
+            // 예정 예약을 먼저, 지난 예약을 아래쪽에 배치
+            if (a._isPast !== b._isPast) return a._isPast ? 1 : -1;
+
+            // 예정 예약 안에서는 가승인을 우선 표시
+            if (!a._isPast) {
+                const scoreA = (a.theme === 'pending') ? 0 : 1;
+                const scoreB = (b.theme === 'pending') ? 0 : 1;
+                if (scoreA !== scoreB) return scoreA - scoreB;
+            }
+
+            if (a.date !== b.date) {
+                // 예정: 가까운 날짜부터 / 과거: 최근 날짜부터
+                return a._isPast ? (a.date > b.date ? -1 : 1) : (a.date < b.date ? -1 : 1);
+            }
+        } else {
+            // 정기 예약은 기존 정렬 유지
+            const scoreA = (a.theme === 'pending') ? 0 : 1;
+            const scoreB = (b.theme === 'pending') ? 0 : 1;
+            if (scoreA !== scoreB) return scoreA - scoreB;
+            if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+        }
         const timeA = Math.min(...Array.from(a.times));
         const timeB = Math.min(...Array.from(b.times));
         return timeA - timeB;
     });
 
+    const upcomingCount = renderList.filter(item => !item._isPast).length;
+    const pastCount = renderList.filter(item => item._isPast).length;
+    let lastPeriodSection = null;
+
     renderList.forEach(item => {
+        if (type !== 'recurring') {
+            const sectionKey = item._isPast ? 'past' : 'upcoming';
+            if (lastPeriodSection !== sectionKey) {
+                const section = document.createElement('div');
+                const count = item._isPast ? pastCount : upcomingCount;
+                section.style.cssText = item._isPast
+                    ? 'margin:22px 0 10px;padding:10px 12px;border-radius:10px;background:#f1f5f9;color:#64748b;font-weight:800;font-size:0.9rem;border:1px solid #e2e8f0;'
+                    : 'margin:4px 0 10px;padding:10px 12px;border-radius:10px;background:#eff6ff;color:#1d4ed8;font-weight:800;font-size:0.9rem;border:1px solid #bfdbfe;';
+                section.innerHTML = item._isPast
+                    ? `🕘 지난 예약 내역 <span style="font-weight:600;font-size:0.78rem;opacity:.8;">(${count}개 묶음)</span>`
+                    : `📅 예정된 예약 <span style="font-weight:600;font-size:0.78rem;opacity:.8;">(${count}개 묶음)</span>`;
+                listElement.appendChild(section);
+                lastPeriodSection = sectionKey;
+            }
+        }
+
         const div = document.createElement('div');
         div.className = `res-card res-theme-${item.theme}`;
+        if (item._isPast) {
+            div.style.opacity = '0.68';
+            div.style.filter = 'saturate(0.55)';
+        }
 
         let colors = {};
         let label = "";
@@ -2791,7 +2840,7 @@ if (item.theme === 'orange') {
     dateDisplay = `${label} <span style="font-weight:normal; font-size:0.75rem; color:#666;">(${sDate}~${eDate})</span>`;
 } else {
     // 일반 예약: 기존 날짜 표시
-    dateDisplay = `${label} ${dateShort}(${getDayName(item.date)})`;
+    dateDisplay = `${label} ${dateShort}(${getDayName(item.date)})${item._isPast ? ' <span style="margin-left:5px;padding:2px 6px;border-radius:999px;background:#e2e8f0;color:#64748b;font-size:0.68rem;font-weight:800;">지난 예약</span>' : ''}`;
 }
 
         div.innerHTML = `
