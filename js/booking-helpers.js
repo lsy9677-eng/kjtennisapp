@@ -10,6 +10,8 @@
  */
 
 function calcPay() {
+        // A pending/failed settings read must never turn the fallback tariff into a payable quote.
+        if (typeof bookingPriceState !== 'undefined' && bookingPriceState.status !== 'ready') return;
         const isLocal = document.getElementById('isLocal').checked;
         const date = document.getElementById('hiddenDate').value;
         const isRed = isWeekendOrHoliday(date);
@@ -64,6 +66,10 @@ function calcPay() {
             ${priceHTML}
             ${detailHTML}
         `;
+        if (typeof bookingPriceState !== 'undefined') {
+            bookingPriceState.context = getBookingPriceContext();
+            updateBookingSubmitAvailability();
+        }
     }
 
 async function validateDailyReservationLimits(meta) {
@@ -650,7 +656,7 @@ function sendSmsToAdmin(name, phone, date, times, method, amount) {
         if (APP_ENV.isDevelopment) devEffect('sms-mock', smsLink); else location.href = smsLink;
     }
 
-async function isWeekendOrHoliday(dateStr) {
+function isWeekendOrHoliday(dateStr) {
     const dt = new Date(dateStr);
     return dt.getDay() === 0 || dt.getDay() === 6 || !!HOLIDAYS[dateStr];
 }

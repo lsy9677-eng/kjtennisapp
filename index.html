@@ -567,7 +567,8 @@
 </div>
 </div>
 <!-- ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ -->
-<button class="btn-full bg-blue" id="btnDoPay" onclick="doPay()" style="opacity:0.4; pointer-events:none;">결제하기</button>
+<div id="bookingPriceStatus" role="status" aria-live="polite"></div>
+<button class="btn-full bg-blue" disabled="" id="btnDoPay" onclick="doPay()" style="opacity:0.4; pointer-events:none;">결제하기</button>
 <div id="recurOptionBox" style="display:none; background:#f0f9ff; padding:10px; border-radius:8px; margin-top:15px; border:1px solid #bae6fd;">
 <p style="font-size:0.8rem; font-weight:bold; color:#0369a1; margin-bottom:5px;">📅 정기 예약 설정</p>
 <div style="margin-bottom:8px;">
@@ -1048,8 +1049,8 @@
 <script src="./js/auth.js?v=20260619-step20"></script>
 <script src="./js/calendar.js?v=20260619-step20"></script>
 <script src="./js/reservation-ui.js?v=20260813-court-time-popup-v1"></script>
-<script src="./js/booking-helpers.js?v=20260716-macro-v12"></script>
-<script src="./js/booking-core.js?v=20260716-macro-v12"></script>
+<script src="./js/booking-helpers.js?v=20261027-pricing-ready-v1"></script>
+<script src="./js/booking-core.js?v=20261027-pricing-ready-v1"></script>
 <script src="./js/recovery-center.js?v=20260813-recovery-v1"></script>
 <script src="./js/admin-actions.js?v=20260813-recovery-v1"></script>
 
@@ -1391,7 +1392,9 @@ initAuthStateListener();
         
         drawCalendar();
         drawGrid();
-        loadConfig();
+        loadConfig().catch(() => {
+            // loadConfig logs the failure. Booking retries settings before enabling payment.
+        });
         // 게시판은 실제 게시판 탭 진입 시에만 읽어 Firestore 읽기 과금을 줄입니다.
  
 
@@ -2324,15 +2327,24 @@ async function loadMacroMonitor() {
 // ==========================================
 // ▼▼▼ [신규] 계절별 요금 관리 함수 ▼▼▼
 window.seasonalPricings = [];
+var seasonalPricingLoadPromise = null;
 
 async function loadSeasonalPricings() {
-    try {
-        const doc = await db.collection('settings').doc('seasonalPricing').get();
-        window.seasonalPricings = doc.exists ? (doc.data().list || []) : [];
-        renderSeasonalList();
-    } catch(err) {
-        console.error('계절별 요금 불러오기 오류:', err);
-    }
+    if (seasonalPricingLoadPromise) return seasonalPricingLoadPromise;
+    seasonalPricingLoadPromise = Promise.resolve().then(async () => {
+        try {
+            const doc = await db.collection('settings').doc('seasonalPricing').get({ source: 'server' });
+            const list = doc.exists ? (doc.data().list ?? []) : [];
+            if (!Array.isArray(list)) throw new Error('계절 설정 형식이 올바르지 않습니다.');
+            window.seasonalPricings = list;
+            renderSeasonalList();
+            return list;
+        } catch(err) {
+            console.error('계절별 요금 불러오기 오류:', err);
+            return null; // Distinguish failure from a successfully loaded empty season list.
+        }
+    }).finally(() => { seasonalPricingLoadPromise = null; });
+    return seasonalPricingLoadPromise;
 }
 
 function renderSeasonalList() {

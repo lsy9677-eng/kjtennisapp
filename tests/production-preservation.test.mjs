@@ -5,13 +5,21 @@ import vm from 'node:vm';
 import {execFileSync} from 'node:child_process';
 const source=file=>fs.readFileSync(new URL('../'+file,import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const original=file=>execFileSync('git',['show','3b5bb59:'+file],{encoding:'utf8'}).replace(/\r\n/g,'\n');
-test('booking save/payment and reservation query implementation remain exactly unchanged',()=>{
-    for(const file of ['js/booking-core.js','js/reservation-data.js'])assert.equal(source(file),original(file));
+test('reservation save/query and payment-provider implementation remain exactly unchanged',()=>{
+    assert.equal(source('js/reservation-data.js'),original('js/reservation-data.js'));
+    const core=source('js/booking-core.js'),base=original('js/booking-core.js');
+    assert.equal(core.slice(core.indexOf('async function saveBook(uid)')),base.slice(base.indexOf('async function saveBook(uid)')));
+    assert.equal(core.slice(core.indexOf('        if(isAdmin && confirm')),base.slice(base.indexOf('        if(isAdmin && confirm')));
 });
 test('refund calculation is unchanged; only local SMS IO guards were added to its module',()=>{
     const stripped=source('js/my-reservations.js').replace(/if \(APP_ENV\.isDevelopment\) devEffect\('sms-mock', [^\n]+?\); else /g,'');
     assert.equal(stripped,original('js/my-reservations.js'));
-    assert.equal(source('js/booking-helpers.js').replace("if (APP_ENV.isDevelopment) devEffect('sms-mock', smsLink); else ",''),original('js/booking-helpers.js'));
+    const helpers=source('js/booking-helpers.js');
+    for(const fn of ['getSeasonalPricingMatch','getConfiguredPriceInfo','getMatrixPriceBySlot','getPriceForDate','calcPrice']){
+        const start='function '+fn+'(';
+        const segment=s=>{const a=s.indexOf(start);const b=s.indexOf('\n}',a)+2;return s.slice(a,b);};
+        assert.equal(segment(helpers),segment(original('js/booking-helpers.js')),fn);
+    }
 });
 test('production Firebase connector never touches emulator, persistence or SDK auth methods',()=>{
     const c={APP_ENV:{isDevelopment:false}};c.window=c;vm.createContext(c);vm.runInContext(source('js/firebase-environment.js'),c);

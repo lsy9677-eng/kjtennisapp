@@ -58,6 +58,37 @@ try {
     assert.equal(sdk.project,'demo-kjtennis-local');assert.equal(sdk.authName,'kjtennis-development');
     assert.equal(sdk.data.synthetic,true);assert.equal(sdk.text,'SYNTHETIC ONLY');
     assert.ok(sdk.download.startsWith('http://127.0.0.1:9199/'));
+    const pricingReadiness=await page.evaluate(async()=>{
+        const originalLoadConfig=loadConfig;
+        const config=await loadConfig();await loadSeasonalPricings();
+        const originalSeasons=window.seasonalPricings;
+        const payments=()=>DEV_EVENTS.filter(event=>event.kind==='payment-mock').length;
+        const before=payments();
+        try {
+            loadConfig=async()=>config;
+            let release;
+            seasonalPricingLoadPromise=new Promise(resolve=>{release=resolve;});
+            document.getElementById('hiddenDate').value='2030-11-04';selected=[{c:2,t:18}];
+            const opening=openBook();
+            document.getElementById('chkAutomationPolicy').checked=true;onRecaptchaSuccess('dev-recaptcha-token');
+            await new Promise(resolve=>setTimeout(resolve,0));
+            if(!document.getElementById('btnDoPay').disabled || document.getElementById('txtPrice').innerText!=='확인 중')throw Error('Price enabled during delayed load');
+            await doPay();
+            window.seasonalPricings=[{start:'2030-11-01',end:'2030-11-30',nightStart:18,dayPrice:111,nightPrice:222}];
+            release(window.seasonalPricings);
+            if(!await opening || document.getElementById('btnDoPay').disabled)throw Error('Price did not become ready after load');
+            if(!document.getElementById('txtPrice').parentElement.innerHTML.includes('평일야간'))throw Error('Wrong weekday/night description');
+            seasonalPricingLoadPromise=Promise.resolve(null); // Synthetic server-read failure result.
+            if(await openBook())throw Error('Failed read unexpectedly succeeded');
+            document.getElementById('chkAutomationPolicy').checked=true;onRecaptchaSuccess('dev-recaptcha-token');
+            await doPay();
+            if(!document.getElementById('btnDoPay').disabled || document.getElementById('txtPrice').innerText!=='확인 불가')throw Error('Failed read did not block quote');
+            if(payments()!==before)throw Error('Payment was called before pricing readiness');
+            return {delayBlocked:true,loadedNightBoundary:true,failureBlocked:true,paymentsWhileUnready:0};
+        } finally {
+            loadConfig=originalLoadConfig;seasonalPricingLoadPromise=null;window.seasonalPricings=originalSeasons;closeModal('modalBook');
+        }
+    });
     await page.evaluate(async()=>{
         await startGoogleLogin();await startKakaoLogin();await startNaverLogin();
         const recaptcha=await (await fetch('/verify-recaptcha',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:'dev-recaptcha-token'})})).json();
@@ -72,7 +103,7 @@ try {
         for(const time of [10,11])await db.collection('reservations').doc(buildSlotLockId(currentCenter,date,2,time)).delete();
         document.getElementById('hiddenDate').value=date;
         selected=[{c:2,t:10},{c:2,t:11}];
-        openBook();
+        await openBook();
         document.getElementById('chkAutomationPolicy').checked=true;
         onRecaptchaSuccess('dev-recaptcha-token');
         setPayMethod('PAY');
@@ -130,6 +161,6 @@ try {
     assert.deepEqual(violations,[],'External browser request attempted');
     assert.deepEqual(errors,[],'Page JavaScript errors');
     await fs.mkdir('dev/artifacts',{recursive:true});
-    await fs.writeFile('dev/artifacts/'+(usePages?'pages-browser-report.json':'browser-report.json'),JSON.stringify({passed:true,runtime:usePages?'Cloudflare workerd':'Node harness',requests,violations,errors,sdk,events:result.events,offlineStopped:true,csp,unknownRequests,cacheCleared:true,unprefixedAdminIgnored:true},null,2));
+    await fs.writeFile('dev/artifacts/'+(usePages?'pages-browser-report.json':'browser-report.json'),JSON.stringify({passed:true,runtime:usePages?'Cloudflare workerd':'Node harness',requests,violations,errors,sdk,pricingReadiness,events:result.events,offlineStopped:true,csp,unknownRequests,cacheCleared:true,unprefixedAdminIgnored:true},null,2));
     console.log('PASS: synthetic Auth / Firestore / Storage / booking / mocks / session restore / offline stop; external requests: 0');
 } finally {await browser?.close();await closeServer();}

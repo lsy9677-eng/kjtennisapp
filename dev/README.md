@@ -1,6 +1,6 @@
 # 독립 로컬 개발 환경
 
-운영 접속·데이터 변경·커밋·푸시·배포를 하지 않는다. 브랜치 `dev/local-emulator-isolation`, 비교 기준 `3b5bb59`. 예약·요금·환불 업무 로직은 수정하지 않았다.
+운영 접속·데이터 변경·커밋·푸시·배포를 하지 않는다. 브랜치 `dev/local-emulator-isolation`, 비교 기준 `3b5bb59`. 환경 분리 이후 요청에 따라 평일 판정과 계절 설정 로드 대기/실패 차단만 수정했다. 요금표 값·예약 저장·더치페이·환불 산식·PG 요청 구조는 유지한다.
 
 ## 처음 설치 — Windows x64
 
@@ -70,12 +70,12 @@ Function은 개발 출처에서 env 접근 전 대역 응답, 미확인 출처�
 
 | 검사 | 실제 확인 범위 |
 | --- | --- |
-| `npm.cmd test` | 환경 분리 6개 + 원본 보존/도구 독립성 5개 + 기존 결함 재현 5개 = **16개 통과**, TODO **6개** |
+| `npm.cmd test` | 환경 분리 6개 + 원본 보존/도구 독립성 5개 + 기존 경로/회귀 5개 + 요금 설정 10개 + 요금 로드 대기/실패 8개 = **34개 통과**, TODO **5개** |
 | `test:pages` | Wrangler 컴파일, workerd 정적 파일/MIME/헤더/Functions, 개발·미확인·운영 분기, Web Crypto 가상 토큰 |
-| `test:production` | 기준 SDK 세션 복원, 기본 앱·설정·저장 키 보존, 운영 대역 부재. 모든 요청 메모리 처리 |
+| `test:production` | 기준 SDK 세션 복원/설정 보존과 별도 가상 SDK 경계의 전체 HTML 초기화·초기 설정 실패·재시도·결제 버튼 복구. 모든 요청 메모리 처리, 데이터 쓰기/결제 0건 |
 | `test:pages:browser` | demo 로그인·예약 저장·Storage·세션 복원·대역·외부 차단·불통 시 중단·캐시 격리를 workerd 경유로 확인 |
 
-**결함 재현 통과는 결함 해결을 뜻하지 않는다.** TODO 6개는 미구현 정상 기준이며 통과 수에 포함하지 않는다. [KNOWN-ISSUES.md](KNOWN-ISSUES.md)에 대응 관계를 기록했다.
+**남은 결함 재현의 통과는 결함 해결을 뜻하지 않는다.** 해결한 평일 판정은 회귀 검사로 전환했다. TODO 5개는 미구현 기준 또는 정책 검토 항목이며 통과 수에 포함하지 않는다. 최신 요금 운영 기준과 대응 관계는 [KNOWN-ISSUES.md](KNOWN-ISSUES.md), 계산 경로 조사는 [PRICING-REVIEW.md](PRICING-REVIEW.md)에 기록했다.
 
 보고서는 `dev/artifacts/pages-report.json`, `pages-browser-report.json`, `production-browser-report.json`. 운영 URL 문자열은 메모리 대역 요청 기록이며 운영 접속 기록이 아니다.
 

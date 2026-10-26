@@ -15,6 +15,57 @@
  * - dev/index.dev.html now only keeps a marker comment for saveBook.
  */
 
+var bookingPriceState = { status: 'idle', request: 0, context: '' };
+
+function getBookingPriceSelectionKey() {
+    return JSON.stringify([currentCenter, document.getElementById('hiddenDate').value,
+        selected.map(s => [s.c, s.t]), document.getElementById('isLocal').checked]);
+}
+
+function getBookingPriceContext() {
+    return JSON.stringify([getBookingPriceSelectionKey(), prices, window.nightStartHour, window.seasonalPricings]);
+}
+
+function isBookingPriceReady() {
+    return bookingPriceState.status === 'ready' && bookingPriceState.context === getBookingPriceContext();
+}
+
+async function refreshBookingPrice() {
+    const request = ++bookingPriceState.request;
+    const selectionKey = getBookingPriceSelectionKey();
+    const status = document.getElementById('bookingPriceStatus');
+    bookingPriceState.status = 'loading';
+    bookingPriceState.context = '';
+    document.getElementById('txtPrice').innerText = '확인 중';
+    if (status) status.textContent = '요금 설정을 불러오는 중입니다.';
+    updateBookingSubmitAvailability();
+    try {
+        const config = await loadConfig();
+        const configuredPrices = config && config.exists && config.data().prices;
+        if (!Array.isArray(configuredPrices) || configuredPrices.length !== 8 ||
+            configuredPrices.some(value => typeof value !== 'number' || !Number.isFinite(value) || value < 0)) {
+            throw new Error('요금표를 확인할 수 없습니다.');
+        }
+        const seasons = await loadSeasonalPricings();
+        if (seasons === null) throw new Error('계절 설정을 불러오지 못했습니다.');
+        if (request !== bookingPriceState.request) return false;
+        if (selectionKey !== getBookingPriceSelectionKey()) throw new Error('예약 선택이 변경되었습니다.');
+        bookingPriceState.status = 'ready';
+        calcPay();
+        if (status) status.textContent = '';
+        updateBookingSubmitAvailability();
+        return true;
+    } catch (err) {
+        if (request !== bookingPriceState.request) return false;
+        bookingPriceState.status = 'error';
+        bookingPriceState.context = '';
+        document.getElementById('txtPrice').innerText = '확인 불가';
+        if (status) status.textContent = '요금 설정을 확인하지 못했습니다. 예약창을 닫고 다시 시도해주세요.';
+        updateBookingSubmitAvailability();
+        return false;
+    }
+}
+
 // ===== v10 자동화 도구 이용 제한 고지 =====
 function ensureAutomationPolicyBookingBox() {
     const modal = document.getElementById('modalBook');
@@ -37,11 +88,12 @@ function ensureAutomationPolicyBookingBox() {
 function updateBookingSubmitAvailability() {
     const btn = document.getElementById('btnDoPay');
     if (!btn) return;
-    if (isAdmin) { btn.style.opacity='1'; btn.style.pointerEvents='auto'; return; }
+    const priceReady = isBookingPriceReady();
     const consentRequired = (typeof isAutomationPolicyEnabled !== 'function') || isAutomationPolicyEnabled('bookingConsentEnabled');
     const checked = !consentRequired || !!(document.getElementById('chkAutomationPolicy') && document.getElementById('chkAutomationPolicy').checked);
     const captchaOk = !!_recaptchaToken;
-    const enabled = checked && captchaOk;
+    const enabled = priceReady && (isAdmin || (checked && captchaOk));
+    btn.disabled = !enabled;
     btn.style.opacity = enabled ? '1' : '0.4';
     btn.style.pointerEvents = enabled ? 'auto' : 'none';
 }
@@ -239,7 +291,6 @@ function openBook() {
         }
     }
 
-    calcPay();
     ensureAutomationPolicyBookingBox();
     const policyCheck = document.getElementById('chkAutomationPolicy');
     if (policyCheck) policyCheck.checked = false;
@@ -264,6 +315,7 @@ function openBook() {
     updateBookingSubmitAvailability();
 
     openModal('modalBook');
+    return refreshBookingPrice();
 }
 
 
@@ -285,6 +337,11 @@ function openBook() {
     /* ========== [매크로 방지] reCAPTCHA 콜백 끝 ========== */
 
     async function doPay() {
+        if (!isBookingPriceReady()) {
+            updateBookingSubmitAvailability();
+            alert('요금 설정 확인이 끝난 뒤 다시 시도해주세요.');
+            return;
+        }
         if(isAdmin && confirm("관리자 권한으로 결제 없이 예약하시겠습니까?")) { saveBook("ADMIN"); return; }
         if(!currentUser && !isAdmin) return alert("로그인 정보가 없습니다.");
         const consentRequired = (typeof isAutomationPolicyEnabled !== 'function') || isAutomationPolicyEnabled('bookingConsentEnabled');

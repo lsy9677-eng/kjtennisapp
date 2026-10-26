@@ -1,4 +1,4 @@
-// These tests intentionally assert existing defects. They are not the desired business specification.
+// These tests characterize current paths and latent defects, not confirmed live billing errors.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -13,23 +13,23 @@ function sandbox() {
     vm.runInContext(read('my-reservations'),context);
     return context;
 }
-test('CURRENT DEFECT: Monday selects weekend day/night matrix rows', async () => {
+test('REGRESSION: unequal synthetic tariffs select weekday day/night matrix rows', async () => {
     const c=sandbox();
     assert.equal(await c.isWeekendOrHoliday('2026-11-02'),false);
-    assert.equal(c.getMatrixPriceBySlot('2026-11-02',10,false),6000);
-    assert.equal(c.getMatrixPriceBySlot('2026-11-02',20,false),8000);
+    assert.equal(c.getMatrixPriceBySlot('2026-11-02',10,false),2000);
+    assert.equal(c.getMatrixPriceBySlot('2026-11-02',20,false),4000);
 });
-test('CURRENT DEFECT: seasonal amount ignored by booking matrix; night boundary applied', () => {
+test('CURRENT PATH: seasonal night boundary applies; booking amount remains matrix based', () => {
     const c=sandbox(); c.seasonalPricings=[{start:'2026-01-01',end:'2026-12-31',nightStart:18,dayPrice:111,nightPrice:222}];
     assert.equal(c.getConfiguredPriceInfo('2026-11-02',18).nightPrice,222);
-    assert.equal(c.getMatrixPriceBySlot('2026-11-02',18,false),8000);
+    assert.equal(c.getMatrixPriceBySlot('2026-11-02',18,false),4000);
 });
 test('CURRENT DEFECT: refund changes when current citizenship or current tariff changes', () => {
     const c=sandbox();
     const first=c.calcRefund('2030-11-04',10).amount;
     c.currentUser.isCitizen=true;
     assert.notEqual(c.calcRefund('2030-11-04',10).amount,first);
-    c.prices[2][0]=999;
+    c.prices[0][0]=999;
     assert.equal(c.calcRefund('2030-11-04',10).amount,999);
 });
 test('CURRENT DEFECT: two nontransactional daily checks each allow three new slots despite combined overflow', async () => {
@@ -47,6 +47,7 @@ test('CURRENT DEFECT: successful card callback invokes save only after payment, 
         IMP:{request_pay:(options,callback)=>{calls.push('payment-success');callback({success:true,imp_uid:'dev-paid'});}},
         calls, Date, Math };
     c.window=c;vm.createContext(c);vm.runInContext(read('booking-core'),c);
+    c.isBookingPriceReady=()=>true; // Isolate the unchanged post-readiness payment orchestration.
     vm.runInContext('_recaptchaToken="dev"; saveBook = function(uid) { calls.push("save-rejected:"+uid); };',c);
     await c.doPay();
     assert.deepEqual(calls,['payment-success','save-rejected:dev-paid']);
