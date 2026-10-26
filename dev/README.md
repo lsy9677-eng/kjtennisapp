@@ -1,5 +1,7 @@
 # 독립 로컬 개발 환경
 
+배포 출력 구성과 프로젝트별 자동 배포 중지 기록은 [DEPLOYMENT-PREPARATION.md](DEPLOYMENT-PREPARATION.md)를 참고한다. `npm.cmd run build:pages`, `npm.cmd run test:release`, `npm.cmd run test:transfer`를 제공한다. 기본 가상 seed는 카드 비활성화이며 기존 카드 회귀 검증만 명시적인 가상 카드 활성 설정을 사용한다.
+
 운영 접속·데이터 변경·커밋·푸시·배포를 하지 않는다. 브랜치 `dev/local-emulator-isolation`, 비교 기준 `3b5bb59`. 환경 분리 이후 요청에 따라 평일 판정과 계절 설정 로드 대기/실패 차단만 수정했다. 요금표 값·예약 저장·더치페이·환불 산식·PG 요청 구조는 유지한다.
 
 ## 처음 설치 — Windows x64
@@ -52,7 +54,7 @@ npm.cmd run dev:pages
 
 로컬 HTTP CSP와 초기 스크립트 CSP로 외부 연결을 막는다. fetch는 추가 허용 목록 검사, XHR·Beacon·WebSocket은 CSP를 적용한다. 로컬 Worker의 outboundService는 외부 요청을 차단하며 원격 proxy/binding은 없다. CLI는 인증 환경 변수를 제거하고 별도 config/log 및 네트워크 차단 preload를 사용한다.
 
-결제는 `dev-payment-*` 성공 대역으로 기존 예약 저장을 Emulator에서 재현한다. SMS·알림·OAuth·reCAPTCHA·날씨는 대역을 사용하고 화면에 기록한다. 실제 PG 환불 구현이 원래 없으므로 환불은 별도 가상 기록 버튼만 제공한다. 취소/환불 업무를 구현한 것이 아니다.
+기본 가상 설정은 계좌이체 전용이다. 카드 회귀 검증에서는 `--card-enabled` 가상 설정과 `dev-payment-*` 성공 대역으로 기존 예약 저장을 Emulator에서 재현한다. SMS·알림·OAuth·reCAPTCHA·날씨는 대역을 사용하고 화면에 기록한다. 실제 PG 환불 구현이 원래 없으므로 환불은 별도 가상 기록 버튼만 제공한다. 취소/환불 업무를 구현한 것이 아니다.
 
 운영 분기는 기존 SDK URL·Firebase 설정·기본 앱 `[DEFAULT]`·Auth persistence·로컬 저장 키·예약 스키마를 유지한다. 대역 설치 함수는 운영 모드에서 즉시 반환한다.
 
@@ -70,7 +72,7 @@ Function은 개발 출처에서 env 접근 전 대역 응답, 미확인 출처�
 
 | 검사 | 실제 확인 범위 |
 | --- | --- |
-| `npm.cmd test` | 환경 분리 6개 + 원본 보존/도구 독립성 5개 + 기존 경로/회귀 5개 + 요금 설정 10개 + 요금 로드 대기/실패 8개 = **34개 통과**, TODO **5개** |
+| `npm.cmd test` | 환경 분리 6개 + 원본 보존/도구 독립성 5개 + 기존 경로/회귀 5개 + 요금 설정 10개 + 요금 로드 대기/실패 8개 + 카드 정책 6개 = **40개 통과**, TODO **5개** |
 | `test:pages` | Wrangler 컴파일, workerd 정적 파일/MIME/헤더/Functions, 개발·미확인·운영 분기, Web Crypto 가상 토큰 |
 | `test:production` | 기준 SDK 세션 복원/설정 보존과 별도 가상 SDK 경계의 전체 HTML 초기화·초기 설정 실패·재시도·결제 버튼 복구. 모든 요청 메모리 처리, 데이터 쓰기/결제 0건 |
 | `test:pages:browser` | demo 로그인·예약 저장·Storage·세션 복원·대역·외부 차단·불통 시 중단·캐시 격리를 workerd 경유로 확인 |

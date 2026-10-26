@@ -41,7 +41,7 @@ test('CURRENT DEFECT: two nontransactional daily checks each allow three new slo
 });
 test('CURRENT DEFECT: successful card callback invokes save only after payment, with no compensation on save rejection', async () => {
     const calls=[];
-    const c={ isAdmin:false,currentUser:{name:'Synthetic',phone:'000'},currentPayMethod:'PAY',selected:[{c:1,t:10}],
+    const c={ isAdmin:false,useCardPay:true,currentUser:{name:'Synthetic',phone:'000'},currentPayMethod:'PAY',selected:[{c:1,t:10}],
         isAutomationPolicyEnabled:()=>false,alert:()=>{},fetch:async()=>({json:async()=>({success:true})}),
         document:{getElementById:id=>({innerText:'1000',value:'2030-11-04'})},
         IMP:{request_pay:(options,callback)=>{calls.push('payment-success');callback({success:true,imp_uid:'dev-paid'});}},

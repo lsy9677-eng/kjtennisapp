@@ -3,7 +3,10 @@ import { startEmulators } from './run-emulators.mjs';
 const instance=await startEmulators();
 function run(file) {
     return new Promise((resolve,reject)=>{
-        const child=spawn(process.execPath,[file,...(file==='dev/browser-check.mjs'&&process.argv.includes('--pages')?['--pages']:[])],{stdio:'inherit',windowsHide:true});
+        const flags=file==='dev/browser-check.mjs'
+            ? ['--pages','--transfer-only'].filter(flag=>process.argv.includes(flag))
+            : file==='dev/seed.mjs'&&!process.argv.includes('--transfer-only')?['--card-enabled']:[];
+        const child=spawn(process.execPath,[file,...flags],{stdio:'inherit',windowsHide:true});
         child.once('error',reject);
         child.once('exit',code=>code===0?resolve():reject(new Error(file+' exited '+code)));
     });

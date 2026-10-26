@@ -8,6 +8,7 @@ process.env.PLAYWRIGHT_BROWSERS_PATH = fileURLToPath(new URL('./artifacts/browse
 const { chromium } = await import(pathToFileURL(resolveTool('node_modules/playwright/index.mjs')).href);
 let closeServer;
 const usePages=process.argv.includes('--pages');
+const transferOnly=process.argv.includes('--transfer-only');
 if(usePages) {
     const {createPagesRuntime}=await import('./pages-runtime.mjs');
     const runtime=await createPagesRuntime({port:4173});
@@ -17,12 +18,13 @@ if(usePages) {
     await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(4173,'127.0.0.1',resolve);});
     closeServer=()=>new Promise(resolve=>server.close(resolve));
 }
-const requests=[], violations=[], errors=[];
+const requests=[], violations=[], errors=[], dialogs=[];
 const allowed=new Set(['http://127.0.0.1:4173','http://127.0.0.1:8080','http://127.0.0.1:9099','http://127.0.0.1:9199']);
 let browser;
 try {
     browser=await chromium.launch({headless:true});
     const context=await browser.newContext({serviceWorkers:'block'});
+    await context.addInitScript(value=>{window.__TRANSFER_ONLY_TEST__=value;},transferOnly);
     await context.addInitScript(() => {
         // Simulate an old local session. The development namespace must ignore it.
         if (!sessionStorage.getItem('fixture-installed')) {
@@ -37,7 +39,7 @@ try {
     });
     const page=await context.newPage();
     page.on('pageerror',error=>errors.push(error.message));
-    page.on('dialog',dialog=>dialog.accept());
+    page.on('dialog',dialog=>{dialogs.push(dialog.message());return dialog.accept();});
     await page.goto('http://127.0.0.1:4173/',{waitUntil:'load'});
     await page.waitForFunction(()=>window.DEV_EVENTS?.some(x=>x.kind==='emulators-ready') || document.getElementById('dev-stopped'),{timeout:15000});
     assert.equal(await page.locator('#dev-stopped').count(),0,await page.locator('#dev-stopped').textContent().catch(()=>''));
@@ -106,19 +108,48 @@ try {
         await openBook();
         document.getElementById('chkAutomationPolicy').checked=true;
         onRecaptchaSuccess('dev-recaptcha-token');
-        setPayMethod('PAY');
+        if (window.__TRANSFER_ONLY_TEST__) {
+            if (useCardPay !== false || currentPayMethod !== 'TRANSFER' || document.getElementById('mthPay').style.display !== 'none') throw Error('Card-disabled setting was not applied');
+            setPayMethod('PAY');
+            if (currentPayMethod !== 'TRANSFER') throw Error('Disabled card selection was accepted');
+            currentPayMethod='PAY';
+            await doPay();
+            if (currentPayMethod !== 'TRANSFER') throw Error('Tampered card method was not blocked');
+            if (DEV_EVENTS.some(event=>event.kind==='payment-mock')) throw Error('Disabled card invoked PG mock');
+        } else setPayMethod('PAY');
         await doPay();
     });
-    await page.waitForFunction(async()=>{
-        const snap=await db.collection('reservations').doc(buildSlotLockId(currentCenter,'2030-11-04',2,10)).get();
-        return snap.exists && snap.data().paymentUid?.startsWith('dev-payment-');
-    },{timeout:20000});
+    let reservationSaved=false;
+    for(let attempt=0;attempt<100&&!reservationSaved;attempt++) {
+        reservationSaved=await page.evaluate(async()=>{
+            const snapshots=await Promise.all([10,11].map(time=>db.collection('reservations').doc(buildSlotLockId(currentCenter,'2030-11-04',2,time)).get()));
+            return snapshots.every(snap=>snap.exists && (window.__TRANSFER_ONLY_TEST__ ? snap.data().paymentUid==='TRANSFER' : snap.data().paymentUid?.startsWith('dev-payment-')));
+        });
+        if(!reservationSaved)await new Promise(resolve=>setTimeout(resolve,200));
+    }
+    assert.ok(reservationSaved,'Both synthetic slots must be saved; dialogs='+JSON.stringify(dialogs));
     const result=await page.evaluate(()=>({events:DEV_EVENTS,keys:Object.keys(localStorage),project:firebaseApp.options.projectId}));
-    for(const kind of ['payment-mock','refund-mock','sms-mock','notification-mock','oauth-mock'])assert.ok(result.events.some(x=>x.kind===kind),kind);
+    for(const kind of [...(transferOnly?[]:['payment-mock']),'refund-mock','sms-mock','notification-mock','oauth-mock'])assert.ok(result.events.some(x=>x.kind===kind),kind);
+    let transferResult;
+    if(transferOnly) {
+        transferResult=await page.evaluate(async()=>{
+            const rows=await Promise.all([10,11].map(async time=>(await db.collection('reservations').doc(buildSlotLockId(currentCenter,'2030-11-04',2,time)).get()).data()));
+            if(rows.some(row=>!row))throw Error('Missing synthetic reservation: '+JSON.stringify({center:currentCenter,rows,all:(await db.collection('reservations').get()).docs.map(doc=>({id:doc.id,...doc.data()}))}));
+            return {statuses:rows.map(row=>row.status),paymentUids:rows.map(row=>row.paymentUid),pgMockCalls:DEV_EVENTS.filter(event=>event.kind==='payment-mock').length,cardVisible:document.getElementById('mthPay').style.display!=='none',method:currentPayMethod};
+        });
+        assert.deepEqual(transferResult.statuses,['PENDING','PENDING']);assert.deepEqual(transferResult.paymentUids,['TRANSFER','TRANSFER']);assert.equal(transferResult.pgMockCalls,0);assert.equal(transferResult.cardVisible,false);
+    }
     await page.evaluate(async()=>{const cache=await caches.open('old-development-fixture');await cache.put('/fixture',new Response('synthetic'));});
     await page.reload({waitUntil:'load'});
     await page.waitForFunction(()=>typeof currentUser!=='undefined' && currentUser?.name==='가상회원');
     await page.waitForFunction(()=>DEV_EVENTS.some(x=>x.kind==='emulators-ready'));
+    if(transferOnly) {
+        const policy=await page.evaluate(async()=>{
+            document.getElementById('hiddenDate').value='2030-11-05';selected=[{c:3,t:10},{c:3,t:11}];
+            await openBook();return {card:document.getElementById('mthPay').style.display,method:currentPayMethod,enabled:useCardPay};
+        });
+        assert.deepEqual(policy,{card:'none',method:'TRANSFER',enabled:false});
+    }
     assert.deepEqual(await page.evaluate(()=>caches.keys()),[]);
     // Native browser transports are denied by CSP, independently of the fetch wrapper.
     const csp=await page.evaluate(async()=>{
@@ -161,6 +192,6 @@ try {
     assert.deepEqual(violations,[],'External browser request attempted');
     assert.deepEqual(errors,[],'Page JavaScript errors');
     await fs.mkdir('dev/artifacts',{recursive:true});
-    await fs.writeFile('dev/artifacts/'+(usePages?'pages-browser-report.json':'browser-report.json'),JSON.stringify({passed:true,runtime:usePages?'Cloudflare workerd':'Node harness',requests,violations,errors,sdk,pricingReadiness,events:result.events,offlineStopped:true,csp,unknownRequests,cacheCleared:true,unprefixedAdminIgnored:true},null,2));
+    await fs.writeFile('dev/artifacts/'+(transferOnly?'transfer-browser-report.json':usePages?'pages-browser-report.json':'browser-report.json'),JSON.stringify({passed:true,runtime:usePages?'Cloudflare workerd':'Node harness',requests,violations,errors,sdk,pricingReadiness,transferResult,events:result.events,offlineStopped:true,csp,unknownRequests,cacheCleared:true,unprefixedAdminIgnored:true},null,2));
     console.log('PASS: synthetic Auth / Firestore / Storage / booking / mocks / session restore / offline stop; external requests: 0');
 } finally {await browser?.close();await closeServer();}

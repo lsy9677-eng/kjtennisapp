@@ -29,7 +29,7 @@ try {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password, returnSecureToken: true }) });
 }
 await document('users', account.localId, { email, name: '가상회원', phone: '000-0000-0000', isCitizen: false, verifStatus: 'NONE', isAdmin: false, fixture: true });
-await document('settings', 'global', { prices: [1000,2000,3000,4000,5000,6000,7000,8000], adminPhone: '000-0000-0000', bankName: '가상은행', bankAccount: 'DEV-ONLY-NOT-AN-ACCOUNT', useCardPay: true, isCenterOpen: true, dayStartHour: 7, nightStartHour: 19 });
+await document('settings', 'global', { prices: [1000,2000,3000,4000,5000,6000,7000,8000], adminPhone: '000-0000-0000', bankName: '가상은행', bankAccount: 'DEV-ONLY-NOT-AN-ACCOUNT', useCardPay: process.argv.includes('--card-enabled'), isCenterOpen: true, dayStartHour: 7, nightStartHour: 19 });
 await document('settings', 'app_version', { ver: 7 });
 await document('settings', 'seasonalPricing', { list: [{ start: '2026-01-01', end: '2030-12-31', nightStart: 19, dayPrice: 111, nightPrice: 222 }] });
 await document('settings', 'automation_policy', { loginNoticeEnabled: false, bookingConsentEnabled: true });

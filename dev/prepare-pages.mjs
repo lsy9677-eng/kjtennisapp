@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { root, resolveTool } from './tools.mjs';
 import { localCSP } from './server.mjs';
+import { copyPublicAssets } from './pages-assets.mjs';
 export function isolatedToolEnvironment() {
     const artifacts=path.join(root,'dev/artifacts');
     // Never inherit service credentials, Node preload hooks or user Wrangler/Firebase configuration.
@@ -16,10 +17,11 @@ export function isolatedToolEnvironment() {
 }
 export async function preparePages(development=true) {
     const dest=path.join(root,'dev/artifacts',development?'pages-development':'pages-production');
+    if (path.dirname(dest)!==path.join(root,'dev/artifacts') || !['pages-development','pages-production'].includes(path.basename(dest))) throw new Error('Invalid local stage');
+    await fs.rm(dest,{recursive:true,force:true});
     await fs.mkdir(dest,{recursive:true});
     // Allow list excludes node_modules, dev/, tests/, package files and credential files.
-    for(const item of ['index.html','js','css','sw.js','reset-cache.html','manifest.json','court_map.jpg','abc-192.png','abc-512.png','.well-known','_headers'])
-        await fs.cp(path.join(root,item),path.join(dest,item),{recursive:true});
+    await copyPublicAssets(dest);
     if(development) {
         await fs.mkdir(path.join(dest,'vendor'),{recursive:true});
         for(const name of ['app','auth','firestore','storage'])await fs.copyFile(resolveTool('node_modules/firebase/firebase-'+name+'-compat.js'),path.join(dest,'vendor/firebase-'+name+'-compat.js'));

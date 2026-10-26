@@ -46,6 +46,7 @@ async function refreshBookingPrice() {
             configuredPrices.some(value => typeof value !== 'number' || !Number.isFinite(value) || value < 0)) {
             throw new Error('요금표를 확인할 수 없습니다.');
         }
+        syncBookingPaymentAvailability();
         const seasons = await loadSeasonalPricings();
         if (seasons === null) throw new Error('계절 설정을 불러오지 못했습니다.');
         if (request !== bookingPriceState.request) return false;
@@ -98,7 +99,18 @@ function updateBookingSubmitAvailability() {
     btn.style.pointerEvents = enabled ? 'auto' : 'none';
 }
 
+function isCardPaymentEnabled() {
+    return typeof useCardPay !== 'undefined' && useCardPay === true;
+}
+
+function syncBookingPaymentAvailability() {
+    const card = document.getElementById('mthPay');
+    if (card) card.style.display = isCardPaymentEnabled() ? 'block' : 'none';
+    if (!isCardPaymentEnabled()) setPayMethod('TRANSFER');
+}
+
 function setPayMethod(m) {
+    if (m === 'PAY' && !isCardPaymentEnabled()) m = 'TRANSFER';
     currentPayMethod = m;
 
     const payTab = document.getElementById('mthPay');
@@ -340,6 +352,12 @@ function openBook() {
         if (!isBookingPriceReady()) {
             updateBookingSubmitAvailability();
             alert('요금 설정 확인이 끝난 뒤 다시 시도해주세요.');
+            return;
+        }
+        if (currentPayMethod !== 'TRANSFER' && !isCardPaymentEnabled()) {
+            setPayMethod('TRANSFER');
+            syncBookingPaymentAvailability();
+            alert('현재 카드 결제는 사용할 수 없습니다. 계좌이체로 진행해주세요.');
             return;
         }
         if(isAdmin && confirm("관리자 권한으로 결제 없이 예약하시겠습니까?")) { saveBook("ADMIN"); return; }

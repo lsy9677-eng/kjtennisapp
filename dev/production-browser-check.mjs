@@ -6,10 +6,12 @@ import { execFileSync } from 'node:child_process';
 import { root } from './tools.mjs';
 process.env.PLAYWRIGHT_BROWSERS_PATH=path.join(root,'dev/artifacts/browsers');
 const {chromium}=await import('playwright');
+const assetRoot=process.env.KJ_PRODUCTION_ASSET_ROOT?path.resolve(process.env.KJ_PRODUCTION_ASSET_ROOT):root;
+if(assetRoot!==root&&assetRoot!==path.join(root,'dist'))throw new Error('Unexpected production asset root');
 const baseline=execFileSync('git',['show','3b5bb59:js/config.js'],{encoding:'utf8',cwd:root});
-const candidate=await fs.readFile(path.join(root,'js/config.js'),'utf8');
-const environment=await fs.readFile(path.join(root,'js/environment.js'),'utf8');
-const connection=await fs.readFile(path.join(root,'js/firebase-environment.js'),'utf8');
+const candidate=await fs.readFile(path.join(assetRoot,'js/config.js'),'utf8');
+const environment=await fs.readFile(path.join(assetRoot,'js/environment.js'),'utf8');
+const connection=await fs.readFile(path.join(assetRoot,'js/firebase-environment.js'),'utf8');
 const origin='https://tenniskj-app.pages.dev';
 const uid='synthetic-session-user', email='session@example.invalid';
 const now=Math.floor(Date.now()/1000);
@@ -34,8 +36,8 @@ try {
         fulfilled.push({url:req.url(),method:req.method()});
         // Every request is fulfilled or aborted here, including all SDK endpoints; never route.continue().
         if(fullInitialization) {
-            if(url.origin===origin && url.pathname==='/full-init')return route.fulfill({contentType:'text/html',body:await fs.readFile(path.join(root,'index.html'),'utf8')});
-            if(url.origin===origin && /^\/js\/[a-z-]+\.js$/.test(url.pathname))return route.fulfill({contentType:'text/javascript',body:await fs.readFile(path.join(root,url.pathname.slice(1)))});
+            if(url.origin===origin && url.pathname==='/full-init')return route.fulfill({contentType:'text/html',body:await fs.readFile(path.join(assetRoot,'index.html'),'utf8')});
+            if(url.origin===origin && /^\/js\/[a-z-]+\.js$/.test(url.pathname))return route.fulfill({contentType:'text/javascript',body:await fs.readFile(path.join(assetRoot,url.pathname.slice(1)))});
             if(url.hostname==='www.gstatic.com' && url.pathname.endsWith('firebase-app-compat.js'))return route.fulfill({contentType:'text/javascript',body:await fs.readFile(path.join(root,'tests/fixtures/firebase-init-stub.js'),'utf8')});
             if(req.resourceType()==='script' && ['www.gstatic.com','cdn.iamport.kr','t1.kakaocdn.net','cdn.jsdelivr.net','www.google.com'].includes(url.hostname))return route.fulfill({contentType:'text/javascript',body:''});
             if(req.resourceType()==='stylesheet')return route.fulfill({contentType:'text/css',body:''});
@@ -98,7 +100,7 @@ try {
         return !document.getElementById('btnDoPay').disabled && __INIT_FIXTURE.payments===0 && __INIT_FIXTURE.writes===0;
     });
     assert.equal(coldStartRecovered,true);assert.deepEqual(errors,[]);assert.deepEqual(denied,[]);
-    await fs.writeFile(path.join(root,'dev/artifacts/production-browser-report.json'),JSON.stringify({passed:true,sessionRestored:true,configurationUnchanged:true,developmentMocksAbsent:true,fullInitialization:true,coldStartRecovered,recovery,fulfilled,denied,externalNetwork:0},null,2));
+    await fs.writeFile(path.join(root,'dev/artifacts/'+(assetRoot===root?'production-browser-report.json':'release-production-browser-report.json')),JSON.stringify({passed:true,sessionRestored:true,configurationUnchanged:true,developmentMocksAbsent:true,fullInitialization:true,coldStartRecovered,recovery,fulfilled,denied,externalNetwork:0},null,2));
     console.log('PASS: full production-mode HTML initialization, settings failure/retry and payment-button recovery; zero writes/payments; all requests memory-only');
     console.log('PASS: baseline Firebase SDK session restored by candidate; default app/config/raw storage preserved; production mocks absent; all requests memory-only');
 } finally {await browser.close();}
