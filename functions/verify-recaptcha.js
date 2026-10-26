@@ -1,8 +1,11 @@
+import { developmentResponse } from './_lib/environment.js';
 // Cloudflare Pages Function
 // 파일 위치: /functions/verify-recaptcha.js
 // 역할: 브라우저에서 받은 reCAPTCHA 토큰을 Google 서버에서 서버 검증
 
 export async function onRequestPost(context) {
+    const isolated = developmentResponse(context, 'recaptcha');
+    if (isolated) return isolated;
     try {
         const body = await context.request.json();
         const token = body.token;
@@ -46,7 +49,9 @@ export async function onRequestPost(context) {
 }
 
 // CORS preflight 처리
-export async function onRequestOptions() {
+export async function onRequestOptions(context) {
+    const isolated = developmentResponse(context, 'recaptcha');
+    if (isolated) return isolated;
     return new Response(null, {
         headers: {
             'Access-Control-Allow-Origin': '*',

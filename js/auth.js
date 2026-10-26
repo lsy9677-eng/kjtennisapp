@@ -134,6 +134,7 @@
     }
 
     async function startGoogleLogin(mode = 'login') {
+        if (APP_ENV.isDevelopment) return window.devLogin('google');
         try {
             const provider = new firebase.auth.GoogleAuthProvider();
             provider.setCustomParameters({ prompt: 'select_account' });
@@ -168,6 +169,7 @@
     }
 
     async function completeFirebaseRedirectLogin() {
+        if (APP_ENV.isDevelopment) return;
         try {
             const result = await auth.getRedirectResult();
             if (!result || !result.user) return;
@@ -189,6 +191,7 @@
     }
 
     function startKakaoLogin(mode = 'login') {
+        if (APP_ENV.isDevelopment) return window.devLogin('kakao');
         // Kakao JavaScript SDK v2에는 Kakao.Auth.login()이 없으므로
         // Cloudflare Pages Function(/kakao-auth) 리다이렉트 방식으로 처리합니다.
         const nextUrl = window.location.origin + window.location.pathname;
@@ -214,6 +217,7 @@
     }
 
     async function completeKakaoLoginFromUrl() {
+        if (APP_ENV.isDevelopment) return;
         const payload = getKakaoHashPayload();
         if (!payload) return;
 
@@ -254,6 +258,7 @@
     }
 
     async function completeNaverLoginFromUrl() {
+        if (APP_ENV.isDevelopment) return;
         const payload = getNaverHashPayload();
         if (!payload || !payload.token) return;
 
@@ -274,6 +279,7 @@
     }
 
     function startNaverLogin(mode = 'login') {
+        if (APP_ENV.isDevelopment) return window.devLogin('naver');
         const nextUrl = window.location.origin + window.location.pathname;
         const authUrl = `${NAVER_AUTH_BASE}?action=start&mode=${encodeURIComponent(mode)}&next=${encodeURIComponent(nextUrl)}`;
         window.location.href = authUrl;

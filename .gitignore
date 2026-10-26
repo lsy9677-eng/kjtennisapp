@@ -1,0 +1,6 @@
+node_modules/
+.wrangler/
+*-debug.log
+dev/artifacts/
+.env*
+.dev.vars*

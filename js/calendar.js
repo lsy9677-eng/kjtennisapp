@@ -253,6 +253,10 @@ function applySavedWeatherImmediately(cacheObj) {
 }
 
 async function loadWeeklyWeather(forceRefresh = false) {
+    if (APP_ENV.isDevelopment) {
+        devEffect('weather-mock', { synthetic: true });
+        return { daily: { time: [], weathercode: [], temperature_2m_max: [], temperature_2m_min: [], precipitation_probability_max: [], wind_speed_10m_max: [] } };
+    }
     const CACHE_KEY = 'tenniskj_weather_v2';
     const CACHE_TIME = 3 * 60 * 60 * 1000;
 

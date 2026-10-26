@@ -3,6 +3,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
+<script src="./js/environment.js"></script>
 <meta content="light only" name="color-scheme"/>
 <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
 <title>김해시테니스협회</title>
@@ -15,16 +16,8 @@
 <meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"/>
 <meta content="#1e293b" name="theme-color"/>
 <link href="./css/app.bundle.css?v=20260621-step23" rel="stylesheet"/>
-<script src="https://cdn.iamport.kr/v1/iamport.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-storage-compat.js"></script>
-<script src="https://t1.kakaocdn.net/kakao_js_sdk/2.7.0/kakao.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script async="" defer="" src="https://www.google.com/recaptcha/api.js"></script>
-<link as="style" crossorigin="" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" rel="stylesheet">
-</link>
+<script src="./js/sdk-loader.js"></script>
+
 <style id="mobile-booking-bar-draggable-style">
 /* v12.2 모바일 예약 하단바: 삼성 브라우저 호환 터치/클릭 접기·펼치기 */
 .mobile-booking-bar-handle{display:none;}
@@ -1047,6 +1040,7 @@
 <button class="btn-full bg-red" onclick="moveToCancelBoard()">취소 요청 게시글 작성하기</button>
 </div>
 </div>
+<script src="./js/firebase-environment.js"></script>
 <script src="./js/config.js?v=20260619-step20"></script>
 <script src="./js/utils.js?v=20260619-step20"></script>
 <script src="./js/policy-settings.js?v=20260716-policy-v1"></script>
@@ -1068,7 +1062,8 @@
 /* step10-admin-actions-extracted: doBulkReserve moved to ./js/admin-actions.js */
 // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
     /* step3-config-extracted: firebaseConfig, PORTONE_ID, 기본 상태값, CENTERS, HOLIDAYS are loaded from ./js/config.js */
-    firebase.initializeApp(firebaseConfig);
+    const firebaseApp = firebase.initializeApp(firebaseConfig, APP_ENV.isDevelopment ? 'kjtennis-development' : '[DEFAULT]');
+    connectDevelopmentEmulators(firebaseApp);
     
     // 카카오 SDK 초기화
     if (typeof Kakao !== 'undefined' && !Kakao.isInitialized()) {
@@ -1076,9 +1071,9 @@
         console.log('카카오 SDK 초기화 완료');
     }
 
-    const db = firebase.firestore();
-    const auth = firebase.auth();
-    const storage = firebase.storage();
+    const db = firebaseApp.firestore();
+    const auth = firebaseApp.auth();
+    const storage = firebaseApp.storage();
 
 
 
@@ -1315,6 +1310,7 @@ function doAppUpdate(btnElement) {
 
     // 1. DB에 주소가 있으면 거기로 이동 (현재는 비워두셨으니 패스)
     if(window.storeUrl && window.storeUrl.trim() !== "") {
+        if (APP_ENV.isDevelopment) { devEffect('navigation-mock', window.storeUrl); return; }
         window.location.href = window.storeUrl;
         return;
     }
@@ -1700,6 +1696,7 @@ function showNotification(title, body) {
 
 // 매일 저녁 8시에 체크 (주기적 실행)
 function startNotificationScheduler() {
+    if (APP_ENV.isDevelopment) { devEffect('notification-scheduler-mock', { hour: 20 }); return; }
     // 현재 시간 확인
     const now = new Date();
     const currentHour = now.getHours();
@@ -3829,7 +3826,7 @@ let scoreChart = null;
   window.syncAdminReservationEntry = syncAdminReservationEntry;
 })();
 </script>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script>if (APP_ENV.mode !== 'blocked') document.write('<script src="' + (APP_ENV.isDevelopment ? '/vendor/html2canvas.min.js' : 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js') + '"><\/script>');</script>
 <script>
 (function(){
   var appHistoryReady = false;

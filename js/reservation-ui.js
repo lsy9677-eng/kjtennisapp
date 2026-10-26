@@ -288,7 +288,7 @@ function shareMyReservation(method) {
     
     if (method === 'sms') {
         // 문자앱 직접 열기
-        window.location.href = `sms:?body=${encodeURIComponent(shareText)}`;
+        if (APP_ENV.isDevelopment) devEffect('sms-mock', `sms:?body=${encodeURIComponent(shareText)}`); else window.location.href = `sms:?body=${encodeURIComponent(shareText)}`;
     } else if (method === 'kakao') {
         // 카카오톡 직접 공유
         if (typeof Kakao === 'undefined' || !Kakao.isInitialized()) {

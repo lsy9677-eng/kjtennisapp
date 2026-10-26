@@ -1,4 +1,7 @@
+import { developmentResponse } from './_lib/environment.js';
 export const onRequestGet = async (context) => {
+    const isolated = developmentResponse(context, 'naver-oauth');
+    if (isolated) return isolated;
   const { request, env } = context;
   const url = new URL(request.url);
   const action = url.searchParams.get("action") || "start";

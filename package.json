@@ -1,0 +1,27 @@
+{
+  "name": "kjtennis-local-development",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node dev/server.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:browser": "node dev/browser-check.mjs",
+    "test:local": "node dev/verify-local.mjs",
+    "test:pages": "node dev/pages-check.mjs",
+    "test:pages:browser": "node dev/verify-local.mjs --pages",
+    "test:production": "node dev/production-browser-check.mjs",
+    "dev:pages": "node dev/pages-local.mjs",
+    "setup:tools": "node dev/setup-tools.mjs",
+    "seed": "node dev/seed.mjs",
+    "emulators": "node dev/run-emulators.mjs"
+  },
+  "devDependencies": {
+    "firebase": "9.6.1",
+    "chart.js": "4.5.1",
+    "html2canvas": "1.4.1",
+    "firebase-tools": "15.34.1",
+    "playwright": "1.58.2",
+    "wrangler": "4.152.0",
+    "miniflare": "5.20261019.2-beta"
+  }
+}

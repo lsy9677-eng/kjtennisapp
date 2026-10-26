@@ -462,7 +462,7 @@ ${d.timeSlots.length > 1 ? `📋 예약 내역 (${d.timeSlots.length}시간)\n${
     if (method === 'sms') {
         // 문자앱 직접 열기
         const encoded = encodeURIComponent(message);
-        window.location.href = `sms:?body=${encoded}`;
+        if (APP_ENV.isDevelopment) devEffect('sms-mock', `sms:?body=${encoded}`); else window.location.href = `sms:?body=${encoded}`;
     } else if (method === 'kakao') {
         // 카카오톡 직접 공유
         if (typeof Kakao === 'undefined' || !Kakao.isInitialized()) {
@@ -604,7 +604,7 @@ async function cancelSelectedMyRes() {
     const userName = currentUser ? currentUser.name : "회원";
     const msgBody = `[가승인 일괄 취소 요청]\n신청자: ${userName}\n총 ${targets.length}건 취소 요청합니다.\n\n${buildCancelDetailText(targets)}\n\n위 가승인 예약을 취소해 주세요.`;
     const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
-    location.href = `sms:${adminPhone}${isIOS ? '&' : '?'}body=${encodeURIComponent(msgBody)}`;
+    if (APP_ENV.isDevelopment) devEffect('sms-mock', `sms:${adminPhone}${isIOS ? '&' : '?'}body=${encodeURIComponent(msgBody)}`); else location.href = `sms:${adminPhone}${isIOS ? '&' : '?'}body=${encodeURIComponent(msgBody)}`;
 }
 
 async function cancelMyRes(id, date, time, status, court) {
@@ -626,7 +626,7 @@ async function cancelMyRes(id, date, time, status, court) {
     const adminPhone = await getAdminPhoneNumber();
     const msgBody = `[가승인 취소 요청]\n\n신청자: ${currentUser ? currentUser.name : '회원'}\n${buildCancelDetailText([target])}\n\n위 가승인 예약을 취소해 주세요.`;
     const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
-    location.href = `sms:${adminPhone}${isIOS ? '&' : '?'}body=${encodeURIComponent(msgBody)}`;
+    if (APP_ENV.isDevelopment) devEffect('sms-mock', `sms:${adminPhone}${isIOS ? '&' : '?'}body=${encodeURIComponent(msgBody)}`); else location.href = `sms:${adminPhone}${isIOS ? '&' : '?'}body=${encodeURIComponent(msgBody)}`;
 }
 
 function openRefundPopup(targets) {

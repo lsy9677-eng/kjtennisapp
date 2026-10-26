@@ -647,7 +647,7 @@ function sendSmsToAdmin(name, phone, date, times, method, amount) {
         const smsLink = `sms:${admPh}${separator}body=${encodeURIComponent(msgBody)}`;
         
         // 5. 문자 앱 실행
-        location.href = smsLink;
+        if (APP_ENV.isDevelopment) devEffect('sms-mock', smsLink); else location.href = smsLink;
     }
 
 async function isWeekendOrHoliday(dateStr) {

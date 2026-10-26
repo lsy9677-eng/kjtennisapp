@@ -1,3 +1,4 @@
+import { developmentResponse } from './_lib/environment.js';
 // Cloudflare Pages Function: /kakao-auth
 // 목적: Kakao access token을 서버에서 검증한 뒤 Firebase Custom Token 발급
 // 배치 위치: functions/kakao-auth.js
@@ -273,6 +274,8 @@ async function handleCallback(request, env) {
 }
 
 export async function onRequest(context) {
+    const isolated = developmentResponse(context, 'kakao-oauth');
+    if (isolated) return isolated;
   const { request, env } = context;
 
   if (request.method === 'OPTIONS') return json({ ok: true });

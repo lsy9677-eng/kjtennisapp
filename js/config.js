@@ -13,6 +13,8 @@ var firebaseConfig = window.firebaseConfig = {
       appId: "1:783970944210:web:91d07da54028e6db5c990b"
     };
 
+if (APP_ENV.isDevelopment) window.firebaseConfig = firebaseConfig = APP_ENV.firebaseConfig;
+
 var PORTONE_ID = window.PORTONE_ID = "imp31773320";
     var adminPass = window.adminPass = "1234"; 
 var currentCenter = window.currentCenter = "국제"; // 기본값

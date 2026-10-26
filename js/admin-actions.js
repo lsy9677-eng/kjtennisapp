@@ -167,7 +167,7 @@ async function doGroupApprove() {
             
             const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
             const separator = isIOS ? '&' : '?';
-            location.href = `sms:${d.phone}${separator}body=${encodeURIComponent(msg)}`;
+            if (APP_ENV.isDevelopment) devEffect('sms-mock', `sms:${d.phone}${separator}body=${encodeURIComponent(msg)}`); else location.href = `sms:${d.phone}${separator}body=${encodeURIComponent(msg)}`;
         }
 
     } catch(err) {
@@ -785,7 +785,7 @@ async function processUserCancel(mode) {
     const msgBody = `[가승인 취소 요청]\n신청자: ${userName}\n\n${details}\n위 가승인 예약을 취소해 주세요.`;
 
     const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
-    location.href = `sms:${adminPhone}${isIOS ? '&' : '?'}body=${encodeURIComponent(msgBody)}`;
+    if (APP_ENV.isDevelopment) devEffect('sms-mock', `sms:${adminPhone}${isIOS ? '&' : '?'}body=${encodeURIComponent(msgBody)}`); else location.href = `sms:${adminPhone}${isIOS ? '&' : '?'}body=${encodeURIComponent(msgBody)}`;
 }
 
     function toggleBatchMode() {
@@ -1080,7 +1080,7 @@ function finishApprove(items) {
         
         const isIOS = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase());
         const separator = isIOS ? '&' : '?';
-        location.href = `sms:${target.phone}${separator}body=${encodeURIComponent(msg)}`;
+        if (APP_ENV.isDevelopment) devEffect('sms-mock', `sms:${target.phone}${separator}body=${encodeURIComponent(msg)}`); else location.href = `sms:${target.phone}${separator}body=${encodeURIComponent(msg)}`;
     }
 }
 
