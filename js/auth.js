@@ -66,7 +66,7 @@
         const birth = existing.birth || '';
         const joinedAt = existing.joinedAt || new Date();
 
-        await ref.set({
+        const profileUpdate = {
             email: email,
             name: name,
             phone: phone,
@@ -80,7 +80,14 @@
             providerUid: profile.providerUid || existing.providerUid || auth.currentUser.uid,
             socialType: 'naver',
             socialProviders: Object.assign({}, existing.socialProviders || {}, { naver: true })
-        }, { merge: true });
+        };
+        if (snap.exists) {
+            // Authentication/profile linking must never reset approval or administrator state.
+            delete profileUpdate.isCitizen;
+            delete profileUpdate.verifStatus;
+            delete profileUpdate.isAdmin;
+        }
+        await ref.set(profileUpdate, { merge: true });
     }
 
 

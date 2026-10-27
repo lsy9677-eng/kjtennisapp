@@ -1,3 +1,4 @@
+import { findNaverEmailAccount } from './_lib/naver-account.js';
 import { developmentResponse } from './_lib/environment.js';
 export const onRequestGet = async (context) => {
     const isolated = developmentResponse(context, 'naver-oauth');
@@ -137,43 +138,8 @@ async function handleCallback(request, env, url) {
 }
 
 async function findExistingUserUidByEmail(env, email) {
-  const accessToken = await getGoogleAccessToken(env);
-  const endpoint = `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(env.FIREBASE_PROJECT_ID)}/databases/(default)/documents:runQuery`;
-  const body = {
-    structuredQuery: {
-      from: [{ collectionId: 'users' }],
-      where: {
-        fieldFilter: {
-          field: { fieldPath: 'email' },
-          op: 'EQUAL',
-          value: { stringValue: email }
-        }
-      },
-      limit: 1
-    }
-  };
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(body)
-  });
-
-  const result = await response.json();
-  if (!response.ok) {
-    throw new Error(`Failed to query existing Firebase user document: ${JSON.stringify(result)}`);
-  }
-
-  const firstDoc = Array.isArray(result)
-    ? result.find((row) => row && row.document && row.document.name)
-    : null;
-  if (!firstDoc) return null;
-
-  const docName = firstDoc.document.name || '';
-  return docName.split('/').pop() || null;
+  const accessToken=await getGoogleAccessToken(env);
+  return findNaverEmailAccount({projectId:env.FIREBASE_PROJECT_ID,accessToken,email});
 }
 
 async function getGoogleAccessToken(env) {
@@ -183,7 +149,7 @@ async function getGoogleAccessToken(env) {
     iss: env.FIREBASE_CLIENT_EMAIL,
     sub: env.FIREBASE_CLIENT_EMAIL,
     aud: 'https://oauth2.googleapis.com/token',
-    scope: 'https://www.googleapis.com/auth/datastore',
+    scope: 'https://www.googleapis.com/auth/identitytoolkit',
     iat: now,
     exp: now + 3600,
   };

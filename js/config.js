@@ -421,8 +421,10 @@ function syncBookingAccessUI() {
     const state=document.getElementById('citizenBookingStatus');
     if(state){
         const user=currentUser;
-        state.textContent=!user?'로그인 후 인증 상태를 확인할 수 있습니다.':user.isCitizen?'김해시민 인증 적용 · 오늘부터 14일(2주) 예약 가능':user.verifStatus==='APPROVED'?'승인 기록 확인 필요 · 현재 7일(1주) 적용':user.verifStatus==='PENDING'?'시민 인증 심사 중 · 오늘부터 7일(1주) 예약 가능':'일반 회원 · 오늘부터 7일(1주) 예약 가능';
+        state.textContent=!user?'로그인 후 인증 상태를 확인할 수 있습니다.':user.isCitizen?'승인 완료 · 오늘부터 14일(2주) 예약 가능':user.verifStatus==='APPROVED'?'승인 기록 확인 필요 · 현재 7일(1주) 적용':user.verifStatus==='PENDING'?'시민 인증 심사 중 · 오늘부터 7일(1주) 예약 가능':'일반 회원 · 오늘부터 7일(1주) 예약 가능';
     }
+    const account=document.getElementById('citizenBookingAccount');
+    if(account)account.textContent=currentUser?.email ? '로그인 계정: '+currentUser.email : '';
     const button=document.getElementById('btnRefreshCitizenStatus');if(button)button.hidden=!currentUser;
 }
 async function refreshMyCitizenBookingStatus() {

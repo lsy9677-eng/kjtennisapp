@@ -3724,12 +3724,13 @@ let scoreChart = null;
 <div class="modal-win account-dialog settings-dialog">
 <button type="button" class="modal-close" aria-label="설정 닫기" onclick="closeModal('modalUserSettings')">×</button>
 <div class="modal-head">설정</div><p class="account-description">내 정보와 앱 사용 환경을 관리하세요.</p>
+<section class="citizen-booking-status" aria-labelledby="citizenStatusHeading"><h3 id="citizenStatusHeading">김해시민 인증 상태</h3><p id="citizenBookingAccount" class="citizen-status-account"></p><p id="citizenBookingStatus" role="status" aria-live="polite"></p><button id="btnRefreshCitizenStatus" type="button" onclick="refreshMyCitizenBookingStatus()">인증 상태 다시 확인</button></section>
 <section class="settings-section"><h3>내 정보</h3><div class="settings-fields">
 <div><label for="userSettingsName">이름</label><input id="userSettingsName" type="text" readonly/></div>
 <div><label for="userSettingsPhone">전화번호</label><input id="userSettingsPhone" type="text" readonly/></div>
 </div><label for="userSettingsAddr">주소</label><input id="userSettingsAddr" type="text" autocomplete="street-address"/>
 <details class="settings-detail"><summary>비밀번호 변경</summary><label for="userSettingsNewPw">새 비밀번호</label><input id="userSettingsNewPw" type="password" autocomplete="new-password" placeholder="변경할 때만 입력하세요"/><p>비밀번호는 6자 이상 입력해 주세요.</p></details>
-<section class="citizen-booking-status"><p id="citizenBookingStatus" role="status" aria-live="polite"></p><button id="btnRefreshCitizenStatus" type="button" onclick="refreshMyCitizenBookingStatus()">인증 상태 다시 확인</button></section><details class="settings-detail"><summary>김해시민 인증 재신청</summary><p>인증이 거절되었거나 주소가 변경된 경우 서류를 첨부해 주세요.</p><label for="userSettingsProof">인증 서류</label><input id="userSettingsProof" type="file" accept="image/*"/></details>
+<details class="settings-detail"><summary>김해시민 인증 재신청</summary><p>인증이 거절되었거나 주소가 변경된 경우 서류를 첨부해 주세요.</p><label for="userSettingsProof">인증 서류</label><input id="userSettingsProof" type="file" accept="image/*"/></details>
 <button type="button" class="account-primary" onclick="saveUserSettingsInfo()">변경사항 저장</button></section>
 <section class="settings-section"><h3>앱 사용 환경</h3>
 <div class="settings-preference"><div><label for="userNotificationToggle">예약 알림</label><p>내일 이용할 예약을 알려드려요.</p></div><label class="toggle-switch"><input id="userNotificationToggle" type="checkbox" onchange="toggleNotification()"/><span class="slider"></span></label></div>

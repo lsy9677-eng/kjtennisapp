@@ -5257,3 +5257,5 @@ body>header .association-logo{display:block;width:38px;height:38px;border-radius
 .citizen-booking-status p{font-size:12px;line-height:1.6;margin:0 0 8px;color:var(--court-ink,#24354c);}
 .citizen-booking-status button{border:1px solid #d4deec;border-radius:7px;background:var(--court-panel,#fff);color:var(--court-brand,#2563eb);padding:7px 10px;font:inherit;font-size:11px;cursor:pointer;}
 @media(max-width:600px){body>header .brand-lockup{padding-left:42px!important;}body>header .association-logo{width:34px;height:34px;border-radius:9px;}}
+
+.citizen-booking-status h3{font-size:13px;margin:0 0 8px;color:var(--court-ink,#24354c);}.citizen-booking-status .citizen-status-account{font-size:11px;color:var(--court-muted,#687a91);overflow-wrap:anywhere;margin:0 0 7px;}
