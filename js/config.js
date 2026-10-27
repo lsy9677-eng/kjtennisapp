@@ -381,3 +381,31 @@ function confirmCenterPublication(nextVisibility) {
         openModal('modalDeveloperUnlock');setTimeout(()=>document.getElementById('developerUnlockPassword').focus(),80);
     };
 })();
+
+var CENTER_WEATHER = {
+  "국제": {
+    "area": "김해시 삼문동",
+    "address": "경상남도 김해시 대청로 350",
+    "latitude": 35.2014444,
+    "longitude": 128.7980467
+  },
+  "능동": {
+    "area": "김해시 삼문동",
+    "address": "경상남도 김해시 삼문동 능동테니스장",
+    "latitude": 35.20269745,
+    "longitude": 128.79705321
+  },
+  "동부": {
+    "area": "김해시 삼방동",
+    "address": "경상남도 김해시 신어산길 44",
+    "latitude": 35.25539066,
+    "longitude": 128.90666278
+  },
+  "원도심": {
+    "area": "김해시 부원동",
+    "address": "경상남도 김해시 부원동 217-12",
+    "latitude": 35.2257089,
+    "longitude": 128.8913194
+  }
+};
+function getCenterWeather(center = currentCenter) { return CENTER_WEATHER[center] || CENTER_WEATHER['국제']; }

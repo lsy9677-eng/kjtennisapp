@@ -13,6 +13,7 @@ function changeCenter() {
     document.getElementById('selCnt').innerText = '0';
     document.getElementById('btnMainBook').disabled = true;
     updateBookingContext();
+    loadWeeklyWeather();
 
     // 1. 그리드 다시 그리기
     drawGrid();

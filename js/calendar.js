@@ -14,7 +14,7 @@ var calendarMonthsToRender = 4;
 /* step4-utils-extracted: getDatePartsFromStr / formatDateStrLocal are loaded from ./js/utils.js */
 
 function openNaverWeather() {
-    const url = 'https://search.naver.com/search.naver?query=' + encodeURIComponent('장유2동 날씨');
+    const url = 'https://search.naver.com/search.naver?query=' + encodeURIComponent(getCenterWeather().area + ' 날씨');
     window.open(url, '_blank', 'noopener,noreferrer');
 }
 
@@ -241,87 +241,64 @@ function markMyReservedDates(forceRefresh = false) {
    [속도 개선] 날씨 캐싱 시스템 (저장 후 즉시 로딩)
    ========================================= */
 let latestWeatherData = null;
-let weatherLoadPromise = null;
-
-function applySavedWeatherImmediately(cacheObj) {
-    if (!cacheObj || !cacheObj.data) return false;
-    latestWeatherData = cacheObj.data;
+let latestWeatherKey = '';
+const weatherRequests = new Map();
+function getWeatherCacheKey(center = currentCenter) {
+    const place = getCenterWeather(center);
+    return 'tenniskj_weather_v3_' + center + '_' + place.latitude + '_' + place.longitude;
+}
+function validWeatherData(data) {
+    const daily=data?.daily;
+    return !!daily && ['time','weathercode','temperature_2m_max','temperature_2m_min','precipitation_probability_max','wind_speed_10m_max'].every(key=>Array.isArray(daily[key]) && daily[key].length===daily.time.length) && daily.time.length>0;
+}
+function resetCenterWeather(key) {
+    if(latestWeatherKey === key) return;
+    latestWeatherKey = key;latestWeatherData = null;
+    document.querySelectorAll('.cal-weather').forEach(el=>el.replaceChildren());
+    const banner=document.getElementById('weatherBanner');if(banner)banner.style.display='none';
+}
+function applySavedWeatherImmediately(cacheObj, key = getWeatherCacheKey()) {
+    if(key!==getWeatherCacheKey() || !validWeatherData(cacheObj?.data))return false;
+    latestWeatherKey=key;latestWeatherData=cacheObj.data;
     applyWeatherToCalendar(cacheObj.data);
-    const curDate = document.getElementById('hiddenDate').value;
-    updateWeatherBanner(curDate, cacheObj.data);
+    updateWeatherBanner(document.getElementById('hiddenDate').value,cacheObj.data);
     return true;
 }
-
 async function loadWeeklyWeather(forceRefresh = false) {
+    const center=currentCenter, place=getCenterWeather(center), key=getWeatherCacheKey(center);
+    resetCenterWeather(key);
+    const banner=document.getElementById('weatherBanner');
+    if(banner){banner.title=CENTERS[center].name+' 주변 예보 · 네이버 '+place.area+' 날씨 보기';banner.setAttribute('aria-label',banner.title);}
     if (APP_ENV.isDevelopment) {
-        devEffect('weather-mock', { synthetic: true });
-        const daily = { time: [], weathercode: [], temperature_2m_max: [], temperature_2m_min: [], precipitation_probability_max: [], wind_speed_10m_max: [] };
-        for (let i = 0; i < 16; i++) {
-            const date = new Date(); date.setDate(date.getDate() + i);
-            daily.time.push(formatDateStrLocal(date));
-            daily.weathercode.push([1,0,3,61,0,2,1][i % 7]);
-            daily.temperature_2m_max.push(18 + i % 4);
-            daily.temperature_2m_min.push(9 + i % 3);
-            daily.precipitation_probability_max.push(i % 7 === 3 ? 60 : 10);
-            daily.wind_speed_10m_max.push(2);
+        devEffect('weather-mock', { synthetic:true, center });
+        const daily={time:[],weathercode:[],temperature_2m_max:[],temperature_2m_min:[],precipitation_probability_max:[],wind_speed_10m_max:[]};
+        for(let i=0;i<16;i++){
+            const date=new Date();date.setDate(date.getDate()+i);daily.time.push(formatDateStrLocal(date));
+            daily.weathercode.push([1,0,3,61,0,2,1][i%7]);daily.temperature_2m_max.push(18+i%4);daily.temperature_2m_min.push(9+i%3);daily.precipitation_probability_max.push(i%7===3?60:10);daily.wind_speed_10m_max.push(2);
         }
-        const data = { daily };
-        localStorage.setItem('tenniskj_weather_v2', JSON.stringify({ timestamp: Date.now(), data }));
-        applySavedWeatherImmediately({ data });
-        return data;
+        const data={daily};try{localStorage.setItem(key,JSON.stringify({timestamp:Date.now(),data}));}catch(_){}
+        applySavedWeatherImmediately({data},key);return data;
     }
-    const CACHE_KEY = 'tenniskj_weather_v2';
-    const CACHE_TIME = 3 * 60 * 60 * 1000;
-
-    const saved = localStorage.getItem(CACHE_KEY);
-    let parsed = null;
-
-    if (saved) {
-        try {
-            parsed = JSON.parse(saved);
-            applySavedWeatherImmediately(parsed);
-
-            const now = Date.now();
-            if (!forceRefresh && parsed.timestamp && (now - parsed.timestamp < CACHE_TIME)) {
-                return parsed.data;
-            }
-        } catch (e) {
-            console.error("캐시 오류", e);
-        }
-    } else if (latestWeatherData && !forceRefresh) {
-        applyWeatherToCalendar(latestWeatherData);
-        const curDate = document.getElementById('hiddenDate').value;
-        updateWeatherBanner(curDate, latestWeatherData);
-        return latestWeatherData;
+    let cached=null;
+    try{cached=JSON.parse(localStorage.getItem(key));}catch(_){}
+    if(cached && validWeatherData(cached.data)){
+        applySavedWeatherImmediately(cached,key);
+        if(!forceRefresh && cached.timestamp && Date.now()-cached.timestamp<3*60*60*1000)return cached.data;
     }
-
-    if (weatherLoadPromise && !forceRefresh) return weatherLoadPromise;
-
-    const lat = 35.15;
-    const lon = 128.80;
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max&timezone=auto&forecast_days=16&wind_speed_unit=ms`;
-
-    weatherLoadPromise = fetch(url)
-        .then(res => res.json())
-        .then(data => {
-            latestWeatherData = data;
-            const cacheObj = { timestamp: Date.now(), data };
-            localStorage.setItem(CACHE_KEY, JSON.stringify(cacheObj));
-            applyWeatherToCalendar(data);
-            const curDate = document.getElementById('hiddenDate').value;
-            updateWeatherBanner(curDate, data);
-            return data;
-        })
-        .catch(err => {
-            console.error("날씨 로딩 실패:", err);
-            if (parsed && parsed.data) return parsed.data;
-            throw err;
-        })
-        .finally(() => {
-            weatherLoadPromise = null;
-        });
-
-    return weatherLoadPromise;
+    if(weatherRequests.has(key))return weatherRequests.get(key);
+    const url='https://api.open-meteo.com/v1/forecast?latitude='+place.latitude+'&longitude='+place.longitude+'&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max&timezone=Asia%2FSeoul&forecast_days=16&wind_speed_unit=ms';
+    const request=fetch(url).then(response=>{
+        if(!response.ok)throw Error('날씨 조회 실패');return response.json();
+    }).then(data=>{
+        if(!validWeatherData(data))throw Error('날씨 응답 형식 오류');
+        const saved={timestamp:Date.now(),data};try{localStorage.setItem(key,JSON.stringify(saved));}catch(_){}
+        applySavedWeatherImmediately(saved,key);return data;
+    }).catch(error=>{
+        console.warn('날씨 로딩 실패:',error);
+        if(cached && validWeatherData(cached.data))return cached.data;
+        return null;
+    }).finally(()=>weatherRequests.delete(key));
+    weatherRequests.set(key,request);return request;
 }
 
 function applyWeatherToCalendar(data) {
@@ -409,9 +386,8 @@ function toggleCourtBoard() { toggleCalendar(); }
 function updateWeatherBanner(dateStr, weatherData) {
     // 데이터가 없으면 저장소에서 가져옴
     if(!weatherData) {
-        const saved = localStorage.getItem('tenniskj_weather_v2');
-        if(saved) weatherData = JSON.parse(saved).data;
-        else return;
+        if(latestWeatherKey===getWeatherCacheKey())weatherData=latestWeatherData;
+        if(!validWeatherData(weatherData)){document.getElementById('weatherBanner').style.display='none';return;}
     }
 
     const idx = weatherData.daily.time.indexOf(dateStr);
@@ -440,7 +416,7 @@ function updateWeatherBanner(dateStr, weatherData) {
     else if (code >= 80 && code <= 99) { icon = "☔"; text = "비/소나기"; }
 
     document.getElementById('wbIcon').innerText = icon;
-    document.getElementById('wbText').innerText = text + (APP_ENV.isDevelopment ? ' · 테스트 예보' : '');
+    document.getElementById('wbText').innerText = currentCenter + ' · ' + text + (APP_ENV.isDevelopment ? ' · 테스트 예보' : '');
     document.getElementById('wbTemp').innerText = `${minT}° / ${maxT}°`;
     document.getElementById('wbWind').innerText = `${windSpeed}m/s`;
     document.getElementById('wbRain').innerText = `${rainProb}%`;
