@@ -11,9 +11,12 @@ test('reservation save/query and payment-provider implementation remain exactly 
     assert.equal(core.slice(core.indexOf('async function saveBook(uid)')),base.slice(base.indexOf('async function saveBook(uid)')));
     assert.equal(core.slice(core.indexOf('        if(isAdmin && confirm')),base.slice(base.indexOf('        if(isAdmin && confirm')));
 });
-test('refund calculation is unchanged; only local SMS IO guards were added to its module',()=>{
+test('refund, cancellation and sharing logic remain unchanged outside list read/presentation changes',()=>{
     const stripped=source('js/my-reservations.js').replace(/if \(APP_ENV\.isDevelopment\) devEffect\('sms-mock', [^\n]+?\); else /g,'');
-    assert.equal(stripped,original('js/my-reservations.js'));
+    const withoutListReadAndRendering = value => value
+        .replace(/async function _getMyReservationDocs\(\) \{[\s\S]*?(?=function openMyResList\()/,'')
+        .replace(/async function loadMyResData\(isUpcoming\) \{[\s\S]*?(?=async function openDutchPayModal\()/,'');
+    assert.equal(withoutListReadAndRendering(stripped),withoutListReadAndRendering(original('js/my-reservations.js')));
     const helpers=source('js/booking-helpers.js');
     for(const fn of ['getSeasonalPricingMatch','getConfiguredPriceInfo','getMatrixPriceBySlot','getPriceForDate','calcPrice']){
         const start='function '+fn+'(';

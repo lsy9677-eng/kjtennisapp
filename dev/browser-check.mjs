@@ -46,6 +46,7 @@ try {
     assert.equal(await page.evaluate(()=>isAdmin),false,'Must ignore unprefixed administrator state');
     await page.click('#dev-login');
     await page.waitForFunction(()=>typeof currentUser!=='undefined' && currentUser?.name==='가상회원');
+    console.log('CHECK: login complete');
     const sdk=await page.evaluate(async()=>{
         const ref=db.collection('development_checks').doc('browser');
         await ref.set({synthetic:true});
@@ -60,6 +61,7 @@ try {
     assert.equal(sdk.project,'demo-kjtennis-local');assert.equal(sdk.authName,'kjtennis-development');
     assert.equal(sdk.data.synthetic,true);assert.equal(sdk.text,'SYNTHETIC ONLY');
     assert.ok(sdk.download.startsWith('http://127.0.0.1:9199/'));
+    console.log('CHECK: SDK read/write complete');
     const pricingReadiness=await page.evaluate(async()=>{
         const originalLoadConfig=loadConfig;
         const config=await loadConfig();await loadSeasonalPricings();
@@ -98,7 +100,10 @@ try {
         sendSmsToAdmin('가상회원','000-0000-0000','2030-11-04','2코트 10시','개발결제','1000');
         new Notification('개발 알림',{body:'발송하지 않음'});
     });
+    await page.locator('#dev-panel summary').click();
+    console.log('CHECK: pricing and mock transports complete');
     await page.click('#dev-refund');
+    await page.locator('#dev-panel summary').click();
     // Exercise unchanged payment + saveBook against synthetic Emulator documents only.
     await page.evaluate(async()=>{
         const date='2030-11-04';
@@ -119,6 +124,7 @@ try {
         } else setPayMethod('PAY');
         await doPay();
     });
+    console.log('CHECK: booking submitted');
     let reservationSaved=false;
     for(let attempt=0;attempt<100&&!reservationSaved;attempt++) {
         reservationSaved=await page.evaluate(async()=>{
@@ -140,6 +146,7 @@ try {
         assert.deepEqual(transferResult.statuses,['PENDING','PENDING']);assert.deepEqual(transferResult.paymentUids,['TRANSFER','TRANSFER']);assert.equal(transferResult.pgMockCalls,0);assert.equal(transferResult.cardVisible,false);
     }
     await page.evaluate(async()=>{const cache=await caches.open('old-development-fixture');await cache.put('/fixture',new Response('synthetic'));});
+    console.log('CHECK: checking session restore');
     await page.reload({waitUntil:'load'});
     await page.waitForFunction(()=>typeof currentUser!=='undefined' && currentUser?.name==='가상회원');
     await page.waitForFunction(()=>DEV_EVENTS.some(x=>x.kind==='emulators-ready'));
@@ -151,6 +158,7 @@ try {
         assert.deepEqual(policy,{card:'none',method:'TRANSFER',enabled:false});
     }
     assert.deepEqual(await page.evaluate(()=>caches.keys()),[]);
+    console.log('CHECK: session restored');
     // Native browser transports are denied by CSP, independently of the fetch wrapper.
     const csp=await page.evaluate(async()=>{
         const blocked=[];

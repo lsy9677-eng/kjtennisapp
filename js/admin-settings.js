@@ -83,6 +83,8 @@
 /* step8: renderPostItem moved to ./js/board.js */
 
 async function saveSet() {
+    const nextCenterVisibility = readCenterVisibilitySettings();
+    if (!confirmCenterPublication(nextCenterVisibility)) return;
     const btn = document.getElementById('btnSaveSet');
     btn.innerText = "저장 중...";
     btn.disabled = true;
@@ -109,7 +111,9 @@ async function saveSet() {
             bankName: document.getElementById('setBank').value.trim(),
             bankAccount: document.getElementById('setAcc').value.trim(),
             useCardPay: useCard,
-isCenterOpen: document.getElementById('setOpenCenter').checked 
+            isCenterOpen: document.getElementById('setOpenCenter').checked,
+            centerVisibility: nextCenterVisibility,
+            centerPublicationApprovals: Object.fromEntries(Object.keys(CENTERS).map(id => [id, nextCenterVisibility[id] === true]))
         };
         
         const newPass = document.getElementById('setPw').value.trim();
@@ -548,6 +552,7 @@ function chkAdmin() {
 
 /* [수정] 설정창 열기 (월간 통계 영역 추가) */
 function openConf() {
+    renderCenterVisibilitySettings();
     const body = document.getElementById('tblBody'); 
     body.innerHTML = "";
     

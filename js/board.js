@@ -23,8 +23,9 @@ function openWrite() {
     document.getElementById('chkNotice').checked = false;
     
     // 입력창 비우기
-    document.getElementById('pstCat').value = "자유";
+    document.getElementById('pstCat').value = "기타";
     document.getElementById('pstTitle').value = "";
+    document.getElementById('pstFile').value = "";
     document.getElementById('pstContent').value = "";
     document.getElementById('pstPwd').value = "";
     
@@ -139,6 +140,7 @@ function openEditForm() {
     closeModal('modalView'); 
     
     editTargetId = currPostId;
+    document.getElementById('pstFile').value = "";
     document.querySelector('#modalWrite .modal-head').innerText = "글 수정하기";
     document.querySelector('#modalWrite .btn-full').innerText = "수정 저장";
 
@@ -158,6 +160,7 @@ function openEditForm() {
     if(isAdmin) noticeOpt.style.display = 'block';
     else noticeOpt.style.display = 'none';
 
+    toggleFileBox();
     openModal('modalWrite');
 }
 
@@ -187,7 +190,7 @@ function loadPosts(isPageMove = false) {
     }
 
     fixedNoticeIds.clear();
-    list.innerHTML = "<div style='text-align:center; padding:20px;'>로딩중...</div>";
+    renderListState(list, {kind:'loading',title:'게시글을 불러오고 있어요',detail:'잠시만 기다려 주세요.'});
 
     // 게시글 전체 개수 계산용 전체 get()은 읽기 과금이 커서 제거합니다.
     const noticePromise = db.collection("posts")
@@ -226,18 +229,20 @@ function loadPosts(isPageMove = false) {
                 fixedNoticeIds.add(d.id);
             });
 
+            if (fixedNoticeIds.size === 0) renderListState(list, {kind:'loading',title:'게시글을 불러오고 있어요',detail:'잠시만 기다려 주세요.'});
             fetchNormalPosts(list, loadSeq, activeFilter);
         })
         .catch(err => {
             if (loadSeq !== boardLoadSeq) return;
             console.error('공지글 로딩 실패:', err);
             list.innerHTML = "";
-            fetchNormalPosts(list, loadSeq, activeFilter);
+            renderListState(list, {kind:'loading',title:'게시글을 불러오고 있어요',detail:'잠시만 기다려 주세요.'});
+            fetchNormalPosts(list, loadSeq, activeFilter, true);
         });
 }
 
 // ===== fetchNormalPosts =====
-function fetchNormalPosts(list, loadSeq, activeFilter) {
+function fetchNormalPosts(list, loadSeq, activeFilter, noticeFailed = false) {
     let query = db.collection("posts");
 
     if (activeFilter !== 'all') {
@@ -257,6 +262,9 @@ function fetchNormalPosts(list, loadSeq, activeFilter) {
             boardPageSnapshots[boardCurrentPage - 1] = snap.docs[snap.docs.length - 1];
         }
 
+        list.querySelectorAll('.app-list-state').forEach(state => state.remove());
+        list.setAttribute('aria-busy','false');list.dataset.listState = 'ready';
+        if (noticeFailed) renderListState(list, {kind:'error',title:'공지사항을 불러오지 못했어요',detail:'아래 게시글은 확인할 수 있어요. 공지사항은 다시 불러와 주세요.',actionLabel:'다시 불러오기',action:() => loadPosts(true),append:true});
         let renderedCount = 0;
         snap.forEach(doc => {
             if (fixedNoticeIds.has(doc.id)) return;
@@ -264,15 +272,17 @@ function fetchNormalPosts(list, loadSeq, activeFilter) {
             renderedCount++;
         });
 
-        if (fixedNoticeIds.size === 0 && renderedCount === 0) {
-            list.innerHTML = "<p style='text-align:center;color:#b2bec3;margin-top:20px;'>작성된 글이 없습니다.</p>";
+        if (!noticeFailed && fixedNoticeIds.size === 0 && renderedCount === 0) {
+            renderListState(list, {kind:'empty',title:'아직 게시글이 없어요',detail:activeFilter === 'all' ? '궁금한 점이나 요청사항을 남겨 주세요.' : '선택한 분류에 등록된 글이 없어요.',actionLabel:'문의 작성',action:() => openWrite()});
         }
 
         updateBoardPageUI(snap.size);
 
     }).catch(err => {
         if (loadSeq !== boardLoadSeq) return;
-        handleIndexError(err, list);
+        console.error('게시글 로딩 실패:',err);
+        updateBoardPageUI(0);
+        renderListState(list, {kind:'error',title:'게시글을 불러오지 못했어요',detail:'연결 상태를 확인한 뒤 다시 시도해 주세요.',actionLabel:'다시 불러오기',action:() => loadPosts(true),append:fixedNoticeIds.size > 0});
     });
 }
 
@@ -504,29 +514,31 @@ async function saveComment() {
 
 // ===== loadComments =====
 function loadComments() {
-        const list = document.getElementById('commentList');
-        list.innerHTML = "로딩중...";
-        
-        db.collection("posts").doc(currPostId).collection("comments").orderBy("at", "asc").get()
-        .then(snap => {
-            list.innerHTML = "";
-            if(snap.empty) { list.innerHTML = "<div style='padding:10px; color:#aaa; text-align:center;'>첫 댓글을 남겨보세요.</div>"; return; }
-            
-            snap.forEach(doc => {
-                const c = doc.data();
-                const div = document.createElement('div');
-                div.className = "cmt-item";
-                div.innerHTML = `
-                    <div>
-                        <div class="cmt-info">${c.name}</div>
-                        <div class="cmt-txt">${c.text}</div>
-                    </div>
-                    <div class="cmt-del" onclick="deleteComment('${doc.id}', '${c.pwd}')">삭제</div>
-                `;
-                list.appendChild(div);
-            });
+    const list = document.getElementById('commentList');
+    const postId = currPostId;
+    const seq = window.__commentListSeq = (window.__commentListSeq || 0) + 1;
+    renderListState(list,{kind:'loading',title:'댓글을 불러오고 있어요',detail:'잠시만 기다려 주세요.'});
+    db.collection('posts').doc(postId).collection('comments').orderBy('at','asc').get().then(snap => {
+        if (postId !== currPostId || seq !== window.__commentListSeq) return;
+        list.replaceChildren();list.dataset.listState='ready';list.setAttribute('aria-busy','false');
+        if (snap.empty) {
+            renderListState(list,{kind:'empty',title:'아직 댓글이 없어요',detail:'첫 댓글을 남겨 보세요.',actionLabel:'댓글 쓰기',action:()=>document.getElementById('cmtTxt').focus()});return;
+        }
+        snap.forEach(doc => {
+            const comment=doc.data(),row=document.createElement('div');row.className='cmt-item';
+            const body=document.createElement('div'),name=document.createElement('div'),text=document.createElement('div');
+            name.className='cmt-info';name.textContent=comment.name;
+            text.className='cmt-txt';text.textContent=comment.text;
+            body.append(name,text);
+            const remove=document.createElement('button');remove.type='button';remove.className='cmt-del';remove.textContent='삭제';remove.onclick=()=>deleteComment(doc.id,comment.pwd);
+            row.append(body,remove);list.append(row);
         });
-    }
+    }).catch(error => {
+        if (postId !== currPostId || seq !== window.__commentListSeq) return;
+        console.error('댓글 로딩 실패:',error);
+        renderListState(list,{kind:'error',title:'댓글을 불러오지 못했어요',detail:'잠시 후 다시 시도해 주세요.',actionLabel:'다시 불러오기',action:()=>loadComments()});
+    });
+}
 
 // ===== deleteComment =====
 async function deleteComment(cmtId, originPwd) {

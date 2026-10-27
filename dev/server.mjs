@@ -36,10 +36,10 @@ export function createLocalServer() {
                 res.writeHead(result.status, Object.fromEntries(result.headers)); res.end(await result.text()); return;
             }
             const name = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
-            const permitted = /^(js\/[a-z-]+\.js|css\/app\.bundle\.css|index\.html|manifest\.json|court_map\.jpg|abc-(192|512)\.png)$/.test(name);
+            const permitted = /^(assets\/(neungdong|dongbu|oldtown)-map\.svg|js\/[a-z-]+\.js|css\/app\.bundle\.css|index\.html|manifest\.json|court_map\.jpg|abc-(192|512)\.png)$/.test(name);
             const target = vendors[url.pathname] || (permitted ? name : null);
             if (!target) { res.writeHead(404); res.end('Not found'); return; }
-            const types = { '.js': 'text/javascript; charset=utf-8', '.html': 'text/html; charset=utf-8', '.json': 'application/json', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg' };
+            const types = { '.svg': 'image/svg+xml; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.html': 'text/html; charset=utf-8', '.json': 'application/json', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg' };
             res.setHeader('Content-Type', types[path.extname(target)] || 'application/octet-stream');
             res.end(await fs.readFile(path.join(root, target)));
         } catch (err) { res.writeHead(503); res.end('Local dependency unavailable: ' + err.code); }

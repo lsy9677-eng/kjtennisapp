@@ -5,14 +5,21 @@
  */
 
 function changeCenter() {
-    currentCenter = document.getElementById('centerSel').value;
-    
+    const requestedCenter = document.getElementById('centerSel').value;
+    currentCenter = canSelectCenter(requestedCenter, isAdmin) ? requestedCenter : '국제';
+    document.getElementById('centerSel').value = currentCenter;
+    // Never carry a time/court selection into a different venue.
+    selected = [];
+    document.getElementById('selCnt').innerText = '0';
+    document.getElementById('btnMainBook').disabled = true;
+    updateBookingContext();
+
     // 1. 그리드 다시 그리기
-    drawGrid(); 
-    
+    drawGrid();
+
     // 2. 데이터 다시 불러오기
-    loadDB(); 
-    
+    loadDB();
+
     // 3. 리스트 뷰 갱신
     if(document.getElementById('view-list').classList.contains('active')) {
         loadAllRes('general');
@@ -33,22 +40,23 @@ function changeCenter() {
 function drawGrid() {
     const tbl = document.getElementById('schTable');
     let h = `<div class="corner">코트</div>`;
-    
+
     for(let t=6; t<22; t++) {
         h += `<div class="cell head-time">${String(t).padStart(2,'0')}~${String(t+1).padStart(2,'0')}</div>`;
     }
-    
-    const maxCourts = CENTERS[currentCenter].courts; 
+
+    const maxCourts = CENTERS[currentCenter].courts;
 
     for(let c=1; c <= maxCourts; c++) {
-        h += `<div class="cell head-court" id="row-head-${c}" onclick="showMap(${c})" title="배치도 보기">${c}코트 <span style="font-size:0.7rem; margin-left:2px;">🔍</span></div>`;
-        
+        h += `<div class="cell head-court" id="row-head-${c}" onclick="showMap(${c})" title="배치도 보기">${c}코트 <svg class="ui-icon court-location-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg></div>`;
+
         for(let t=6; t<22; t++) {
             h += `<div class="cell data-cell row-cell-${c}" id="c-${c}-${t}" data-c="${c}" data-t="${t}"></div>`;
         }
     }
-    
+
     tbl.innerHTML = h;
+    updateBookingContext();
 
     // [중요] 클릭 감지기를 여기서 중복 없이 한 번만 설정합니다.
     const gridArea = document.getElementById('gridArea');
@@ -144,25 +152,25 @@ function updateMyReservations() {
         document.getElementById('myReservationCard').style.display = 'none';
         return;
     }
-    
+
     const currentDate = document.getElementById('hiddenDate').value;
     const myPhone = currentUser.phone;
     const maxCourts = CENTERS[currentCenter].courts;
-    
+
     let myReservations = [];
-    
+
     // 모든 셀을 순회하며 내 예약 찾기
     for (let t = 6; t < 22; t++) {
         for (let c = 1; c <= maxCourts; c++) {
             const cell = document.getElementById(`c-${c}-${t}`);
             if (!cell) continue;
-            
+
             // 내 예약인지 확인
             if (_reservationUiCellIsMine(cell)) {
-                const isBooked = cell.classList.contains('booked') || 
-                               cell.classList.contains('fixed') || 
+                const isBooked = cell.classList.contains('booked') ||
+                               cell.classList.contains('fixed') ||
                                cell.classList.contains('pending');
-                
+
                 if (isBooked) {
                     myReservations.push({
                         court: c,
@@ -170,13 +178,13 @@ function updateMyReservations() {
                         name: cell.dataset.info || '예약',
                         status: cell.dataset.status
                     });
-                    
+
                     // ▼▼▼ [개선] 내 예약 셀에 노란색 배경 + 테두리 ▼▼▼
                     cell.style.background = 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)';
                     cell.style.boxShadow = '0 0 0 3px #fbbf24, 0 4px 12px rgba(251, 191, 36, 0.3)';
                     cell.style.transform = 'scale(1.02)';
                     cell.style.zIndex = '5';
-                    
+
                     // orb 스타일도 변경
                     const orb = cell.querySelector('.orb');
                     if (orb) {
@@ -189,24 +197,24 @@ function updateMyReservations() {
             }
         }
     }
-    
+
     const card = document.getElementById('myReservationCard');
     const listContainer = document.getElementById('myReservationList');
-    
+
     if (myReservations.length === 0) {
         card.style.display = 'none';
         return;
     }
-    
+
     // 시간순 정렬
     myReservations.sort((a, b) => a.time - b.time || a.court - b.court);
-    
+
     // UI 업데이트
     listContainer.innerHTML = myReservations.map(res => {
         const timeStr = `${String(res.time).padStart(2,'0')}시`;
         return `<span onclick="scrollToReservation(${res.court}, ${res.time})" style="background: rgba(255,255,255,0.9); padding: 4px 10px; border-radius: 16px; font-size: 0.8rem; color: #92400e; cursor: pointer; border: 1px solid rgba(146,64,14,0.2);">${res.court}코트 ${timeStr}</span>`;
     }).join('');
-    
+
     card.style.display = 'block';
 }
 
@@ -224,10 +232,10 @@ function scrollToReservation(court, time) {
 
 function scrollToMyFirstReservation() {
     if (!currentUser) return;
-    
+
     const myPhone = currentUser.phone;
     const maxCourts = CENTERS[currentCenter].courts;
-    
+
     // 시간순으로 첫 번째 예약 찾기
     for (let t = 6; t < 22; t++) {
         for (let c = 1; c <= maxCourts; c++) {
@@ -245,51 +253,52 @@ function shareMyReservation(method) {
         alert('로그인이 필요합니다.');
         return;
     }
-    
+
     const currentDate = document.getElementById('hiddenDate').value;
     const myPhone = currentUser.phone;
     const maxCourts = CENTERS[currentCenter].courts;
-    
+
     let myReservations = [];
-    
+
     // 내 예약 정보 수집
     for (let t = 6; t < 22; t++) {
         for (let c = 1; c <= maxCourts; c++) {
             const cell = document.getElementById(`c-${c}-${t}`);
             if (!cell) continue;
-            
+
             if (cell.dataset.ph === myPhone) {
-                const isBooked = cell.classList.contains('booked') || 
-                               cell.classList.contains('fixed') || 
+                const isBooked = cell.classList.contains('booked') ||
+                               cell.classList.contains('fixed') ||
                                cell.classList.contains('pending');
-                
+
                 if (isBooked) {
                     myReservations.push({ court: c, time: t });
                 }
             }
         }
     }
-    
+
     if (myReservations.length === 0) {
         alert('오늘 예약이 없습니다.');
         return;
     }
-    
+
     // 시간순 정렬
     myReservations.sort((a, b) => a.time - b.time || a.court - b.court);
-    
+
     // 예약 정보 텍스트 생성
     let reservationText = myReservations.map(res => {
         const timeStr = `${String(res.time).padStart(2,'0')}시`;
         return `${res.court}코트 ${timeStr}`;
     }).join(', ');
-    
+
     const shareText = `🎾 테니스 코트 예약 완료!\n\n${currentDate}\n${reservationText}\n\n김해시테니스협회`;
-    
+
     if (method === 'sms') {
         // 문자앱 직접 열기
         if (APP_ENV.isDevelopment) devEffect('sms-mock', `sms:?body=${encodeURIComponent(shareText)}`); else window.location.href = `sms:?body=${encodeURIComponent(shareText)}`;
     } else if (method === 'kakao') {
+        if (APP_ENV.isDevelopment) return devEffect('kakao-share-mock', { text: shareText });
         // 카카오톡 직접 공유
         if (typeof Kakao === 'undefined' || !Kakao.isInitialized()) {
             alert('카카오 SDK 오류. 공유 시트로 전환합니다.');
@@ -347,7 +356,7 @@ function fallbackCopy(text) {
 function onCellClick(e) {
     const el = e.target.closest('.data-cell');
     if(!el) return;
-    
+
     const c = parseInt(el.dataset.c);
     const t = parseInt(el.dataset.t);
 
@@ -356,13 +365,13 @@ function onCellClick(e) {
         if (el.classList.contains('booked') || el.classList.contains('fixed') || el.classList.contains('pending')) {
             const id = el.dataset.id;
             const coll = el.dataset.coll;
-            
+
             // ▼▼▼ [핵심] 현재 보고 있는 날짜도 함께 저장 ▼▼▼
             const currentDate = document.getElementById('hiddenDate').value;
-            
+
             // 이미 선택된 건지 확인 (ID와 날짜가 모두 같은지)
             const exists = deleteQueue.some(item => item.id === id && item.date === currentDate);
-            
+
             if (exists) {
                 // 선택 해제
                 deleteQueue = deleteQueue.filter(item => !(item.id === id && item.date === currentDate));
@@ -376,20 +385,20 @@ function onCellClick(e) {
             const btn = document.getElementById('btnBatchExec');
             if(btn) btn.style.display = deleteQueue.length > 0 ? 'block' : 'none';
         }
-        return; 
+        return;
     }
 
     // ... (이하 기존 로직 동일) ...
     // [2] 본인 예약 클릭, [3] 예약된 칸 방어, [4] 선택 해제, [5] 신규 선택 등...
     // 기존 코드 그대로 두시면 됩니다.
-    
+
     // ▼▼▼ 아래는 기존 코드 유지용 (복사해서 덮어쓰실 때 참고하세요) ▼▼▼
     if(_reservationUiCellIsMine(el)) {
-        openCancel(el); return; 
+        openCancel(el); return;
     }
     if(el.classList.contains('booked') || el.classList.contains('fixed') || el.classList.contains('pending')) {
         if(isAdmin) openCancel(el);
-        else alert("이미 예약된 시간입니다."); 
+        else alert("이미 예약된 시간입니다.");
         return;
     }
     if(el.classList.contains('past')) return;
@@ -406,10 +415,10 @@ function onCellClick(e) {
         if(intercepted) return;
     }
 
-    const courtStats = {}; 
+    const courtStats = {};
     selected.forEach(s => { if (!courtStats[s.c]) courtStats[s.c] = []; courtStats[s.c].push(s.t); });
     const isSelected = selected.some(s => s.c === c && s.t === t);
-    
+
     if (isSelected) { removeSelect(c, t); validateSelection(); return; }
 
     if (!isAdmin && selected.length >= 6) { alert("전체 코트 합산 최대 6시간까지만 예약 가능합니다."); return; }
@@ -419,7 +428,7 @@ function onCellClick(e) {
     if (!isAdmin && myCourtHours >= 3) { alert("1개 코트당 최대 3시간까지만 이용 가능합니다."); return; }
 
     const isAdjacent = courtStats[c] && (courtStats[c].includes(t-1) || courtStats[c].includes(t+1));
-    if (isAdjacent) { addSelect(c, t); } 
+    if (isAdjacent) { addSelect(c, t); }
     else {
         const isLastOneHourSlot = (t === 21);
         if (isLastOneHourSlot) {
@@ -432,15 +441,15 @@ function onCellClick(e) {
         if (!isAdmin && selected.length >= 5) { alert("잔여 시간이 부족합니다."); return; }
         const nextEl = document.getElementById(`c-${c}-${t+1}`);
         const isNextAvailable = nextEl && !nextEl.classList.contains('booked') && !nextEl.classList.contains('fixed') && !nextEl.classList.contains('pending') && !nextEl.classList.contains('blocked') && !nextEl.classList.contains('past');
-        if (isNextAvailable) { addSelect(c, t); addSelect(c, t+1); } 
+        if (isNextAvailable) { addSelect(c, t); addSelect(c, t+1); }
         else {
             const prevEl = document.getElementById(`c-${c}-${t-1}`);
             const isPrevAvailable = prevEl && !prevEl.classList.contains('booked') && !prevEl.classList.contains('fixed') && !prevEl.classList.contains('pending') && !prevEl.classList.contains('blocked') && !prevEl.classList.contains('past');
-            if(isPrevAvailable) { addSelect(c, t-1); addSelect(c, t); } 
+            if(isPrevAvailable) { addSelect(c, t-1); addSelect(c, t); }
             else { addSelect(c, t); }
         }
     }
-    validateSelection(); 
+    validateSelection();
 }
 
 function addSelect(c, t) {
@@ -463,8 +472,9 @@ function removeSelect(c, t) {
 function validateSelection() {
     const selCnt = document.getElementById('selCnt');
     const btn = document.getElementById('btnMainBook');
-    
+
     selCnt.innerText = selected.length;
+    updateSelectionSummary();
 
     if (selected.length === 0) {
         btn.disabled = true;
@@ -473,7 +483,7 @@ function validateSelection() {
 
     // [검증] 1시간짜리 '외톨이' 예약이 있는지 확인
     // (예: 10,11,12시를 잡았다가 가운데 11시를 취소해서 10시(1시간), 12시(1시간) 이렇게 남는 경우 방지)
-    
+
     const courtStats = {};
     selected.forEach(s => {
         if (!courtStats[s.c]) courtStats[s.c] = [];
@@ -517,6 +527,7 @@ function validateSelection() {
         }
     }
 
+    updateSelectionSummary(hasIsolated && !isAdmin);
     if (hasIsolated && !isAdmin) { // 관리자는 자유롭게 허용
         btn.disabled = true;
         // 사용자에게 이유를 알려주려면 아래 주석 해제
@@ -537,18 +548,18 @@ function paint(d, id, coll) {
 
     if (coll === 'reservations') {
         el.classList.remove('fixed', 'pending', 'booked', 'blocked'); // blocked 클래스 제거 추가
-        el.innerHTML = ""; 
+        el.innerHTML = "";
     }
 
     // 스타일 결정
-    let statusClass = "booked-orb"; 
+    let statusClass = "booked-orb";
 
     // ▼▼▼ [추가] 블락(BLOCKED) 상태 처리 ▼▼▼
     if (d.status === 'BLOCKED') {
         statusClass = "blocked-orb";
         el.classList.add('booked'); // 일반 유저 클릭 방지용으로 booked 클래스도 같이 줌
         el.classList.add('blocked'); // 스타일용 클래스
-    } 
+    }
     // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
     else if(d.status === 'PENDING') {
         statusClass = "pending-orb";
@@ -560,38 +571,53 @@ function paint(d, id, coll) {
         el.classList.add('booked');
     }
 
-    el.dataset.id = id; 
+    el.dataset.id = id;
     el.dataset.coll = coll;
-    el.dataset.info = d.name; 
+    el.dataset.info = d.name;
     el.dataset.ph = d.phone;
-    el.dataset.status = d.status; 
-    
+    el.dataset.status = d.status;
+
     let txt = d.name;
     // 일반 이용자에게는 타인의 이름을 마스킹하되,
     // 관리자 대리예약이라도 이름+전화번호가 로그인 회원과 모두 같으면 본인 이름은 그대로 표시합니다.
     const isMyReservation = _reservationUiIsMine(d.name, d.phone);
     if(!isAdmin && !isMyReservation && txt && d.status !== 'BLOCKED') txt = txt.substring(0,1) + "**";
-    
+
     if(!txt) txt = (d.status === 'PENDING') ? "대기" : "확정";
-    
+
     el.innerHTML = `<div class="orb ${statusClass}">${txt}</div>`;
 }
 
 function showMap(courtNum) {
     const centerData = CENTERS[currentCenter]; // 현재 지점 정보 가져오기
-    
+
     // 1. 이미지 교체
     const imgEl = document.getElementById('mapImg');
     // 이미지가 설정되어 있으면 그 파일로, 없으면 기본안내 이미지(혹은 빈칸)
-    imgEl.src = centerData.img ? centerData.img : ""; 
+    const mapContainer = imgEl.closest('.map-container');
+    const mapEmpty = document.getElementById('mapEmpty');
+    const hasMap = !!centerData.img;
+    mapContainer.hidden = !hasMap;
+    mapEmpty.hidden = hasMap;
+    if (hasMap) imgEl.src = centerData.img;
+    else imgEl.removeAttribute('src');
+    imgEl.onerror = function () {
+        mapContainer.hidden = true;
+        mapEmpty.hidden = false;
+    };
     imgEl.alt = centerData.name + " 배치도";
 
+    const legacyOffice = mapContainer.querySelector('.office-marker');
+    if (legacyOffice) legacyOffice.hidden = currentCenter !== '국제';
+    const mapNote = document.getElementById('mapNote');
+    if (mapNote) mapNote.textContent = currentCenter === '국제' ? '선택한 코트 위치를 확인해 주세요.' : currentCenter === '능동' ? '사진을 참고한 개략도입니다. 실제 거리·방향과 차이가 있을 수 있습니다.' : '사진을 참고한 개략도입니다. 코트 번호는 확정 후 안내합니다.';
     // 2. 제목 설정
-    document.getElementById('mapTitle').innerText = `[${currentCenter}] ${courtNum}코트 위치`;
+    document.getElementById('mapTitle').innerText = (currentCenter === '국제' || currentCenter === '능동') ? `[${currentCenter}] ${courtNum}코트 위치` : `[${currentCenter}] 시설 배치 안내`;
 
     // 3. 빨간 박스 위치 잡기
     const box = document.getElementById('highlightBox');
     const posData = centerData.pos ? centerData.pos[courtNum] : null;
+    box.style.transform = centerData.mapRotation ? `rotate(${centerData.mapRotation}deg)` : '';
 
     if (posData) {
         // 좌표 데이터가 있으면 박스를 해당 위치로 이동
@@ -600,12 +626,45 @@ function showMap(courtNum) {
         box.style.left = posData[1] + "%";   // 왼쪽에서부터 거리
         box.style.width = posData[2] + "%";  // 너비
         box.style.height = posData[3] + "%"; // 높이
-        box.innerText = courtNum + "코트";
+        box.innerText = currentCenter === "능동" ? String(courtNum) : courtNum + "코트";
+        box.setAttribute("aria-label", courtNum + "코트 위치");
     } else {
         // 좌표가 없으면(아직 설정 안함) 박스 숨김
         box.style.display = 'none';
     }
-    
+
     // 모달 열기
     openModal('modalMap');
 }
+
+// Presentation only: the existing slot validation remains authoritative.
+function updateSelectionSummary(needsContinuousTime = false) {
+    const label = document.getElementById('selectionSummary');
+    const clear = document.getElementById('clearSelectionButton');
+    if (!label || !clear) return;
+    clear.hidden = selected.length === 0;
+    label.dataset.warning = String(needsContinuousTime);
+    if (!selected.length) { label.textContent = '원하는 시간대를 선택하세요'; return; }
+    const courts = new Map();
+    selected.forEach(({c,t}) => { if (!courts.has(c)) courts.set(c,[]); courts.get(c).push(t); });
+    const parts = [...courts].sort((a,b)=>a[0]-b[0]).map(([court,times]) => {
+        times.sort((a,b)=>a-b);
+        const ranges=[];
+        let start=times[0], end=start;
+        for (const time of times.slice(1)) {
+            if(time===end+1) end=time;
+            else { ranges.push(String(start).padStart(2,'0')+':00–'+String(end+1).padStart(2,'0')+':00'); start=end=time; }
+        }
+        ranges.push(String(start).padStart(2,'0')+':00–'+String(end+1).padStart(2,'0')+':00');
+        return court+'코트 '+ranges.join(', ');
+    });
+    label.textContent = parts.join(' · ')+' · 총 '+selected.length+'시간'+(needsContinuousTime ? ' — 연속 2시간 이상 선택해 주세요' : '');
+}
+function clearBookingSelection() {
+    [...selected].forEach(({c,t}) => removeSelect(c,t));
+    validateSelection();
+}
+document.addEventListener('DOMContentLoaded', () => {
+    const count=document.getElementById('selCnt');
+    if(count) new MutationObserver(() => { if(!selected.length) updateSelectionSummary(); }).observe(count,{childList:true,subtree:true,characterData:true});
+});

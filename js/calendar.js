@@ -255,7 +255,20 @@ function applySavedWeatherImmediately(cacheObj) {
 async function loadWeeklyWeather(forceRefresh = false) {
     if (APP_ENV.isDevelopment) {
         devEffect('weather-mock', { synthetic: true });
-        return { daily: { time: [], weathercode: [], temperature_2m_max: [], temperature_2m_min: [], precipitation_probability_max: [], wind_speed_10m_max: [] } };
+        const daily = { time: [], weathercode: [], temperature_2m_max: [], temperature_2m_min: [], precipitation_probability_max: [], wind_speed_10m_max: [] };
+        for (let i = 0; i < 16; i++) {
+            const date = new Date(); date.setDate(date.getDate() + i);
+            daily.time.push(formatDateStrLocal(date));
+            daily.weathercode.push([1,0,3,61,0,2,1][i % 7]);
+            daily.temperature_2m_max.push(18 + i % 4);
+            daily.temperature_2m_min.push(9 + i % 3);
+            daily.precipitation_probability_max.push(i % 7 === 3 ? 60 : 10);
+            daily.wind_speed_10m_max.push(2);
+        }
+        const data = { daily };
+        localStorage.setItem('tenniskj_weather_v2', JSON.stringify({ timestamp: Date.now(), data }));
+        applySavedWeatherImmediately({ data });
+        return data;
     }
     const CACHE_KEY = 'tenniskj_weather_v2';
     const CACHE_TIME = 3 * 60 * 60 * 1000;
@@ -427,7 +440,7 @@ function updateWeatherBanner(dateStr, weatherData) {
     else if (code >= 80 && code <= 99) { icon = "☔"; text = "비/소나기"; }
 
     document.getElementById('wbIcon').innerText = icon;
-    document.getElementById('wbText').innerText = text;
+    document.getElementById('wbText').innerText = text + (APP_ENV.isDevelopment ? ' · 테스트 예보' : '');
     document.getElementById('wbTemp').innerText = `${minT}° / ${maxT}°`;
     document.getElementById('wbWind').innerText = `${windSpeed}m/s`;
     document.getElementById('wbRain').innerText = `${rainProb}%`;
@@ -458,6 +471,7 @@ if (rainProb >= 40 || (code >= 51 && code <= 99)) {
 function pickDate(s) { 
     const hidden = document.getElementById('hiddenDate');
     hidden.value = s;
+    updateBookingContext();
 
     const parts = getDatePartsFromStr(s);
     if (parts.y && parts.m) {

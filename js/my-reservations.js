@@ -42,11 +42,11 @@ async function _getMyReservationDocs() {
     const jobs = [];
     const myUid = String(currentUser.uid || '').trim();
     if (myUid) {
-        jobs.push(db.collection('reservations').where('uid', '==', myUid).get().catch(() => null));
-        jobs.push(db.collection('reservations').where('ownerId', '==', myUid).get().catch(() => null));
+        jobs.push(db.collection('reservations').where('uid', '==', myUid).get());
+        jobs.push(db.collection('reservations').where('ownerId', '==', myUid).get());
     }
     _myResPhoneVariants(currentUser.phone).forEach(ph => {
-        jobs.push(db.collection('reservations').where('phone', '==', ph).get().catch(() => null));
+        jobs.push(db.collection('reservations').where('phone', '==', ph).get());
     });
     const snaps = await Promise.all(jobs);
     const map = new Map();
@@ -115,9 +115,10 @@ function calcRefund(resDateStr, resTime) {
 async function loadMyResData(isUpcoming) {
     const list = document.getElementById('myResList');
     const batchArea = document.getElementById('batchCancelArea');
-    list.innerHTML = "<div style='text-align:center; padding:20px;'>불러오는 중...</div>";
+    const loadSeq = window.__myReservationListSeq = (window.__myReservationListSeq || 0) + 1;
+    renderListState(list, {kind:'loading',title:'예약 내역을 불러오고 있어요',detail:'잠시만 기다려 주세요.'});
     
-    if(batchArea) batchArea.style.display = isUpcoming ? 'block' : 'none';
+    if(batchArea) batchArea.style.display = 'none';
 
     // [신규] 통계 박스 생성 (목록 위에 삽입)
     let statsBox = document.getElementById('myStatsBox');
@@ -138,9 +139,12 @@ async function loadMyResData(isUpcoming) {
 
     try {
         let docs = await _getMyReservationDocs();
+        if (loadSeq !== window.__myReservationListSeq) return;
+        list.setAttribute('aria-busy','false');
+        list.dataset.listState = 'ready';
         docs = docs.filter(doc => {
             const d = doc.data();
-            return isUpcoming ? String(d.date || '') >= todayStr : String(d.date || '') < todayStr;
+            return d.status !== 'CANCELED' && (isUpcoming ? String(d.date || '') >= todayStr : String(d.date || '') < todayStr);
         });
         docs.sort((a,b) => {
             const A=a.data(), B=b.data();
@@ -158,11 +162,17 @@ async function loadMyResData(isUpcoming) {
         let totalPrice = 0; // *정확한 금액은 요금표 로직 필요하지만, 여기선 대략 횟수로만 카운트
         
         if(snap.empty) {
-            list.innerHTML = `<div style="text-align:center; padding:40px 10px; color:#94a3b8;">${isUpcoming ? "예정된 예약이 없습니다." : "지난 예약 내역이 없습니다."}</div>`;
+            renderListState(list, {
+                kind:'empty',title:isUpcoming ? '예정된 예약이 없어요' : '지난 이용 내역이 없어요',
+                detail:isUpcoming ? '원하는 구장과 시간을 선택해 예약해 보세요.' : '이용을 마친 예약은 이곳에서 확인할 수 있어요.',
+                actionLabel:isUpcoming ? '예약하러 가기' : '이용 예정 보기',
+                action:() => { if (isUpcoming) {closeModal('modalMyRes');goTab('res');} else switchMyResTab('upcoming'); }
+            });
             if(!isUpcoming) statsBox.innerHTML = "<div>아직 이용 내역이 없습니다.</div>";
             return;
         }
 
+        if (batchArea) batchArea.style.display = isUpcoming ? 'block' : 'none';
         snap.forEach(doc => {
             const d = doc.data();
             if (d.status === "CANCELED") return;
@@ -271,8 +281,11 @@ async function loadMyResData(isUpcoming) {
         }
 
     } catch(err) {
+        if (loadSeq !== window.__myReservationListSeq) return;
         console.error("내 예약 불러오기 오류:", err);
-        list.innerHTML = "오류 발생: " + err.message;
+        statsBox.style.display = 'none';
+        if (batchArea) batchArea.style.display = 'none';
+        renderListState(list, {kind:'error',title:'예약 내역을 불러오지 못했어요',detail:'연결 상태를 확인한 뒤 다시 시도해 주세요.',actionLabel:'다시 불러오기',action:() => loadMyResData(isUpcoming)});
     }
 }
 

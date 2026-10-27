@@ -80,10 +80,11 @@
     document.addEventListener('DOMContentLoaded', async () => {
         const panel = document.createElement('aside');
         panel.id = 'dev-panel';
-        panel.style.cssText = 'position:relative;z-index:999999;background:#fff3cd;color:#332600;padding:12px;white-space:normal';
-        panel.innerHTML = '<b>개발 전용 · demo-kjtennis-local · Auth 9099 / Firestore 8080 / Storage 9199</b><div>가상 데이터만 사용. 결제·환불·SMS·알림·OAuth·reCAPTCHA는 개발 대역입니다.</div><button id="dev-login">가상 회원 로그인</button> <button id="dev-refund">가상 환불 기록</button><pre id="dev-effects"></pre>';
+        panel.style.cssText = 'position:relative;z-index:999999;background:#fff7de;color:#544415;padding:8px 14px;white-space:normal;font:12px/1.6 system-ui,sans-serif;flex-shrink:0';
+        panel.innerHTML = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><b>테스트 앱 · 실제 결제 없음</b><button type="button" id="dev-login">가상 회원 로그인</button><button type="button" id="dev-admin-login">관리자 테스트</button><details style="margin-left:auto"><summary style="cursor:pointer">테스트 로그</summary><button type="button" id="dev-refund">가상 환불 기록</button><pre id="dev-effects" style="max-height:140px;overflow:auto;font-size:10px"></pre></details></div>';
         document.body.prepend(panel);
         document.getElementById('dev-login').onclick = () => window.devLogin();
+        document.getElementById('dev-admin-login').onclick = () => window.devLogin('admin');
         document.getElementById('dev-refund').onclick = () => window.devEffect('refund-mock', { amount: 1000, paymentId: 'dev-payment-example' });
         try {
             if ('serviceWorker' in navigator) {

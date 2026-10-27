@@ -12,7 +12,7 @@ function sandbox() {
         document:{addEventListener(){},getElementById:id=>elements[id]||null},addEventListener(){},
         safeSetInputValue(){},safeSetChecked(){},updateAdminUI(){},renderSeasonalList(){},
         currentUser:{isCitizen:false},console,seasonalPricingLoadPromise:null};
-    c.window=c;vm.createContext(c);vm.runInContext(read('js/booking-helpers.js'),c);
+    c.window=c;c.APP_ENV={isDevelopment:false};vm.createContext(c);vm.runInContext(read('js/config.js'),c);c.HOLIDAYS={};vm.runInContext(read('js/booking-helpers.js'),c);
     c.elements=elements;return c;
 }
 function season(start,end,nightStart,dayPrice=111,nightPrice=222){return {start,end,nightStart,dayPrice,nightPrice};}
@@ -41,7 +41,7 @@ test('existing administrator table save duplicates each row into legacy citizen/
     const c=sandbox();let saved;
     const values={btnSaveSet:{},setUseCard:{checked:true},admPhone:{value:'000'},setAdminName:{value:'가상'},setBank:{value:'가상은행'},setAcc:{value:'DEV'},setOpenCenter:{checked:true},setPw:{value:''}};
     c.document.getElementById=id=>values[id]||null;
-    c.document.querySelectorAll=()=>[1000,3000,5000,7000].map(value=>({value:value.toLocaleString('en-US')}));
+    c.document.querySelectorAll=selector=>selector==='.p-inp'?[1000,3000,5000,7000].map(value=>({value:value.toLocaleString('en-US')})):[];
     c.db={collection:name=>{assert.equal(name,'settings');return {doc:id=>{assert.equal(id,'global');return {set:async data=>{saved=data;}};}};}};
     c.alert=()=>{};c.closeModal=()=>{};c.loadConfig=()=>{};
     vm.runInContext(read('js/admin-settings.js'),c);await c.saveSet();

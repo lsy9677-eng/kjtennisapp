@@ -120,6 +120,8 @@ function setPayMethod(m) {
     if (payTab) payTab.classList.toggle('active', m === 'PAY');
     if (transferTab) transferTab.classList.toggle('active', m === 'TRANSFER');
     if (transferInfo) transferInfo.style.display = (m === 'TRANSFER') ? 'block' : 'none';
+    const submit = document.getElementById('btnDoPay');
+    if (submit) submit.textContent = m === 'TRANSFER' ? '예약 신청하기' : '결제하고 예약 신청';
 }
 
 function copyAcc() {
@@ -197,22 +199,21 @@ function openBook() {
         groupedByCourt[s.c].push(s.t);
     });
     
-    // 예약 상세 내역 생성
-    let detailHTML = `<div style="font-size:0.85rem; color:#1e293b; margin-bottom:8px;"><b>${date}</b></div>`;
-    
-    Object.keys(groupedByCourt).sort((a, b) => a - b).forEach(court => {
-        const times = groupedByCourt[court].sort((a, b) => a - b);
-        const timeStr = times.map(t => `${String(t).padStart(2,'0')}시`).join(', ');
-        detailHTML += `<div style="background:#e0f2fe; padding:6px 10px; border-radius:6px; margin-bottom:4px; border-left:3px solid #0284c7;">
-            <span style="font-weight:700; color:#0c4a6e;">${court}코트</span> 
-            <span style="color:#0369a1;">→ ${timeStr}</span>
-        </div>`;
+    // Presentation only: retain the selected slots and all tariff/payment logic.
+    const safeText = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+    const venueName = typeof CENTERS !== 'undefined' && CENTERS[currentCenter] ? CENTERS[currentCenter].name : currentCenter;
+    const formattedDate = new Intl.DateTimeFormat('ko-KR', {year:'numeric',month:'long',day:'numeric',weekday:'short'}).format(new Date(date + 'T12:00:00'));
+    let detailHTML = '<div class="booking-venue-label">선택한 구장</div><h3 class="booking-venue-name">' + safeText(venueName) + '</h3><div class="booking-summary-date">' + safeText(formattedDate) + '</div><dl class="booking-slot-list">';
+    Object.keys(groupedByCourt).sort((a,b) => a-b).forEach(court => {
+        const times = [...new Set(groupedByCourt[court])].sort((a,b) => a-b);
+        const ranges = [];let first = times[0], last = times[0];
+        times.slice(1).forEach(time => { if (time === last + 1) last = time; else { ranges.push([first,last+1]);first = last = time; } });
+        ranges.push([first,last+1]);
+        const timeLabel = ranges.map(([from,to]) => String(from).padStart(2,'0') + ':00–' + String(to).padStart(2,'0') + ':00').join(' · ');
+        detailHTML += '<div><dt>' + safeText(court) + '코트</dt><dd>' + safeText(timeLabel) + '</dd></div>';
     });
-    
-    detailHTML += `<div style="margin-top:8px; text-align:center; font-size:0.9rem; color:#475569;">
-        총 <b style="color:#3b82f6; font-size:1.1rem;">${selected.length}</b>시간
-    </div>`;
-    
+    detailHTML += '</dl><div class="booking-total-hours">총 ' + selected.length + '시간</div>';
+
     document.getElementById('modalInfo').innerHTML = detailHTML;
     // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
     

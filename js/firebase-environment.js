@@ -10,7 +10,7 @@ function connectDevelopmentEmulators(app) {
     auth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
     window.devLogin = async function (provider = 'local') {
         devEffect('oauth-mock', { provider });
-        return auth.signInWithEmailAndPassword('member@example.invalid', 'LocalOnly123!');
+        return auth.signInWithEmailAndPassword(provider === 'admin' ? 'admin@example.invalid' : 'member@example.invalid', 'LocalOnly123!');
     };
     // Redirect/hash payloads from real OAuth sessions must never be consumed locally.
     auth.getRedirectResult = async () => ({ user: null });
