@@ -5259,3 +5259,106 @@ body>header .association-logo{display:block;width:38px;height:38px;border-radius
 @media(max-width:600px){body>header .brand-lockup{padding-left:42px!important;}body>header .association-logo{width:34px;height:34px;border-radius:9px;}}
 
 .citizen-booking-status h3{font-size:13px;margin:0 0 8px;color:var(--court-ink,#24354c);}.citizen-booking-status .citizen-status-account{font-size:11px;color:var(--court-muted,#687a91);overflow-wrap:anywhere;margin:0 0 7px;}
+
+/* Complete dark palette. Explicit foreground/background pairs avoid mixed-theme controls. */
+html[data-theme=dark]{color-scheme:dark;background:#0d1625;}
+html[data-theme=light]{color-scheme:light;}
+body.dark-mode{
+ --court-bg:#0d1625;--court-panel:#172338;--court-soft:#1e2d44;--court-line:#35465f;
+ --court-ink:#e8eff9;--court-muted:#b0bfd4;--court-brand:#9bbfff;--court-accent:#253e63;
+ --bg-body:var(--court-bg);--bg-card:var(--court-panel);--text-main:var(--court-ink);--text-sub:var(--court-muted);--border-line:var(--court-line);
+ color:var(--court-ink)!important;background:var(--court-bg)!important;accent-color:#80acff;
+}
+body.dark-mode :is(.content-area,.tabs){background:var(--court-bg)!important;color:var(--court-ink)!important;}
+body.dark-mode :is(.modal-win,.res-card,.post-card,.settings-section,.center-settings-panel,.app-list-state,#desktopSideRail){background:var(--court-panel)!important;color:var(--court-ink)!important;border-color:var(--court-line)!important;box-shadow:none!important;}
+body.dark-mode :is(.modal-head,.modal-win h2,.modal-win h3,.settings-section h3,.account-name,.post-title){color:var(--court-ink)!important;}
+body.dark-mode :is(.account-description,.settings-detail p,.settings-detail summary,.settings-section label,.settings-preference p,.app-list-state p,.center-settings-panel p){color:var(--court-muted)!important;}
+body.dark-mode :is(input:not([type=checkbox]):not([type=radio]),select,textarea){background:#111d30!important;color:var(--court-ink)!important;border-color:#4a5e7a!important;color-scheme:dark;}
+body.dark-mode :is(input,textarea)::placeholder{color:#9baec9!important;opacity:1;}
+body.dark-mode :is(input[readonly],input:disabled){background:#1e2d44!important;color:#b0bfd4!important;}
+body.dark-mode .modal-win :is([style*="background:#fff;"],[style*="background: #fff;"],[style*="background:#f8fafc"],[style*="background: #f8fafc"]){background:var(--court-soft)!important;border-color:var(--court-line)!important;color:var(--court-ink)!important;}
+body.dark-mode :is([style*="color:#0f172a"],[style*="color: #0f172a"],[style*="color:#1e293b"],[style*="color: #1e293b"],[style*="color:#334155"],[style*="color: #334155"]){color:var(--court-ink)!important;}
+body.dark-mode :is([style*="color:#64748b"],[style*="color: #64748b"],[style*="color:#94a3b8"],[style*="color: #94a3b8"]){color:var(--court-muted)!important;}
+body.dark-mode .tab.active{background:#203b60!important;color:#c1d9ff!important;border-bottom-color:#86afff!important;}
+body.dark-mode #mobileBottomNav{background:var(--court-panel)!important;border-color:var(--court-line)!important;}
+body.dark-mode #mobileBottomNav button{color:#b0bfd4!important;}
+body.dark-mode #mobileBottomNav button.active{color:#a5c6ff!important;}
+body.dark-mode #view-res :is(#calendarWrap,#weatherBanner,#mobileBookingBar){background:var(--court-panel)!important;border-color:var(--court-line)!important;color:var(--court-ink)!important;}
+body.dark-mode #view-res #calendarWrap :is(.cal-head,.cal-title,.cal-month-title,.cal-day){background:transparent!important;color:var(--court-ink)!important;}
+body.dark-mode #view-res #calendarWrap :is(.cal-nav,.calendar-fold-btn,.cal-head button){background:var(--court-soft)!important;color:#dce9ff!important;border-color:#465b79!important;}
+body.dark-mode #view-res #calBody .cal-date{background:#1b293f!important;color:#e0e9f6!important;border-color:#35465f!important;}
+body.dark-mode #view-res #calBody .cal-date.empty{background:#111d2f!important;}
+body.dark-mode #view-res #calBody .cal-date.disabled{background:#142034!important;color:#8496b1!important;opacity:1!important;}
+body.dark-mode #view-res #calBody .cal-date:not(.disabled):is(.holiday,.holiday-sunday){color:#ffa6b1!important;}
+body.dark-mode #view-res #calBody .cal-date:not(.disabled).sat{color:#a1c3ff!important;}
+body.dark-mode #view-res #calBody .cal-date.today:not(.selected){background:#203d62!important;color:#d1e4ff!important;border:1px solid #88aff1!important;box-shadow:none!important;}
+body.dark-mode #view-res #calBody .cal-date.selected,body.dark-mode #view-res #calBody .cal-date.today.selected{background:#2563eb!important;color:white!important;transform:none!important;box-shadow:none!important;border:1px solid #a9c8ff!important;}
+body.dark-mode #view-res #calBody .cal-date.selected :is(.cal-date-num,.cal-weather-temp){color:white!important;}
+body.dark-mode #view-res #calBody .cal-weather-temp{color:#c2d2e8!important;}
+body.dark-mode #view-res #weatherBanner :is(#wbText,#wbTemp,#wbWind,#wbRain){color:var(--court-ink)!important;}
+body.dark-mode #view-res #wbScore{background:#273e55!important;color:#d8edff!important;}
+body.dark-mode #view-res #bookingDateLabel,body.dark-mode #scheduleGuide{color:var(--court-muted)!important;}
+body.dark-mode #view-res #gridArea{background:#172338!important;border-color:var(--court-line)!important;}
+body.dark-mode #view-res #schTable :is(.data-cell,.head-time,.corner){border-color:#35465f!important;}
+body.dark-mode #view-res #schTable .data-cell{background:#172338!important;}
+body.dark-mode #view-res #schTable .data-cell.past{background:#111c2e!important;}
+body.dark-mode #view-res #schTable :is(.head-time,.corner){background:#202e44!important;color:#c4d4ec!important;}
+body.dark-mode #view-res #schTable .head-court{background:#235da9!important;color:white!important;}
+body.dark-mode #view-res #gridArea[data-surface=turf] .head-court{background:#28664e!important;}
+body.dark-mode #view-res #schTable .booked-orb{background:#233e66!important;color:#d5e5ff!important;border-color:#5e88c7!important;border-left-color:#8bb5ff!important;}
+body.dark-mode #view-res #schTable .fixed-orb{background:#542933!important;color:#ffdce0!important;border-color:#bf6876!important;border-left-color:#f28e9b!important;}
+body.dark-mode #view-res #schTable .pending-orb{background:#4d3b1e!important;color:#ffe5ae!important;border-color:#ac8b4f!important;border-left-color:#ebc36e!important;}
+body.dark-mode #view-res #schTable .select-orb{background:#2563eb!important;color:white!important;}
+body.dark-mode #view-res #schTable .data-cell:has(>.select-orb){background:#213f68!important;}
+body.dark-mode #view-res #schTable .data-cell.past .orb{opacity:1!important;}
+body.dark-mode .schedule-legend :is(.legend-booked){background:#233e66;border-color:#8bb5ff;}
+body.dark-mode .schedule-legend .legend-fixed{background:#542933;border-color:#f28e9b;}
+body.dark-mode .schedule-legend .legend-pending{background:#4d3b1e;border-color:#ebc36e;}
+body.dark-mode .schedule-legend .legend-free{background:#172338;border-color:#9cadc5;}
+body.dark-mode #desktopSideRail :is(h3,h4,strong,.quick-title){color:var(--court-ink)!important;}
+body.dark-mode #desktopSideRail :is(p,small,#myReservationEmpty){color:var(--court-muted)!important;}
+body.dark-mode #desktopSideRail button{background:var(--court-soft)!important;color:#d9e7ff!important;border-color:#465b79!important;}
+body.dark-mode #desktopSideRail :is(.today-my-res-card,.quick-links,.hub-card){background:var(--court-soft)!important;border-color:var(--court-line)!important;}
+body.dark-mode #view-res #mobileBookingBar :is(.footer-mini-btn,.footer-info-btn,#clearSelectionButton){background:#22334d!important;color:#d6e4f8!important;border-color:#4a5f7c!important;}
+body.dark-mode #view-res #mobileBookingBar .sel-info,body.dark-mode #view-res #mobileBookingBar .sel-info span{color:#d9e7ff!important;}
+body.dark-mode #view-res #mobileBookingBar .btn-pay:disabled{background:#253247!important;color:#a8b6cb!important;border:1px solid #43536c!important;}
+body.dark-mode #view-res #selectionSummary{color:#b8d3ff!important;}
+body.dark-mode #view-res #selectionSummary[data-warning=true]{color:#ffe0a6!important;}
+body.dark-mode :is(.account-secondary,.account-tab,.developer-unlock-button,.btn-sm.bg-gray){background:var(--court-soft)!important;color:#d1e1f8!important;border-color:#465b79!important;}
+body.dark-mode :is(.citizen-booking-status,.development-badge,.settings-detail,.booking-payment-guide,.booking-summary-date){background:var(--court-soft)!important;color:var(--court-ink)!important;border-color:var(--court-line)!important;}
+body.dark-mode .citizen-booking-status :is(p,h3,button){color:#d7e6fb!important;}
+body.dark-mode #modalNoticePopupAdmin :is(.notice-admin-card,.notice-admin-preview,.notice-court-settings-button){background:var(--court-soft)!important;color:var(--court-ink)!important;border-color:var(--court-line)!important;}
+body.dark-mode #modalNoticePopupAdmin :is(.notice-admin-help,.notice-admin-empty,.inp-row label){color:var(--court-muted)!important;}
+body.dark-mode #modalNoticePopupAdmin .notice-admin-actions .bg-gray{background:#273b58!important;color:#e1ecfc!important;}
+body.dark-mode #modalNoticePopupAdmin .notice-admin-actions button:nth-child(2){background:#542933!important;color:#ffdce0!important;}
+body.dark-mode #modalNoticePopupAdmin input[type=file]::file-selector-button{background:#273b58;color:#e1ecfc;border-color:#4a5f7c;}
+body.dark-mode :is(.booking-result-panel,.booking-slot-list,.booking-payment-guide,.comment-composer,.comment-item){background:var(--court-panel)!important;color:var(--court-ink)!important;border-color:var(--court-line)!important;}
+body.dark-mode :is(.booking-venue-name,.booking-slot-list dt,.booking-slot-list dd,.booking-total-hours,.booking-result-title,.cmt-name){color:var(--court-ink)!important;}
+body.dark-mode :is(.cmt-txt,.post-meta,.booking-result-description,.booking-payment-guide p){color:var(--court-muted)!important;}
+body.dark-mode #modalMap .modal-head,body.dark-mode #modalMap .modal-close{color:var(--court-ink)!important;}
+body.dark-mode #modalMap #mapNote{color:var(--court-muted)!important;}
+body.dark-mode .modal-mask{background:rgba(3,8,18,.76)!important;}
+
+body.dark-mode #view-res #gridArea[data-surface=hard] #schTable .head-court{background:#235da9!important;border-color:#5c83bc!important;}
+body.dark-mode #view-res #gridArea[data-surface=turf] #schTable .head-court{background:#28664e!important;border-color:#58947a!important;}
+body.dark-mode #desktopSideRail :is(.desktop-quick-title,.sum-value){color:var(--court-ink)!important;}
+body.dark-mode #desktopSideRail :is(.desktop-quick-sub,.sum-desc){color:var(--court-muted)!important;}
+body.dark-mode #desktopSideRail #myReservationCard{background:var(--court-soft)!important;border-color:var(--court-line)!important;}
+body.dark-mode #desktopSideRail #myReservationCard>div:first-child{color:#b7c9e3!important;}
+body.dark-mode #desktopSideRail #myReservationList{color:#e0ebfb!important;}
+body.dark-mode #desktopSideRail #myReservationCard button{color:#dfebff!important;background:#22334d!important;}
+body.dark-mode .toggle-switch input:checked + .slider{background:#3677dc!important;}
+body.dark-mode .toggle-switch input:not(:checked) + .slider{background:#4a5e77!important;}
+
+body.dark-mode :is(#modalWrite,#modalView,#modalNoticePopupAdmin,#modalUserSettings) .inp-row{background:transparent!important;}
+body.dark-mode :is(#modalWrite,#modalView,#modalNoticePopupAdmin,#modalUserSettings,#modalBook) :is(input:not([type=checkbox]):not([type=radio]),textarea,select){background:#111d30!important;color:var(--court-ink)!important;border-color:#4a5e7a!important;}
+
+body.dark-mode #androidAppBanner{background:#192941!important;border-color:#3c506f!important;}
+body.dark-mode #androidAppBanner p{color:#d8e7ff!important;}
+body.dark-mode #androidAppBanner p+p{color:#b3c6e2!important;}
+body.dark-mode #androidAppBanner a{background:#2563eb!important;color:white!important;box-shadow:none!important;}
+body.dark-mode #androidAppBanner button{color:#c7d8ef!important;}
+
+/* Light is the default; dark is enabled only by the in-app preference. */
+:root,html[data-theme=light]{color-scheme:only light;}
+html[data-theme=dark]{color-scheme:dark;}

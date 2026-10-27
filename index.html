@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8"/>
 <script src="./js/environment.js"></script>
-<meta content="light only" name="color-scheme"/>
+<meta content="only light" name="color-scheme"/>
 <meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
 <title>김해시테니스협회</title>
 <!-- stable-manual-refresh: Firestore 읽기 절감 안정본 -->
@@ -14,7 +14,7 @@
 <link href="abc-192.png" rel="apple-touch-icon"/>
 <meta content="yes" name="apple-mobile-web-app-capable"/>
 <meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"/>
-<meta content="#174d3b" name="theme-color"/>
+<meta content="#14233d" name="theme-color"/>
 <link href="./css/app.bundle.css?v=20261027-design-v1" rel="stylesheet"/>
 <script src="./js/sdk-loader.js"></script>
 
@@ -3240,37 +3240,25 @@ async function doListBatchDelete() {
 }
 
 /* ▼▼▼ [수정] 다크모드 전환 함수 ▼▼▼ */
-function applyDarkModeState(isDark) {
+function applyDarkModeState(isDark, persist = true) {
     document.body.classList.toggle('dark-mode', !!isDark);
-
-    const setDarkMode = document.getElementById('setDarkMode');
-    const userDarkModeToggle = document.getElementById('userDarkModeToggle');
-
-    if (setDarkMode) setDarkMode.checked = !!isDark;
-    if (userDarkModeToggle) userDarkModeToggle.checked = !!isDark;
-
-    try {
-        localStorage.setItem('theme', isDark ? 'dark' : 'light');
-    } catch (e) {}
+    document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+    document.documentElement.style.colorScheme = isDark ? 'dark' : 'only light';
+    const meta = document.querySelector('meta[name="color-scheme"]');
+    if(meta)meta.content = isDark ? 'dark' : 'only light';
+    ['setDarkMode','userDarkModeToggle'].forEach(id=>{const input=document.getElementById(id);if(input)input.checked=!!isDark;});
+    if(persist)try{localStorage.setItem('theme',isDark?'dark':'light');}catch(_){}
 }
-
 function toggleDarkMode(forceValue) {
-    const isDark = typeof forceValue === 'boolean'
-        ? forceValue
-        : !document.body.classList.contains('dark-mode');
-
-    applyDarkModeState(isDark);
+    applyDarkModeState(typeof forceValue==='boolean'?forceValue:!document.body.classList.contains('dark-mode'));
 }
-
-(function initDarkMode() {
-    try {
-        const savedTheme = localStorage.getItem('theme');
-        if (savedTheme === 'dark') {
-            applyDarkModeState(true);
-        } else if (savedTheme === 'light') {
-            applyDarkModeState(false);
-        }
-    } catch (e) {}
+(function initDarkMode(){
+    const sync=()=>{
+        let saved=null;try{saved=localStorage.getItem('theme');}catch(_){}
+        applyDarkModeState(saved==='dark',false);
+    };
+    sync();
+    window.addEventListener('storage',event=>{if(event.key==='theme'||event.key===null)sync();});
 })();
 /* ▼▼▼ [신규] 데이터 백업 및 복구 시스템 ▼▼▼ */
 
