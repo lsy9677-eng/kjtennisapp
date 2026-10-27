@@ -50,7 +50,7 @@ function getCalendarCellHtml(cellDate, baseMonth) {
     const todayZero = new Date();
     todayZero.setHours(0,0,0,0);
     const diffDays = (targetZero.getTime() - todayZero.getTime()) / 86400000;
-    let limitDays = (currentUser && currentUser.isCitizen) ? 13 : 6;
+    const limitDays = getMemberBookingDays() - 1;
 
     if(!isAdmin && diffDays > limitDays) cls += " disabled";
     if(dStr === curDate) cls += " selected";

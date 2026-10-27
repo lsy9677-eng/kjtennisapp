@@ -348,6 +348,7 @@ function initAuthStateListener() {
                 currentUser = doc.data() || {};
                 currentUser.uid = user.uid;
                 isAdmin = isDeveloperAccount() || !!currentUser.isAdmin || localStorage.getItem('isAdm') === 'true';
+                syncBookingAccessUI();
             
                 document.getElementById('btnOut').style.display = 'inline-block';
                 document.getElementById('btnLogin').style.display = 'none';
@@ -406,6 +407,7 @@ function initAuthStateListener() {
         } else {
             // [로그아웃 상태]
             currentUser = null;
+            syncBookingAccessUI();
         
             if(!localStorage.getItem('isAdm')) {
                  document.getElementById('welcomeMsg').style.display = 'none';
@@ -643,6 +645,7 @@ function openUserSettings() {
         notificationToggle.checked = localStorage.getItem('notificationEnabled') === 'true';
     }
     
+    syncBookingAccessUI();
     openModal('modalUserSettings');
 }
 

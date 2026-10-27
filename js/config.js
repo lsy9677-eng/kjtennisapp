@@ -227,7 +227,7 @@ function renderBookingWeek() {
     const start = new Date(selectedDate);
     start.setDate(start.getDate() - start.getDay());
     const today = new Date(); today.setHours(0,0,0,0);
-    const limit = typeof currentUser !== 'undefined' && currentUser?.isCitizen ? 13 : 6;
+    const limit = getMemberBookingDays() - 1;
     host.replaceChildren(...Array.from({length:7}, (_,i) => {
         const date = new Date(start); date.setDate(start.getDate() + i);
         const key = date.getFullYear() + '-' + String(date.getMonth()+1).padStart(2,'0') + '-' + String(date.getDate()).padStart(2,'0');
@@ -409,3 +409,33 @@ var CENTER_WEATHER = {
   }
 };
 function getCenterWeather(center = currentCenter) { return CENTER_WEATHER[center] || CENTER_WEATHER['국제']; }
+
+function getMemberBookingDays(user = currentUser) { return user && user.isCitizen ? 14 : 7; }
+function syncBookingAccessUI() {
+    const days=getMemberBookingDays(),today=new Date();today.setHours(0,0,0,0);
+    document.querySelectorAll('.cal-date[id^="cal-day-"]').forEach(cell=>{
+        const date=new Date(cell.id.slice(8)+'T00:00:00');
+        const offset=Math.round((date.getTime()-today.getTime())/86400000);
+        cell.classList.toggle('disabled',!isAdmin && offset>=days);
+    });
+    const state=document.getElementById('citizenBookingStatus');
+    if(state){
+        const user=currentUser;
+        state.textContent=!user?'로그인 후 인증 상태를 확인할 수 있습니다.':user.isCitizen?'김해시민 인증 적용 · 오늘부터 14일(2주) 예약 가능':user.verifStatus==='APPROVED'?'승인 기록 확인 필요 · 현재 7일(1주) 적용':user.verifStatus==='PENDING'?'시민 인증 심사 중 · 오늘부터 7일(1주) 예약 가능':'일반 회원 · 오늘부터 7일(1주) 예약 가능';
+    }
+    const button=document.getElementById('btnRefreshCitizenStatus');if(button)button.hidden=!currentUser;
+}
+async function refreshMyCitizenBookingStatus() {
+    const user=typeof auth!=='undefined'?auth.currentUser:null;
+    if(!user || !currentUser)return;
+    const button=document.getElementById('btnRefreshCitizenStatus'),label=document.getElementById('citizenBookingStatus');
+    if(button)button.disabled=true;
+    try{
+        const uid=user.uid,snapshot=await db.collection('users').doc(uid).get({source:'server'});
+        if(auth.currentUser?.uid!==uid)return;
+        if(!snapshot.exists)throw Error('profile-missing');
+        currentUser={...snapshot.data(),uid};
+        syncBookingAccessUI();updateBookingContext();
+    }catch(_){if(label)label.textContent='서버에서 인증 상태를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.';}
+    finally{if(button)button.disabled=false;}
+}
