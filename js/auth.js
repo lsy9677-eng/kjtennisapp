@@ -328,6 +328,7 @@ async function showAutomationPolicyLoginNoticeOnce() {
 function initAuthStateListener() {
     /* [수정] 로그인 상태 변경 감지 */
     auth.onAuthStateChanged(user => {
+        syncDeveloperSession(user);
         const btnSet = document.getElementById('btnSet');
         const btnMyRes = document.getElementById('btnMyRes');
 
@@ -346,7 +347,7 @@ function initAuthStateListener() {
 
                 currentUser = doc.data() || {};
                 currentUser.uid = user.uid;
-                isAdmin = !!currentUser.isAdmin || localStorage.getItem('isAdm') === 'true';
+                isAdmin = isDeveloperAccount() || !!currentUser.isAdmin || localStorage.getItem('isAdm') === 'true';
             
                 document.getElementById('btnOut').style.display = 'inline-block';
                 document.getElementById('btnLogin').style.display = 'none';

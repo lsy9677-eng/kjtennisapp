@@ -5226,3 +5226,27 @@ body #view-res #mobileBookingBar #clearSelectionButton{min-height:32px;backgroun
 }
 
 .schedule-legend:has(.legend-fixed) span:has(>.legend-fixed)::after{content:"↻";font-size:11px;margin-left:1px;}
+
+/* Notice editor and locked development controls. */
+#developerVenueControls[hidden],#developerVenueAccess[hidden],#btnDeveloperVenueUnlock[hidden],#btnDeveloperVenueLock[hidden],#btnRemoveNoticeImage[hidden]{display:none!important;}
+.development-badge{display:inline-block;margin-left:6px;padding:3px 7px;border-radius:5px;background:#edf1f6;color:#68788e;font-size:10px;font-weight:650;vertical-align:middle;}
+.developer-unlock-button{border:1px solid #dce4ef;background:#fff;color:#526480;border-radius:8px;padding:9px 12px;font:inherit;font-size:12px;cursor:pointer;}
+body #modalDeveloperUnlock{z-index:210000!important;}
+body #modalDeveloperUnlock .modal-win{background:var(--court-panel,#fff)!important;padding:24px;border-radius:18px;max-width:390px;}
+.developer-unlock-form h2{font-size:19px;margin:0 0 12px;}.developer-unlock-form p{font-size:12px;line-height:1.6;color:#64748b;}.developer-unlock-form label{display:block;font-size:12px;margin:16px 0 6px;}.developer-unlock-form input{box-sizing:border-box;width:100%;padding:12px;border:1px solid #ccd8e6;border-radius:9px;font:inherit;}.developer-unlock-form #developerUnlockError{color:#b42332;}
+body #modalNoticePopupAdmin .modal-win{background:var(--court-panel,#fff)!important;border:1px solid var(--court-line,#dfe5ef);border-radius:18px!important;padding:24px!important;max-height:calc(100dvh - 36px)!important;overflow-y:auto;scrollbar-width:thin;}
+body #modalNoticePopupAdmin .modal-head{font-size:20px;margin-bottom:20px;}
+body #modalNoticePopupAdmin .notice-admin-card{padding:16px;border-radius:12px;margin:0 0 16px;background:#f7f9fc;border:1px solid #e1e8f1;}
+body #modalNoticePopupAdmin .inp-row{margin-bottom:16px;}body #modalNoticePopupAdmin .inp-row label{font-size:12px;color:#526480;}
+body #modalNoticePopupAdmin .notice-admin-dates{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;}
+body #modalNoticePopupAdmin input[type=date]{min-width:0;width:100%;box-sizing:border-box;font-size:13px;}
+body #modalNoticePopupAdmin input[type=file]{box-sizing:border-box;width:100%;font-size:12px;color:#64748b;}
+body #modalNoticePopupAdmin input[type=file]::file-selector-button{padding:8px 11px;margin-right:8px;border:1px solid #d5deeb;background:#fff;border-radius:7px;color:#3f5572;font:inherit;}
+body #modalNoticePopupAdmin .notice-admin-preview{margin-top:12px;}body #modalNoticePopupAdmin .notice-admin-empty{padding:20px 12px;font-size:13px;font-weight:500;}
+body #modalNoticePopupAdmin .notice-admin-help{font-size:11px;line-height:1.7;margin-top:9px;color:#738199;}
+body #modalNoticePopupAdmin .notice-admin-small{font-size:11px;padding:6px 10px;border-radius:7px;}
+body #modalNoticePopupAdmin .notice-court-settings-button{box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;width:100%;padding:13px 14px;margin:4px 0 18px;border:1px solid #dbe4f0;border-radius:10px;background:#f5f8fd;color:#365575;font:inherit;font-size:12px;font-weight:650;cursor:pointer;}
+body #modalNoticePopupAdmin .notice-admin-actions{display:grid!important;grid-template-columns:1fr 1fr 1.2fr;gap:8px!important;margin-top:0!important;padding-top:16px;border-top:1px solid #e2e8f0;}
+body #modalNoticePopupAdmin .notice-admin-actions .btn-full{width:100%!important;min-width:0;margin:0!important;padding:10px 6px!important;border-radius:9px!important;font-size:12px!important;min-height:40px;}
+body #modalNoticePopupAdmin .notice-admin-actions .bg-gray{background:#eef2f7!important;color:#526480!important;}body #modalNoticePopupAdmin .notice-admin-actions button:nth-child(2){background:#fff0f1!important;color:#b42332!important;}
+@media(max-width:600px){body #modalNoticePopupAdmin .modal-win{width:calc(100vw - 24px)!important;padding:20px 16px!important;}body #modalNoticePopupAdmin .notice-admin-dates{gap:8px;}body #modalNoticePopupAdmin .notice-admin-actions .btn-full{font-size:11px!important;}}

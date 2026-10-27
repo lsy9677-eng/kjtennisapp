@@ -257,10 +257,10 @@
           <label style="font-weight:800; color:#334155; display:block; margin-bottom:8px;">이미지 공지</label>
           <input type="file" id="noticePopupImageFile" accept="image/*">
           <div id="noticePopupImagePreview" class="notice-admin-preview"></div>
-          <button type="button" class="notice-admin-small danger" onclick="clearNoticePopupImage()">이미지 제거</button>
-          <div class="notice-admin-help">새 이미지를 선택하면 저장 시 Firebase Storage에 업로드됩니다.</div>
+          <button type="button" id="btnRemoveNoticeImage" class="notice-admin-small danger" onclick="clearNoticePopupImage()">이미지 제거</button>
+          <div class="notice-admin-help">이미지는 저장하기를 누르면 공지에 반영됩니다.</div>
         </div>
-        <button type="button" class="btn-full" style="background:#0f766e; margin-top:8px;" onclick="openCourtTimePopupAdmin()">🎾 코트(시간)별 팝업 설정</button>
+        <button type="button" class="notice-court-settings-button" onclick="openCourtTimePopupAdmin()">코트·시간별 안내 설정 <span aria-hidden="true">→</span></button>
         <div class="notice-admin-actions">
           <button type="button" class="btn-full bg-gray" onclick="previewNoticePopupAdmin()">미리보기</button>
           <button type="button" class="btn-full" style="background:#ef4444;" onclick="disableNoticePopupQuick()">팝업 끄기</button>
@@ -268,11 +268,18 @@
         </div>
       </div>`;
     document.body.appendChild(modal);
+    document.getElementById('noticePopupImageFile').addEventListener('change',function(){
+      const file=this.files[0];
+      if(!file){setAdminPreview(removeNoticeImageFlag?'':currentAdminNoticeData.imageUrl||'');return;}
+      if(!file.type.startsWith('image/'))return;
+      const reader=new FileReader();reader.onload=()=>setAdminPreview(reader.result);reader.readAsDataURL(file);
+    });
   }
 
   function setAdminPreview(imageUrl){
     const box = document.getElementById('noticePopupImagePreview');
     if(!box) return;
+    const remove=document.getElementById('btnRemoveNoticeImage');if(remove)remove.hidden=!imageUrl;
     if(imageUrl){
       box.innerHTML = `<img src="${escapeHtml(imageUrl)}" alt="공지 이미지 미리보기"><div class="notice-admin-help">현재 이미지가 설정되어 있습니다.</div>`;
     }else{

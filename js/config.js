@@ -110,12 +110,14 @@ function isPublicCenter(id) {
     return !!centerVisibility && centerVisibility[id] === true && !!centerPublicationApprovals && centerPublicationApprovals[id] === true;
 }
 function canSelectCenter(id, administrator) {
-    return Object.prototype.hasOwnProperty.call(CENTERS, id) && (administrator === true || isPublicCenter(id));
+    return Object.prototype.hasOwnProperty.call(CENTERS, id) && (isPublicCenter(id) || (administrator === true && hasDeveloperAccess()));
 }
 function renderCenterVisibilitySettings() {
     const list = document.getElementById('centerVisibilityList');
     if (!list) return;
-    list.replaceChildren(...Object.keys(CENTERS).map(id => {
+    renderDeveloperVenueControls();
+    const visibleIds = hasDeveloperAccess() ? Object.keys(CENTERS) : ['국제'];
+    list.replaceChildren(...visibleIds.map(id => {
         const row = document.createElement('label');
         row.className = 'center-visibility-row';
         const name = document.createElement('span');
@@ -150,6 +152,7 @@ function syncCenterVisibilityMaster() {
     }
 }
 function setAllCenterVisibility(open) {
+    if (!hasDeveloperAccess()) return;
     document.querySelectorAll('[data-center-visibility]').forEach(input => {
         if (!input.disabled) input.checked = open === true;
     });
@@ -158,6 +161,7 @@ function setAllCenterVisibility(open) {
 function readCenterVisibilitySettings() {
     const result = {};
     Object.keys(CENTERS).forEach(id => { result[id] = isPublicCenter(id); });
+    if (!hasDeveloperAccess()) return result;
     document.querySelectorAll('[data-center-visibility]').forEach(input => {
         if (Object.prototype.hasOwnProperty.call(CENTERS, input.dataset.centerVisibility)) result[input.dataset.centerVisibility] = input.checked;
     });
@@ -314,3 +318,66 @@ function confirmCenterPublication(nextVisibility) {
     }
     return true;
 }
+
+// Developer tools are locked on every new page/session. Never persist passwords or unlock state.
+(function(){
+    const email='canyone2@korea.com';
+    let unlockedUid='', expires=0, timer;
+    window.isDeveloperAccount=function(){
+        const user=typeof auth!=='undefined'?auth.currentUser:null;
+        return !!user && String(user.email||'').trim().toLowerCase()===email;
+    };
+    window.hasDeveloperAccess=function(){
+        const user=typeof auth!=='undefined'?auth.currentUser:null;
+        return isDeveloperAccount() && !!user.uid && unlockedUid===user.uid && Date.now()<expires;
+    };
+    window.lockDeveloperAccess=function(refresh=true){
+        unlockedUid='';expires=0;clearTimeout(timer);
+        if(refresh && typeof updateAdminUI==='function') updateAdminUI();
+        if(document.getElementById('centerVisibilityList'))renderCenterVisibilitySettings();
+    };
+    window.syncDeveloperSession=function(user){
+        if(!user || user.uid!==unlockedUid || String(user.email||'').toLowerCase()!==email)lockDeveloperAccess(false);
+    };
+    window.renderDeveloperVenueControls=function(){
+        const unlocked=hasDeveloperAccess(), developer=isDeveloperAccount();
+        const access=document.getElementById('developerVenueAccess');
+        const controls=document.getElementById('developerVenueControls');
+        const button=document.getElementById('btnDeveloperVenueUnlock');
+        if(access)access.hidden=unlocked;
+        if(controls)controls.hidden=!unlocked;
+        if(button)button.hidden=!developer||unlocked;
+        const lock=document.getElementById('btnDeveloperVenueLock');if(lock)lock.hidden=!unlocked;
+        const help=document.getElementById('developerVenueHelp');
+        if(help)help.textContent=developer?'개발자 계정의 로그인 비밀번호를 다시 확인하면 15분 동안 개발 메뉴를 사용할 수 있습니다.':'추가 구장 기능은 개발 중입니다. 공개 설정은 개발자만 사용할 수 있습니다.';
+    };
+    window.openDeveloperVenueUnlock=function(){
+        if(!isDeveloperAccount())return alert('지정된 개발자 계정만 사용할 수 있습니다.');
+        let modal=document.getElementById('modalDeveloperUnlock');
+        if(!modal){
+            modal=document.createElement('div');modal.id='modalDeveloperUnlock';modal.className='modal-mask';
+            modal.innerHTML='<form class="modal-win developer-unlock-form" aria-labelledby="developerUnlockTitle"><button class="modal-close" type="button" aria-label="닫기">×</button><h2 id="developerUnlockTitle">개발자 확인</h2><p>로그인한 개발자 계정의 비밀번호를 입력해 주세요.</p><label for="developerUnlockPassword">로그인 비밀번호</label><input id="developerUnlockPassword" type="password" autocomplete="current-password" required/><p id="developerUnlockError" role="alert"></p><button type="submit" class="btn-full bg-blue">비밀번호 확인</button></form>';
+            document.body.append(modal);
+            modal.querySelector('.modal-close').onclick=()=>{modal.querySelector('input').value='';closeModal('modalDeveloperUnlock');};
+            modal.querySelector('form').onsubmit=async event=>{
+                event.preventDefault();
+                const input=modal.querySelector('input'),button=modal.querySelector('[type=submit]'),error=document.getElementById('developerUnlockError');
+                const password=input.value;input.value='';error.textContent='';button.disabled=true;button.textContent='확인 중…';
+                try{
+                    if(!isDeveloperAccount())throw Error('account-changed');
+                    const user=auth.currentUser,uid=user.uid;
+                    const credential=firebase.auth.EmailAuthProvider.credential(user.email,password);
+                    await user.reauthenticateWithCredential(credential);
+                    const result=await user.getIdTokenResult(true);
+                    if(auth.currentUser?.uid!==uid || !isDeveloperAccount() || String(result.claims.email||'').toLowerCase()!==email)throw Error('account-changed');
+                    unlockedUid=uid;expires=Date.now()+15*60*1000;
+                    clearTimeout(timer);timer=setTimeout(()=>lockDeveloperAccess(),15*60*1000);
+                    closeModal('modalDeveloperUnlock');updateAdminUI();renderCenterVisibilitySettings();
+                }catch(_){error.textContent='비밀번호를 확인하지 못했습니다. 개발자 계정의 로그인 비밀번호로 다시 시도해 주세요.';}
+                finally{button.disabled=false;button.textContent='비밀번호 확인';}
+            };
+        }
+        document.getElementById('developerUnlockPassword').value='';document.getElementById('developerUnlockError').textContent='';
+        openModal('modalDeveloperUnlock');setTimeout(()=>document.getElementById('developerUnlockPassword').focus(),80);
+    };
+})();

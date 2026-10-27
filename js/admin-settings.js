@@ -116,6 +116,11 @@ async function saveSet() {
             centerPublicationApprovals: Object.fromEntries(Object.keys(CENTERS).map(id => [id, nextCenterVisibility[id] === true]))
         };
         
+        if (!hasDeveloperAccess()) {
+            delete dataToSave.centerVisibility;
+            delete dataToSave.centerPublicationApprovals;
+            delete dataToSave.isCenterOpen;
+        }
         const newPass = document.getElementById('setPw').value.trim();
         if(newPass) { dataToSave.adminPass = newPass; adminPass = newPass; }
         adminDefaultName = dataToSave.adminDefaultName || '관리자';

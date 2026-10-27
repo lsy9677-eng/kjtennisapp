@@ -7,8 +7,8 @@ function context(){const c={APP_ENV:{isDevelopment:false}};c.window=c;vm.createC
 test('venue metadata has international 8, Neungdong 8, old town 4 and Dongbu 7 courts',()=>{
  const c=context();for(const [id,count] of [['국제',8],['능동',8],['원도심',4],['동부',7]])assert.equal(c.CENTERS[id].courts,count);
 });
-test('new venues are hidden by default and administrators can preview them',()=>{
- const c=context();for(const id of ['능동','원도심','동부']){assert.equal(c.canSelectCenter(id,false),false);assert.equal(c.canSelectCenter(id,true),true);}assert.equal(c.isPublicCenter('국제'),true);assert.equal(c.canSelectCenter('unknown',true),false);
+test('new venues are hidden from members and ordinary administrators',()=>{
+ const c=context();for(const id of ['능동','원도심','동부']){assert.equal(c.canSelectCenter(id,false),false);assert.equal(c.canSelectCenter(id,true),false);}assert.equal(c.isPublicCenter('국제'),true);assert.equal(c.canSelectCenter('unknown',true),false);
 });
 test('a legacy all-open flag cannot accidentally launch newly prepared venues',()=>{
  const c=context();c.isCenterOpen=true;assert.equal(c.isPublicCenter('국제'),true);for(const id of ['능동','동부','원도심'])assert.equal(c.isPublicCenter(id),false);

@@ -52,7 +52,7 @@ await page.setViewportSize({width:390,height:844});
 assert.equal(await page.locator('#calendarWrap').isVisible(),true);
 await page.click('#btnCalendarFold');assert.equal(await page.locator('#calendarWrap').evaluate(e=>e.classList.contains('folded')),true);
 await page.click('#btnCalendarFold');assert.equal(await page.locator('#calendarWrap').evaluate(e=>e.classList.contains('folded')),false);
-await page.evaluate(()=>{isAdmin=true;updateAdminUI();});
+await page.evaluate(()=>{isAdmin=true;hasDeveloperAccess=()=>true;updateAdminUI();});
 assert.equal(await page.locator('#centerSel option').count(),4);
 for(const [id,count] of [['능동',8],['원도심',4],['동부',7]]){
  await page.evaluate(()=>{selected=[{c:8,t:10}];document.getElementById('btnMainBook').disabled=false;});
