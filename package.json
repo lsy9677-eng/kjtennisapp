@@ -18,7 +18,8 @@
     "setup:tools": "node dev/setup-tools.mjs",
     "seed": "node dev/seed.mjs",
     "emulators": "node dev/run-emulators.mjs",
-    "test:dark": "node dev/dark-mode-check.mjs"
+    "test:dark": "node dev/dark-mode-check.mjs",
+    "test:install": "node dev/install-check.mjs"
   },
   "devDependencies": {
     "firebase": "9.6.1",

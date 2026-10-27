@@ -10,6 +10,7 @@
 <!-- stable-manual-refresh: Firestore 읽기 절감 안정본 -->
 <!-- step8-board-extracted: CSS, config, utilities, auth, calendar, reservation UI, and board functions are external; reservation/payment core unchanged -->
 <link href="manifest.json" rel="manifest"/>
+<script defer src="./js/app-install.js"></script>
 <link href="abc-192.png" rel="icon" sizes="192x192" type="image/png"/>
 <link href="abc-192.png" rel="apple-touch-icon"/>
 <meta content="yes" name="apple-mobile-web-app-capable"/>
@@ -92,66 +93,12 @@
 </style>
 </head>
 <body>
-<div id="androidAppBanner" style="display:none; background:#f0fdf4; border-bottom:1px solid #bbf7d0; padding:12px; text-align:center; animation: slideDown 0.5s ease-out; position:relative;">
-<div style="max-width: 600px; margin: 0 auto; display:flex; align-items:center; justify-content:space-between; gap:10px;">
-<div style="text-align:left; flex:1;">
-<p style="margin:0; font-weight:bold; color:#166534; font-size:0.95rem;">장유국제테니스장 공식 앱 출시!</p>
-<p style="margin:2px 0 0; font-size:0.8rem; color:#15803d;">앱 설치하고 더 편하게 예약하세요.</p>
-</div>
-<a href="https://play.google.com/store/apps/details?id=dev.pages.tenniskj_app.twa" style="background:#22c55e; color:white; text-decoration:none; padding:8px 16px; border-radius:20px; font-weight:bold; font-size:0.85rem; box-shadow:0 2px 4px rgba(0,0,0,0.1); white-space:nowrap;" target="_blank">
-           설치하기
-        </a>
-<button onclick="dismissAppBanner()" style="background:none; border:none; color:#64748b; font-size:1.2rem; cursor:pointer; padding:4px; line-height:1;" title="닫기">
-            ✕
-        </button>
-</div>
-</div>
-<script>
-    // ▼▼▼ [수정] PWA/TWA 설치 여부 확인 - 이미 설치한 사용자는 배너 숨김 ▼▼▼
-    document.addEventListener("DOMContentLoaded", function() {
-        const ua = navigator.userAgent.toLowerCase();
-        
-        // 1. TWA(Trusted Web Activity) 감지 - 여러 방법 시도
-        const isTWA = document.referrer.includes('android-app://') || // 기본 방법
-                     (window.matchMedia('(display-mode: standalone)').matches && ua.includes('android')) || // TWA는 standalone
-                     ua.includes('wv'); // WebView 감지
-        
-        // 2. iOS PWA 감지
-        const isIOSPWA = window.navigator.standalone === true;
-        
-        // 3. 데스크톱 PWA 감지
-        const isDesktopPWA = window.matchMedia('(display-mode: standalone)').matches && !ua.includes('mobile');
-        
-        // 4. 앱으로 실행 중이면 배너 숨김
-        if (isTWA || isIOSPWA || isDesktopPWA) {
-            console.log('앱 모드로 실행 중 - 배너 숨김');
-            return;
-        }
-        
-        // 5. localStorage로 "이미 봤음" 체크
-        const hasSeenBanner = localStorage.getItem('appBannerDismissed');
-        if (hasSeenBanner === 'true') {
-            console.log('배너 이미 닫음 - 배너 숨김');
-            return;
-        }
-        
-        // 6. 안드로이드 브라우저에서만 배너 표시
-        if (ua.indexOf("android") > -1) {
-            console.log('안드로이드 브라우저 - 배너 표시');
-            const banner = document.getElementById('androidAppBanner');
-            if(banner) banner.style.display = 'block';
-        } else {
-            console.log('안드로이드 아님 - 배너 숨김');
-        }
-    });
-    
-    // ▼▼▼ [추가] 배너 닫기 버튼 기능 ▼▼▼
-    function dismissAppBanner() {
-        document.getElementById('androidAppBanner').style.display = 'none';
-        localStorage.setItem('appBannerDismissed', 'true'); // 다시 안 보기
-    }
-    // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
-</script>
+<aside id="appInstallBanner" aria-label="홈 화면에 추가 안내" hidden>
+<img src="abc-192.png" alt="" width="28" height="28"/>
+<div class="install-banner-copy"><strong>홈 화면에서 바로 예약하세요</strong><span>스토어 방문 없이 앱처럼 이용하세요</span></div>
+<button id="btnHomeInstall" class="install-banner-primary" type="button" onclick="requestAppInstall()"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4M5 16v5h14v-5"/></svg><span>홈 화면 추가</span></button>
+<button class="install-banner-close" type="button" onclick="dismissAppBanner()" aria-label="설치 안내 닫기">×</button>
+</aside>
 <header>
 <div class="brand-lockup" style="display:flex; flex-direction:column; justify-content:center;"><span class="brand-symbol"><img class="association-logo" src="abc-192.png" alt="김해시테니스협회 로고" width="38" height="38"/></span>
 <h1 style="font-size:1rem; margin-bottom:4px;">김해시테니스협회</h1>
@@ -728,6 +675,7 @@
 <div class="modal-win" style="max-width: 450px;">
 <span class="modal-close" onclick="closeModal('modalSet')">×</span>
 <div class="modal-head">설정</div>
+<div class="app-install-admin-entry" id="appInstallAdminSettings"><button type="button" class="developer-unlock-button" onclick="requestAppInstall()">홈 화면에 추가 안내</button></div>
 <!-- ▼▼▼ [추가] 다크모드 설정 ▼▼▼ -->
 <div class="inp-row" style="background:#f8fafc; padding:15px; border-radius:12px; border:1px solid #e2e8f0; margin-bottom:15px;">
 <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -3720,7 +3668,7 @@ let scoreChart = null;
 <details class="settings-detail"><summary>비밀번호 변경</summary><label for="userSettingsNewPw">새 비밀번호</label><input id="userSettingsNewPw" type="password" autocomplete="new-password" placeholder="변경할 때만 입력하세요"/><p>비밀번호는 6자 이상 입력해 주세요.</p></details>
 <details class="settings-detail"><summary>김해시민 인증 재신청</summary><p>인증이 거절되었거나 주소가 변경된 경우 서류를 첨부해 주세요.</p><label for="userSettingsProof">인증 서류</label><input id="userSettingsProof" type="file" accept="image/*"/></details>
 <button type="button" class="account-primary" onclick="saveUserSettingsInfo()">변경사항 저장</button></section>
-<section class="settings-section"><h3>앱 사용 환경</h3>
+<section class="settings-section" id="appInstallSettings"><h3>홈 화면에서 이용하기</h3><p class="account-description">홈 화면에 아이콘을 추가해 바로 예약하세요.</p><button type="button" class="account-secondary" onclick="requestAppInstall()">홈 화면에 추가</button></section><section class="settings-section"><h3>앱 사용 환경</h3>
 <div class="settings-preference"><div><label for="userNotificationToggle">예약 알림</label><p>내일 이용할 예약을 알려드려요.</p></div><label class="toggle-switch"><input id="userNotificationToggle" type="checkbox" onchange="toggleNotification()"/><span class="slider"></span></label></div>
 <div class="settings-preference"><div><label for="userDarkModeToggle">다크 모드</label><p>어두운 화면으로 전환합니다.</p></div><label class="toggle-switch"><input id="userDarkModeToggle" type="checkbox" onchange="toggleDarkMode()"/><span class="slider"></span></label></div>
 </section><button type="button" class="account-secondary" onclick="closeModal('modalUserSettings')">닫기</button>
