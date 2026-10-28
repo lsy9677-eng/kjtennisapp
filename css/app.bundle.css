@@ -5363,6 +5363,17 @@ body.dark-mode #androidAppBanner button{color:#c7d8ef!important;}
 :root,html[data-theme=light]{color-scheme:only light;}
 html[data-theme=dark]{color-scheme:dark;}
 
+/* Keep month navigation visible even when administrator tools are present. */
+body #view-res #calendarWrap.calendar-wrap{display:flex!important;flex-direction:column!important;}
+body #view-res #calendarWrap .cal-head{display:grid!important;grid-template-columns:28px minmax(0,1fr) 28px;grid-template-rows:auto auto;gap:4px!important;height:auto!important;min-height:0!important;flex-shrink:0;}
+body #view-res #calendarWrap .cal-head>.cal-nav{width:28px!important;height:28px!important;min-width:28px;grid-row:1;}
+body #view-res #calendarWrap .cal-head>.cal-nav:first-child{grid-column:1;}
+body #view-res #calendarWrap .cal-head>.cal-nav[aria-label="다음 달"]{grid-column:3;}
+body #view-res #calendarWrap .cal-head>#calTitle{grid-column:2;grid-row:1;text-align:center;white-space:nowrap;}
+body #view-res #calendarWrap .calendar-header-tools{grid-column:1/-1;grid-row:2;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:4px!important;min-width:0;}
+body #view-res #calendarWrap .calendar-header-tools>*{flex-shrink:0;}
+body #view-res #calendarWrap #calBody.continuous-calendar{flex:1 1 0;min-height:0;height:auto!important;}
+
 /* Direct browser installation, with a manual Safari path. */
 #appInstallBanner[hidden],#appInstallSettings[hidden],#modalAppInstall[hidden],#installStoreLink[hidden]{display:none!important;}
 #appInstallBanner{display:flex;align-items:center;gap:9px;box-sizing:border-box;min-height:48px;flex-shrink:0;padding:6px 14px;background:#edf3ff;color:#243d62;border-bottom:1px solid #d9e4f7;}

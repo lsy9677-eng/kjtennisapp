@@ -16,7 +16,7 @@
 <meta content="yes" name="apple-mobile-web-app-capable"/>
 <meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"/>
 <meta content="#14233d" name="theme-color"/>
-<link href="./css/app.bundle.css?v=20261027-design-v1" rel="stylesheet"/>
+<link href="./css/app.bundle.css?v=20261029-calendar-nav-v1" rel="stylesheet"/>
 <script src="./js/sdk-loader.js"></script>
 
 <style id="mobile-booking-bar-draggable-style">
@@ -133,9 +133,10 @@
 <div class="booking-week" id="bookingWeek" aria-label="예약 날짜 선택"></div>
 <div class="calendar-wrap" id="calendarWrap">
 <div class="cal-head">
-<button class="cal-nav" onclick="mvMonth(-1)">&lt;</button>
-<div style="display:flex; align-items:center;">
+<button class="cal-nav" onclick="mvMonth(-1)" aria-label="이전 달" type="button">&lt;</button>
 <span id="calTitle"></span>
+<button class="cal-nav" onclick="mvMonth(1)" aria-label="다음 달" type="button">&gt;</button>
+<div class="calendar-header-tools">
 <div class="weather-toggle-wrap" title="날씨 보기">
 <label class="weather-switch">
 <input checked="" id="chkWeather" onchange="toggleWeatherView()" type="checkbox"/>
@@ -153,7 +154,6 @@
 <button class="inline-batch-exec" id="btnBatchExec" onclick="doBatchDelete()" style="display:none;">삭제</button>
 </div>
 </div>
-<button class="cal-nav" onclick="mvMonth(1)">&gt;</button>
 </div>
 <div class="cal-grid" id="calBody"></div>
 <input id="hiddenDate" type="date"/>
