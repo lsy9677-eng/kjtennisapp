@@ -205,8 +205,11 @@ function markMyReservedDates(forceRefresh = false) {
     const endStr = formatDateStrLocal(endDateObj);
     const cacheKey = `${currentCenter}_${currentUser.phone}_${startStr}_${endStr}`;
     const cached = _myReservedDatesCache[cacheKey];
+    const identity = JSON.stringify([currentCenter, currentUser.uid, currentUser.phone]);
+    const pending = markMyReservedDates.pending || (markMyReservedDates.pending = new Map());
 
     const applyReservedDates = (dates) => {
+        if (!currentUser || isAdmin || identity !== JSON.stringify([currentCenter, currentUser.uid, currentUser.phone])) return;
         (dates || []).forEach(date => {
             const cell = document.getElementById(`cal-day-${date}`);
             if (cell) cell.classList.add('my-reserved');
@@ -218,13 +221,15 @@ function markMyReservedDates(forceRefresh = false) {
         return;
     }
 
-    db.collection('reservations')
+    if (!forceRefresh && pending.has(cacheKey)) return pending.get(cacheKey);
+    const request = db.collection('reservations')
         .where('center', '==', currentCenter)
         .where('phone', '==', currentUser.phone)
         .where('date', '>=', startStr)
         .where('date', '<=', endStr)
         .get()
         .then(snap => {
+            if (pending.get(cacheKey) !== request) return;
             const dates = [];
             snap.forEach(doc => {
                 const data = doc.data() || {};
@@ -234,7 +239,10 @@ function markMyReservedDates(forceRefresh = false) {
             _myReservedDatesCache[cacheKey] = { dates: [...new Set(dates)], ts: Date.now() };
             applyReservedDates(_myReservedDatesCache[cacheKey].dates);
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => { if (pending.get(cacheKey) === request) pending.delete(cacheKey); });
+    pending.set(cacheKey, request);
+    return request;
 }
 
 /* =========================================

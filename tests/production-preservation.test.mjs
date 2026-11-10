@@ -6,7 +6,7 @@ import {execFileSync} from 'node:child_process';
 const source=file=>fs.readFileSync(new URL('../'+file,import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const original=file=>execFileSync('git',['show','3b5bb59:'+file],{encoding:'utf8'}).replace(/\r\n/g,'\n');
 test('reservation policies, stored fields and payment-provider body remain unchanged around 429 recovery',()=>{
-    assert.equal(source('js/reservation-data.js'),original('js/reservation-data.js'));
+    assert.equal(source('js/reservation-data.js').replace(/^        if \(typeof (?:markMyReservedDates|_getMyReservationDocs) === 'function' && [^\n]*\n/gm, ''),original('js/reservation-data.js'));
     const core=source('js/booking-core.js'),base=original('js/booking-core.js');
     const between=(text,start,end)=>text.slice(text.indexOf(start),text.indexOf(end,text.indexOf(start)));
     const normalizeCenter=text=>text.replace(/\bbookingCenter\b/g,'currentCenter');

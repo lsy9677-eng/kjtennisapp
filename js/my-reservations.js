@@ -39,22 +39,33 @@ function _myResMatchesMember(d) {
 }
 async function _getMyReservationDocs() {
     if (!currentUser) return [];
-    const jobs = [];
-    const myUid = String(currentUser.uid || '').trim();
-    if (myUid) {
-        jobs.push(db.collection('reservations').where('uid', '==', myUid).get());
-        jobs.push(db.collection('reservations').where('ownerId', '==', myUid).get());
-    }
-    _myResPhoneVariants(currentUser.phone).forEach(ph => {
-        jobs.push(db.collection('reservations').where('phone', '==', ph).get());
-    });
-    const snaps = await Promise.all(jobs);
-    const map = new Map();
-    snaps.filter(Boolean).forEach(snap => snap.docs.forEach(doc => {
-        const d = doc.data();
-        if (_myResMatchesMember(d)) map.set(doc.id, doc);
-    }));
-    return [...map.values()];
+    // Share concurrent reads only; never retain settled reservation results.
+    const identity = () => JSON.stringify(currentUser && [currentUser.uid, currentUser.phone, currentUser.name]);
+    const key = identity();
+    const pending = _getMyReservationDocs.pending || (_getMyReservationDocs.pending = new Map());
+    if (pending.has(key)) return pending.get(key);
+    const request = (async () => {
+        const jobs = [];
+        const myUid = String(currentUser.uid || '').trim();
+        if (myUid) {
+            jobs.push(db.collection('reservations').where('uid', '==', myUid).get());
+            jobs.push(db.collection('reservations').where('ownerId', '==', myUid).get());
+        }
+        _myResPhoneVariants(currentUser.phone).forEach(ph => {
+            jobs.push(db.collection('reservations').where('phone', '==', ph).get());
+        });
+        const snaps = await Promise.all(jobs);
+        if (identity() !== key || pending.get(key) !== request) return [];
+        const map = new Map();
+        snaps.filter(Boolean).forEach(snap => snap.docs.forEach(doc => {
+            const d = doc.data();
+            if (_myResMatchesMember(d)) map.set(doc.id, doc);
+        }));
+        return [...map.values()];
+    })();
+    pending.set(key, request);
+    try { return await request; }
+    finally { if (pending.get(key) === request) pending.delete(key); }
 }
 
 function openMyResList() {

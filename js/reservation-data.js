@@ -33,6 +33,8 @@ function _invalidateReservationsCache(center, date) {
 
 function _invalidateMyReservedDatesCache(center, phone, monthStart) {
         const prefix = `${center || currentCenter}_${phone || ''}_`;
+        if (typeof _getMyReservationDocs === 'function' && _getMyReservationDocs.pending) _getMyReservationDocs.pending.clear();
+        if (typeof markMyReservedDates === 'function' && markMyReservedDates.pending) [...markMyReservedDates.pending.keys()].filter(k => k.startsWith(prefix)).forEach(k => markMyReservedDates.pending.delete(k));
         if (monthStart) delete _myReservedDatesCache[prefix + monthStart];
         else Object.keys(_myReservedDatesCache).filter(k => k.startsWith(prefix)).forEach(k => delete _myReservedDatesCache[k]);
     }
