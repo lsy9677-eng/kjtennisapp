@@ -5,14 +5,18 @@ import { fileURLToPath } from 'node:url';
 import { root, resolveTool } from './tools.mjs';
 import { localCSP } from './server.mjs';
 import { copyPublicAssets } from './pages-assets.mjs';
-export function isolatedToolEnvironment() {
+export function isolatedToolEnvironment(baseEnvironment = process.env) {
     const artifacts=path.join(root,'dev/artifacts');
     // Never inherit service credentials, Node preload hooks or user Wrangler/Firebase configuration.
-    const env={...process.env};
+    const env={...baseEnvironment};
+    const inheritedPath=env.PATH||env.Path||'';
+    // Windows may expose "Path" instead of "PATH". Emit only one spelling so
+    // isolated subprocesses retain Git/Node while removing credential variables.
+    for(const key of Object.keys(env))if(key.toUpperCase()==='PATH')delete env[key];
     for(const key of Object.keys(env))if(/SECRET|TOKEN|PASSWORD|PRIVATE_KEY|CREDENTIAL|^DEBUG$|^NODE_OPTIONS$|^FIREBASE_|^CLOUDFLARE_|^CF_/i.test(key))delete env[key];
     return {...env,WRANGLER_SEND_METRICS:'false',WRANGLER_LOG_PATH:path.join(artifacts,'wrangler.log'),
         XDG_CONFIG_HOME:path.join(artifacts,'wrangler-config'),
-        PATH:path.join(artifacts,'vclibs')+path.delimiter+env.PATH,
+        PATH:path.join(artifacts,'vclibs')+path.delimiter+inheritedPath,
         NODE_OPTIONS:'--require='+JSON.stringify(path.join(root,'dev/offline-network.cjs'))};
 }
 export async function preparePages(development=true) {

@@ -10,12 +10,33 @@
  * - saveBook()
  *
  * STEP 17 note:
- * - saveBook(uid) has been moved here without changing its Firestore transaction body.
- * - The transaction read-before-write order is intentionally preserved.
+ * - saveBook(uid) was originally moved here without transaction changes.
+ * - 2026-11-10: bounded HTTP 429 recovery and same-request recognition added.
+ * - Transaction read-before-write order and reservation fields remain preserved.
  * - dev/index.dev.html now only keeps a marker comment for saveBook.
  */
 
 var bookingPriceState = { status: 'idle', request: 0, context: '' };
+var bookingSaveInProgress = false;
+var bookingPaymentInProgress = false;
+
+function isBookingRateLimitError(error) {
+    return /(?:^|\/)resource-exhausted$/.test(String(error && error.code || '')) ||
+        Number(error && error.status) === 429 ||
+        /Server responded with status 429\b/.test(String(error && error.message || ''));
+}
+
+async function runBookingTransactionWithRetry(operation) {
+    // The SDK maps an unstructured HTTP 429 to "unknown", which it does not retry.
+    // Keep the same requestId and re-read every slot in each atomic transaction.
+    for (let attempt = 0; ; attempt++) {
+        try { return await db.runTransaction(operation); }
+        catch (error) {
+            if (!isBookingRateLimitError(error) || attempt >= 2 || /quota|daily/i.test(String(error.message || ''))) throw error;
+            await new Promise(resolve => setTimeout(resolve, [1000, 2500][attempt] + Math.floor(Math.random() * 300)));
+        }
+    }
+}
 
 function getBookingPriceSelectionKey() {
     return JSON.stringify([currentCenter, document.getElementById('hiddenDate').value,
@@ -93,7 +114,7 @@ function updateBookingSubmitAvailability() {
     const consentRequired = (typeof isAutomationPolicyEnabled !== 'function') || isAutomationPolicyEnabled('bookingConsentEnabled');
     const checked = !consentRequired || !!(document.getElementById('chkAutomationPolicy') && document.getElementById('chkAutomationPolicy').checked);
     const captchaOk = !!_recaptchaToken;
-    const enabled = priceReady && (isAdmin || (checked && captchaOk));
+    const enabled = !bookingSaveInProgress && !bookingPaymentInProgress && priceReady && (isAdmin || (checked && captchaOk));
     btn.disabled = !enabled;
     btn.style.opacity = enabled ? '1' : '0.4';
     btn.style.pointerEvents = enabled ? 'auto' : 'none';
@@ -350,6 +371,17 @@ function openBook() {
     /* ========== [매크로 방지] reCAPTCHA 콜백 끝 ========== */
 
     async function doPay() {
+        if (bookingPaymentInProgress || bookingSaveInProgress) return;
+        bookingPaymentInProgress = true;
+        updateBookingSubmitAvailability();
+        try { return await executeBookingPayment(); }
+        finally {
+            bookingPaymentInProgress = false;
+            updateBookingSubmitAvailability();
+        }
+    }
+
+    async function executeBookingPayment() {
         if (!isBookingPriceReady()) {
             updateBookingSubmitAvailability();
             alert('요금 설정 확인이 끝난 뒤 다시 시도해주세요.');
@@ -361,7 +393,7 @@ function openBook() {
             alert('현재 카드 결제는 사용할 수 없습니다. 계좌이체로 진행해주세요.');
             return;
         }
-        if(isAdmin && confirm("관리자 권한으로 결제 없이 예약하시겠습니까?")) { saveBook("ADMIN"); return; }
+        if(isAdmin && confirm("관리자 권한으로 결제 없이 예약하시겠습니까?")) { await saveBook("ADMIN"); return; }
         if(!currentUser && !isAdmin) return alert("로그인 정보가 없습니다.");
         const consentRequired = (typeof isAutomationPolicyEnabled !== 'function') || isAutomationPolicyEnabled('bookingConsentEnabled');
         if (!isAdmin && consentRequired && !(document.getElementById('chkAutomationPolicy') && document.getElementById('chkAutomationPolicy').checked)) {
@@ -420,7 +452,7 @@ function openBook() {
             }
             // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
-            saveBook("TRANSFER");
+            await saveBook("TRANSFER");
             return;
         }
 
@@ -468,6 +500,18 @@ function openBook() {
 /* STEP 17 - reservation save moved from dev/index.dev.html */
 /* [수정] 예약 저장 함수 (화면 입력값 우선 사용) */
 async function saveBook(uid) {
+    if (bookingSaveInProgress) return;
+    bookingSaveInProgress = true;
+    updateBookingSubmitAvailability();
+    try { return await performBookingSave(uid); }
+    finally {
+        bookingSaveInProgress = false;
+        updateBookingSubmitAvailability();
+    }
+}
+
+async function performBookingSave(uid) {
+    const bookingCenter = currentCenter;
     const date = document.getElementById('hiddenDate').value;
     const rawAdminName = isAdmin ? (document.getElementById("bkName").value || "").trim() : "";
     const bkName = isAdmin ? (rawAdminName || adminDefaultName || "관리자") : (currentUser ? currentUser.name : "회원");
@@ -498,7 +542,7 @@ async function saveBook(uid) {
         requestStartedAtMs,
         name: bkName || '',
         phone: bkPhone || '',
-        center: currentCenter,
+        center: bookingCenter,
         date,
         slots: slots.map(s => ({ court: s.c, time: s.t })),
         slotCount: slots.length,
@@ -532,7 +576,7 @@ async function saveBook(uid) {
         }
 
         for (const slot of slots) {
-            const recurConflict = await hasRecurringConflict(currentCenter, date, slot.c, slot.t);
+            const recurConflict = await hasRecurringConflict(bookingCenter, date, slot.c, slot.t);
             if (recurConflict) {
                 await logBookingAttempt({ ...attemptMeta, result: 'FAIL', reason: `${slot.c}코트 ${slot.t}시 정기예약 겹침` });
                 if (document.getElementById('macroMonitorBox') && document.getElementById('macroMonitorBox').style.display !== 'none') loadMacroMonitor();
@@ -543,7 +587,7 @@ async function saveBook(uid) {
         }
 
         const dayReservationSnap = await db.collection('reservations')
-            .where('center', '==', currentCenter)
+            .where('center', '==', bookingCenter)
             .where('date', '==', date)
             .get();
 
@@ -557,7 +601,7 @@ async function saveBook(uid) {
 
         // 정기예약(recurring)도 점유 슬롯에 포함해야 1시간 틈새 예외가 정확히 동작한다.
         // 예: 일요일 정기예약 사이에 낀 1시간은 reservations에는 없지만 실제로는 양옆이 막힌 상태다.
-        await addRecurringOccupiedSlotsToMap(currentCenter, date, occupiedMap);
+        await addRecurringOccupiedSlotsToMap(bookingCenter, date, occupiedMap);
 
         for (const slot of slots) {
             const key = `${slot.c}_${slot.t}`;
@@ -572,18 +616,27 @@ async function saveBook(uid) {
 
         validateRequestedSlotPattern(slots, occupiedMap);
 
-        await db.runTransaction(async (transaction) => {
+        await runBookingTransactionWithRetry(async (transaction) => {
             // [수정] Firestore 트랜잭션 규칙: 모든 read를 먼저 완료한 뒤 write 수행
             // read와 write가 섞이면 "reads must be executed before all writes" 오류 발생
 
             // 1단계: 모든 슬롯 read 먼저
             const snapshots = [];
             for (const slot of slots) {
-                const reservationId = buildSlotLockId(currentCenter, date, slot.c, slot.t);
+                const reservationId = buildSlotLockId(bookingCenter, date, slot.c, slot.t);
                 const resRef = db.collection('reservations').doc(reservationId);
                 const resSnap = await transaction.get(resRef);
                 snapshots.push({ slot, resRef, resSnap });
             }
+
+            // A commit can succeed before its response is lost/rate limited. Only
+            // this exact request may recognize its already-saved slots as success.
+            if (snapshots.length && snapshots.every(({ resSnap }) => {
+                if (!resSnap.exists) return false;
+                const existing = resSnap.data() || {};
+                return existing.requestId === requestId && existing.uid === actorUid &&
+                    existing.paymentUid === uid && existing.status === initialStatus;
+            })) return;
 
             // 2단계: 충돌 체크 (read 결과만 사용, Firestore 접근 없음)
             for (const { slot, resSnap } of snapshots) {
@@ -598,7 +651,7 @@ async function saveBook(uid) {
             // 3단계: 모든 write를 마지막에 일괄 처리
             for (const { slot, resRef } of snapshots) {
                 transaction.set(resRef, {
-                    center: currentCenter,
+                    center: bookingCenter,
                     date,
                     court: slot.c,
                     time: slot.t,
@@ -621,7 +674,12 @@ async function saveBook(uid) {
         });
 
         await logBookingAttempt({ ...attemptMeta, result: 'SUCCESS', elapsedMs: Date.now() - requestStartedAtMs });
-        if (!isAdmin) await maybeAutoBlockUser(actorUid);
+        if (!isAdmin) {
+            // An auxiliary monitoring failure must not report an already committed
+            // reservation as failed or encourage the member to submit it again.
+            try { await maybeAutoBlockUser(actorUid); }
+            catch (monitorError) { console.warn('예약 저장 후 모니터링 처리 실패:', monitorError); }
+        }
         if (document.getElementById('macroMonitorBox') && document.getElementById('macroMonitorBox').style.display !== 'none') loadMacroMonitor();
         showSuccessAnimation();
         setTimeout(() => {
@@ -629,8 +687,8 @@ async function saveBook(uid) {
         }, 800);
 
         closeModal('modalBook');
-        _invalidateReservationsCache(currentCenter, date); // 예약 완료 → 캐시 무효화
-        _invalidateMyReservedDatesCache(currentCenter, bkPhone);
+        _invalidateReservationsCache(bookingCenter, date); // 예약 완료 → 캐시 무효화
+        _invalidateMyReservedDatesCache(bookingCenter, bkPhone);
         scheduleLoadDB(0);
         drawCalendar();
         refreshTodayMyReservationCard(true);
@@ -645,11 +703,13 @@ async function saveBook(uid) {
     } catch(err) {
         try {
             await logBookingAttempt({ ...attemptMeta, result: 'FAIL', reason: err && err.message ? err.message : 'UNKNOWN' });
-            if (!isAdmin) await maybeAutoBlockUser(actorUid);
+            if (!isAdmin && !isBookingRateLimitError(err)) await maybeAutoBlockUser(actorUid);
             if (document.getElementById('macroMonitorBox') && document.getElementById('macroMonitorBox').style.display !== 'none') loadMacroMonitor();
         } catch(_) {}
         console.error(err);
-        alert(err.message || '예약 처리 중 오류가 발생했습니다. 다시 시도해주세요.');
+        alert(isBookingRateLimitError(err)
+            ? '예약 서버 요청이 일시적으로 제한되었습니다. 잠시 후 내 예약에서 신청 여부를 확인한 뒤 다시 시도해주세요.'
+            : (err.message || '예약 처리 중 오류가 발생했습니다. 다시 시도해주세요.'));
         scheduleLoadDB(0);
     }
 }

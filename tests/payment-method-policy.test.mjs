@@ -42,3 +42,10 @@ test('card disabled: transfer verification failure still prevents reservation sa
     const {c,calls}=fixture(false);c.setPayMethod('TRANSFER');c.fetch=async()=>{calls.verify++;return {json:async()=>({success:false})};};
     await c.doPay();assert.deepEqual(calls,{pg:0,verify:1,saved:[]});
 });
+
+test('duplicate transfer clicks verify and save only once while the first verification is pending',async()=>{
+    const {c,calls,nodes}=fixture(false);c.setPayMethod('TRANSFER');let release;
+    c.fetch=async()=>{calls.verify++;await new Promise(resolve=>{release=resolve;});return {json:async()=>({success:true})};};
+    const first=c.doPay();await c.doPay();assert.equal(calls.verify,1);assert.equal(nodes.btnDoPay.disabled,true);
+    release();await first;assert.deepEqual(calls.saved,['TRANSFER']);assert.equal(nodes.btnDoPay.disabled,false);
+});

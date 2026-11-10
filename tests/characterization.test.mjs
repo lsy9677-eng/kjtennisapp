@@ -43,7 +43,7 @@ test('CURRENT DEFECT: successful card callback invokes save only after payment, 
     const calls=[];
     const c={ isAdmin:false,useCardPay:true,currentUser:{name:'Synthetic',phone:'000'},currentPayMethod:'PAY',selected:[{c:1,t:10}],
         isAutomationPolicyEnabled:()=>false,alert:()=>{},fetch:async()=>({json:async()=>({success:true})}),
-        document:{getElementById:id=>({innerText:'1000',value:'2030-11-04'})},
+        document:{getElementById:id=>({innerText:'1000',value:'2030-11-04',style:{}})},
         IMP:{request_pay:(options,callback)=>{calls.push('payment-success');callback({success:true,imp_uid:'dev-paid'});}},
         calls, Date, Math };
     c.window=c;vm.createContext(c);vm.runInContext(read('booking-core'),c);

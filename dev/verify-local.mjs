@@ -4,7 +4,7 @@ const instance=await startEmulators();
 function run(file) {
     return new Promise((resolve,reject)=>{
         const flags=file==='dev/browser-check.mjs'
-            ? ['--pages','--transfer-only'].filter(flag=>process.argv.includes(flag))
+            ? ['--pages','--transfer-only','--rate-limit'].filter(flag=>process.argv.includes(flag))
             : file==='dev/seed.mjs'&&!process.argv.includes('--transfer-only')?['--card-enabled']:[];
         const child=spawn(process.execPath,[file,...flags],{stdio:'inherit',windowsHide:true});
         child.once('error',reject);

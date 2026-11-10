@@ -25,7 +25,8 @@ export async function startEmulators() {
         await ended;clearTimeout(timer);
     };
     try {
-        for(let i=0;i<90;i++) {
+        // Cold Java/Storage startup can exceed 45 seconds on a busy Windows host.
+        for(let i=0;i<360;i++) {
             if(child.exitCode!==null)throw new Error('Emulator exited. Read dev/artifacts/emulators.log');
             try {
                 const locator=await (await fetch('http://127.0.0.1:4407/',{signal:AbortSignal.timeout(500)})).json();

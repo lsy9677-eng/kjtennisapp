@@ -9,6 +9,7 @@ const { chromium } = await import(pathToFileURL(resolveTool('node_modules/playwr
 let closeServer;
 const usePages=process.argv.includes('--pages');
 const transferOnly=process.argv.includes('--transfer-only');
+const rateLimitTest=process.argv.includes('--rate-limit');
 if(usePages) {
     const {createPagesRuntime}=await import('./pages-runtime.mjs');
     const runtime=await createPagesRuntime({port:4173});
@@ -104,7 +105,29 @@ try {
     console.log('CHECK: pricing and mock transports complete');
     await page.click('#dev-refund');
     await page.locator('#dev-panel summary').click();
-    // Exercise unchanged payment + saveBook against synthetic Emulator documents only.
+    // Inject genuine HTTP 429s into the real SDK's demo-project transaction RPCs.
+    const rateLimit={beforeWrite:0,afterCommit:0,writeCommits:0};
+    if(rateLimitTest) {
+        assert.equal(transferOnly,true,'Rate-limit integration fixture is transfer-only');
+        await page.route('http://127.0.0.1:8080/**',async route=>{
+            const request=route.request(),url=new URL(request.url());
+            if(request.method()==='POST'&&url.pathname.endsWith(':batchGet')&&rateLimit.beforeWrite===0) {
+                assert.ok(url.pathname.includes('/projects/demo-kjtennis-local/'));
+                rateLimit.beforeWrite++;return route.fulfill({status:429,contentType:'application/json',headers:{'Access-Control-Allow-Origin':'*'},body:'{}'});
+            }
+            // Firestore also sends verify-only commit operations for read-only
+            // transactions. Count only actual data mutations as reservation writes.
+            if(request.method()==='POST'&&url.pathname.endsWith(':commit')&&(request.postDataJSON()?.writes||[]).some(write=>write.update||write.delete||write.transform)) {
+                assert.ok(url.pathname.includes('/projects/demo-kjtennis-local/'));
+                const response=await route.fetch();assert.equal(response.status(),200);rateLimit.writeCommits++;
+                if(rateLimit.afterCommit===0){rateLimit.afterCommit++;return route.fulfill({status:429,contentType:'application/json',headers:{'Access-Control-Allow-Origin':'*'},body:'{}'});}
+                return route.fulfill({response});
+            }
+            return route.fallback();
+        });
+        await page.evaluate(()=>{window.__originalAutoBlock=maybeAutoBlockUser;maybeAutoBlockUser=async()=>{throw Object.assign(new Error('Server responded with status 429'),{code:'unknown'});};});
+    }
+    // Exercise member transfer + saveBook against synthetic Emulator documents only.
     await page.evaluate(async()=>{
         const date='2030-11-04';
         for(const time of [10,11])await db.collection('reservations').doc(buildSlotLockId(currentCenter,date,2,time)).delete();
@@ -134,6 +157,11 @@ try {
         if(!reservationSaved)await new Promise(resolve=>setTimeout(resolve,200));
     }
     assert.ok(reservationSaved,'Both synthetic slots must be saved; dialogs='+JSON.stringify(dialogs));
+    if(rateLimitTest) {
+        assert.deepEqual(rateLimit,{beforeWrite:1,afterCommit:1,writeCommits:1});
+        assert.ok(!dialogs.some(message=>/Server responded|一時|일시적으로 제한/.test(message)),'Recovered and post-commit 429s must not report a failed reservation');
+        await page.evaluate(()=>{maybeAutoBlockUser=window.__originalAutoBlock;});
+    }
     const result=await page.evaluate(()=>({events:DEV_EVENTS,keys:Object.keys(localStorage),project:firebaseApp.options.projectId}));
     for(const kind of [...(transferOnly?[]:['payment-mock']),'refund-mock','sms-mock','notification-mock','oauth-mock'])assert.ok(result.events.some(x=>x.kind===kind),kind);
     let transferResult;
@@ -200,6 +228,6 @@ try {
     assert.deepEqual(violations,[],'External browser request attempted');
     assert.deepEqual(errors,[],'Page JavaScript errors');
     await fs.mkdir('dev/artifacts',{recursive:true});
-    await fs.writeFile('dev/artifacts/'+(transferOnly?'transfer-browser-report.json':usePages?'pages-browser-report.json':'browser-report.json'),JSON.stringify({passed:true,runtime:usePages?'Cloudflare workerd':'Node harness',requests,violations,errors,sdk,pricingReadiness,transferResult,events:result.events,offlineStopped:true,csp,unknownRequests,cacheCleared:true,unprefixedAdminIgnored:true},null,2));
+    await fs.writeFile('dev/artifacts/'+(rateLimitTest?'booking-rate-limit-browser-report.json':transferOnly?'transfer-browser-report.json':usePages?'pages-browser-report.json':'browser-report.json'),JSON.stringify({passed:true,runtime:usePages?'Cloudflare workerd':'Node harness',requests,violations,errors,sdk,pricingReadiness,transferResult,rateLimit:rateLimitTest?rateLimit:undefined,events:result.events,offlineStopped:true,csp,unknownRequests,cacheCleared:true,unprefixedAdminIgnored:true},null,2));
     console.log('PASS: synthetic Auth / Firestore / Storage / booking / mocks / session restore / offline stop; external requests: 0');
 } finally {await browser?.close();await closeServer();}

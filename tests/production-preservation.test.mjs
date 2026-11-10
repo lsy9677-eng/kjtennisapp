@@ -5,11 +5,14 @@ import vm from 'node:vm';
 import {execFileSync} from 'node:child_process';
 const source=file=>fs.readFileSync(new URL('../'+file,import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const original=file=>execFileSync('git',['show','3b5bb59:'+file],{encoding:'utf8'}).replace(/\r\n/g,'\n');
-test('reservation save/query and payment-provider implementation remain exactly unchanged',()=>{
+test('reservation policies, stored fields and payment-provider body remain unchanged around 429 recovery',()=>{
     assert.equal(source('js/reservation-data.js'),original('js/reservation-data.js'));
     const core=source('js/booking-core.js'),base=original('js/booking-core.js');
-    assert.equal(core.slice(core.indexOf('async function saveBook(uid)')),base.slice(base.indexOf('async function saveBook(uid)')));
-    assert.equal(core.slice(core.indexOf('        if(isAdmin && confirm')),base.slice(base.indexOf('        if(isAdmin && confirm')));
+    const between=(text,start,end)=>text.slice(text.indexOf(start),text.indexOf(end,text.indexOf(start)));
+    const normalizeCenter=text=>text.replace(/\bbookingCenter\b/g,'currentCenter');
+    assert.equal(normalizeCenter(between(core,'        await validateDailyReservationLimits(attemptMeta);','        await runBookingTransactionWithRetry(')),between(base,'        await validateDailyReservationLimits(attemptMeta);','        await db.runTransaction('));
+    assert.equal(normalizeCenter(between(core,'            // 2단계: 충돌 체크','        await logBookingAttempt({ ...attemptMeta, result: \'SUCCESS\'')),between(base,'            // 2단계: 충돌 체크','        await logBookingAttempt({ ...attemptMeta, result: \'SUCCESS\''));
+    assert.equal(between(core,'        if(isAdmin && confirm','/* STEP 17 - reservation save').replace(/await saveBook\("(ADMIN|TRANSFER)"\)/g,'saveBook("$1")'),between(base,'        if(isAdmin && confirm','/* STEP 17 - reservation save'));
 });
 test('refund, cancellation and sharing logic remain unchanged outside list read/presentation changes',()=>{
     const stripped=source('js/my-reservations.js').replace(/if \(APP_ENV\.isDevelopment\) devEffect\('sms-mock', [^\n]+?\); else /g,'');
