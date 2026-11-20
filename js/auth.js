@@ -488,19 +488,15 @@ function initAuthStateListener() {
 
             if(file) {
                 try {
-                    const compressedFile = await compressImage(file, 800, 0.6); // 화질 약간 조정
-                    const path = `proofs/${uid}_proof.jpg`;
-                    const ref = storage.ref().child(path);
-                    await ref.put(compressedFile);
-                    proofUrl = await ref.getDownloadURL();
+                    proofUrl = await uploadCitizenProof(file, uid);
                 } catch(imgErr) { console.error("이미지 실패:", imgErr); }
             }
 
             // DB 저장 시 동의 날짜 기록 (법적 분쟁 대비)
             await db.collection("users").doc(uid).set({
                 email: email, name: validName, phone: ph, birth: birth, address: addr,
-                proofUrl: proofUrl, proofUploadedAt: file ? new Date() : null,
-                isCitizen: false, verifStatus: file ? "PENDING" : "NONE",
+                proofUrl: proofUrl, proofUploadedAt: proofUrl ? new Date() : null,
+                isCitizen: false, verifStatus: proofUrl ? "PENDING" : "NONE",
                 isAdmin: false, 
                 joinedAt: new Date(),
                 agreedAt: new Date() // 약관 동의 시점 저장
@@ -513,7 +509,7 @@ function initAuthStateListener() {
                 hasProof: !!proofUrl
             });
 
-            alert("회원가입 완료! 로그인해주세요.");
+            alert(file && !proofUrl ? "회원가입은 완료되었지만 사진 첨부에 실패했습니다. 로그인 후 하단 설정에서 다시 인증을 신청해 주세요." : "회원가입 완료! 로그인해주세요.");
             closeModal('modalJoin');
 
             // 입력창 초기화
@@ -630,6 +626,9 @@ function openUserSettings() {
     console.log('openUserSettings 호출됨');
     
     if (!currentUser) return;
+    if (saveUserSettingsInfo.pending) { openModal('modalUserSettings'); return; }
+    const proofStatus = document.getElementById('citizenProofUploadStatus');
+    if (proofStatus) proofStatus.textContent = '사진을 선택한 뒤 변경사항 저장을 눌러 주세요.';
     
     // 내 정보 자동 입력
     document.getElementById('userSettingsName').value = currentUser.name || '';
@@ -656,72 +655,76 @@ function openUserSettings() {
     openModal('modalUserSettings');
 }
 
-async function saveUserSettingsInfo() {
-    if (!currentUser) {
-        alert("로그인 정보가 없습니다. 다시 로그인해주세요.");
-        return;
-    }
-    
-    const newPw = document.getElementById('userSettingsNewPw').value.trim();
-    const newAddr = document.getElementById('userSettingsAddr').value.trim();
-    const file = document.getElementById('userSettingsProof').files[0];
-    
+function citizenProofError(error) {
+    if (error && error.code === 'auth/requires-recent-login') return '보안을 위해 다시 로그인한 뒤 변경해 주세요.';
+    if (error && /storage\/(unauthorized|unauthenticated)/.test(error.code || '')) return '사진 저장 권한을 확인할 수 없습니다. 다시 로그인한 뒤 시도해 주세요. 계속되면 관리자에게 문의해 주세요.';
+    return error && error.message || '사진을 첨부하지 못했습니다. 다시 시도해 주세요.';
+}
+function showCitizenProofSelection(input) {
+    const status = document.getElementById('citizenProofUploadStatus');
+    if (status) status.textContent = input.files[0] ? input.files[0].name + ' 선택됨 · 변경사항 저장을 눌러 인증을 신청하세요.' : '선택된 사진이 없습니다.';
+}
+async function uploadCitizenProof(file, uid) {
+    if (!file || !file.size || file.size > 20 * 1024 * 1024) throw new Error('20MB 이하의 사진을 선택해 주세요.');
+    if (!/^image\//i.test(file.type) && !/\.(jpe?g|png|webp|gif|heic|heif)$/i.test(file.name || '')) throw new Error('사진 파일(JPG·PNG 등)을 선택해 주세요.');
+    let timer, blob;
     try {
-        // 비밀번호 변경
-        if (newPw) {
-            if (newPw.length < 6) throw new Error("비밀번호는 6자 이상이어야 합니다.");
-            await auth.currentUser.updatePassword(newPw);
-            alert("비밀번호가 변경되었습니다.");
-        }
-        
-        let updateData = { address: newAddr };
-        
-        // 김해시민 인증 파일 업로드
-        if (file) {
-            const oldProofUrl = currentUser.proofUrl || "";
-            const compressedFile = await compressImage(file, 600, 0.5);
-            const path = `proofs/${currentUser.uid}_proof_${new Date().getTime()}.jpg`;
-            const ref = storage.ref().child(path);
-            
-            await ref.put(compressedFile);
-            const url = await ref.getDownloadURL();
-            
-            updateData.proofUrl = url;
-            updateData.proofUploadedAt = new Date();
-            updateData.proofDeletedAt = null;
-            updateData.verifStatus = "PENDING";
-            updateData.isCitizen = false; // 재심사 대기
-            updateData.citizenNoticeShown = false;
-
-            if (oldProofUrl && oldProofUrl !== url) {
-                await deleteProofByUrl(oldProofUrl);
-            }
-            
-            alert("김해시민 인증 서류가 업로드되었습니다. 관리자 승인을 기다려주세요.");
-        }
-        
-        // Firestore 업데이트
-        await db.collection("users").doc(currentUser.uid).update(updateData);
-        
-        // 현재 사용자 정보 갱신
-        currentUser.address = newAddr;
-        if (file) {
-            currentUser.proofUrl = updateData.proofUrl;
-            currentUser.proofUploadedAt = updateData.proofUploadedAt;
-            currentUser.proofDeletedAt = null;
-            currentUser.verifStatus = "PENDING";
-            currentUser.isCitizen = false;
-        }
-        
-        alert("정보가 저장되었습니다.");
-        
-        // 입력 필드 초기화
+        blob = await Promise.race([compressImage(file, 1200, 0.8), new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('사진 변환 시간 초과')), 20000); })]);
+    } catch (_) {
+        throw new Error('이 사진을 변환하지 못했습니다. JPG 또는 PNG로 저장한 사진을 선택해 주세요. 아이폰 HEIC 사진도 JPG로 변환해 주세요.');
+    } finally { clearTimeout(timer); }
+    const ref = storage.ref().child('proofs/' + uid + '_proof_' + Date.now() + '.jpg');
+    await ref.put(blob, {contentType: 'image/jpeg'});
+    return ref.getDownloadURL();
+}
+async function persistCitizenProfile(newPw, newAddr, file, progress) {
+    const user = currentUser;
+    const uid = user && user.uid;
+    const sameUser = () => uid && currentUser && currentUser.uid === uid && auth.currentUser && auth.currentUser.uid === uid;
+    if (!sameUser()) throw new Error('로그인 정보가 없습니다. 다시 로그인해 주세요.');
+    if (newPw && newPw.length < 6) throw new Error('비밀번호는 6자 이상이어야 합니다.');
+    const oldProofUrl = user.proofUrl || '';
+    const updateData = {address: newAddr};
+    if (file) {
+        progress('사진을 업로드하고 있습니다. 잠시 기다려 주세요.');
+        const url = await uploadCitizenProof(file, uid);
+        Object.assign(updateData, {proofUrl: url, proofUploadedAt: new Date(), proofDeletedAt: null, verifStatus: 'PENDING', isCitizen: false, citizenNoticeShown: false});
+    }
+    if (!sameUser()) throw new Error('로그인이 변경되었습니다. 다시 로그인해 주세요.');
+    if (newPw) await auth.currentUser.updatePassword(newPw);
+    if (!sameUser()) throw new Error('로그인이 변경되었습니다. 다시 로그인해 주세요.');
+    progress('신청 정보를 저장하고 있습니다.');
+    await db.collection('users').doc(uid).update(updateData);
+    if (currentUser && currentUser.uid === uid) Object.assign(currentUser, updateData);
+    // Do not delete the previous proof or report success before the profile write succeeds.
+    if (file) {
+        if (oldProofUrl && oldProofUrl !== updateData.proofUrl) await deleteProofByUrl(oldProofUrl);
+        await appendCitizenAudit(uid, 'REAPPLY', {name: user.name || '', phone: user.phone || '', address: newAddr, hasProof: true});
+    }
+    if (typeof syncBookingAccessUI === 'function') syncBookingAccessUI();
+}
+async function saveUserSettingsInfo() {
+    if (saveUserSettingsInfo.pending) return;
+    if (!currentUser) return alert('다시 로그인해 주세요.');
+    const btn = document.getElementById('btnSaveUserSettings');
+    const status = document.getElementById('citizenProofUploadStatus');
+    const input = document.getElementById('userSettingsProof');
+    const file = input.files[0];
+    if (file && !confirm('주소와 이름 외 주민등록번호 등 민감정보는 가린 사진을 첨부해 주세요. 인증 신청을 진행할까요?')) return;
+    saveUserSettingsInfo.pending = true;
+    if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
+    try {
+        await persistCitizenProfile(document.getElementById('userSettingsNewPw').value.trim(), document.getElementById('userSettingsAddr').value.trim(), file, text => { if (status) status.textContent = text; });
         document.getElementById('userSettingsNewPw').value = '';
-        document.getElementById('userSettingsProof').value = '';
-        
+        input.value = '';
+        if (status) status.textContent = file ? '사진 첨부 및 인증 신청 완료 · 관리자 심사 중입니다.' : '정보가 저장되었습니다.';
+        alert(file ? '사진 첨부 및 인증 신청이 완료되었습니다. 관리자 승인을 기다려 주세요.' : '정보가 저장되었습니다.');
     } catch (error) {
-        console.error("저장 오류:", error);
-        alert("저장 중 오류가 발생했습니다: " + error.message);
+        if (status) status.textContent = '저장하지 못했습니다. ' + citizenProofError(error);
+        alert(citizenProofError(error));
+    } finally {
+        saveUserSettingsInfo.pending = false;
+        if (btn) { btn.disabled = false; btn.textContent = '변경사항 저장'; }
     }
 }
 
@@ -737,80 +740,16 @@ async function saveUserSettingsInfo() {
 
 
     async function saveMyInfo() {
-        if(!currentUser) {
-            alert("로그인 정보가 없습니다. 다시 로그인해주세요.");
-            return;
-        }
-
         const btn = document.getElementById('btnSaveInfo');
-        btn.innerText = "저장중...";
-        btn.disabled = true;
-
-        const newPw = document.getElementById('myNewPw').value.trim();
-        const newAddr = document.getElementById('myAddr').value.trim();
+        if (btn.disabled) return;
         const file = document.getElementById('myProof').files[0];
-
+        if (file && !confirm('주민등록번호 등 민감정보를 가린 사진인가요? 인증을 신청할까요?')) return;
+        btn.disabled = true; btn.innerText = '저장중...';
         try {
-            if(newPw) {
-                if(newPw.length < 6) throw new Error("비밀번호는 6자 이상이어야 합니다.");
-                await auth.currentUser.updatePassword(newPw);
-                alert("비밀번호가 변경되었습니다.");
-            }
-
-            let updateData = { address: newAddr };
-
-            if(file) {
-                const oldProofUrl = currentUser.proofUrl || "";
-                const compressedFile = await compressImage(file, 600, 0.5);
-                const path = `proofs/${currentUser.uid}_proof.jpg`;
-                const ref = storage.ref().child(path);
-
-                await ref.put(compressedFile);
-                const url = await ref.getDownloadURL();
-
-                updateData.proofUrl = url;
-                updateData.proofUploadedAt = new Date();
-                updateData.proofDeletedAt = null;
-                updateData.verifStatus = "PENDING"; 
-                updateData.isCitizen = false;
-                updateData.citizenNoticeShown = false;
-
-                if (oldProofUrl && oldProofUrl !== url) {
-                    await deleteProofByUrl(oldProofUrl);
-                }
-
-                await appendCitizenAudit(currentUser.uid, 'REAPPLY', {
-                    name: currentUser.name || '',
-                    phone: currentUser.phone || '',
-                    address: newAddr,
-                    hasProof: true
-                });
-            }
-
-            await db.collection("users").doc(currentUser.uid).update(updateData);
-
-            currentUser.address = newAddr;
-            if(updateData.proofUrl) {
-                currentUser.proofUrl = updateData.proofUrl;
-                currentUser.proofUploadedAt = updateData.proofUploadedAt;
-                currentUser.proofDeletedAt = null;
-                currentUser.verifStatus = "PENDING";
-                currentUser.isCitizen = false;
-            }
-
-            alert("정보가 수정되었습니다.");
+            await persistCitizenProfile(document.getElementById('myNewPw').value.trim(), document.getElementById('myAddr').value.trim(), file, () => {});
+            alert(file ? '사진 첨부 및 인증 신청이 완료되었습니다.' : '정보가 수정되었습니다.');
+            document.getElementById('myProof').value = '';
             closeModal('modalMyInfo');
-
-        } catch(e) {
-            console.error(e);
-            alert("수정 실패: " + e.message);
-            if(e.code === 'auth/requires-recent-login') {
-                alert("보안을 위해 다시 로그인한 후 시도해주세요.");
-                doLogout();
-            }
-        } finally {
-            btn.innerText = "저장하기";
-            btn.disabled = false;
-        }
+        } catch (error) { alert(citizenProofError(error)); }
+        finally { btn.disabled = false; btn.innerText = '저장하기'; }
     }
-

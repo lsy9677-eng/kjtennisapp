@@ -5392,3 +5392,10 @@ body.dark-mode #appInstallBanner{background:#192941;color:#d8e7ff;border-color:#
 @media(max-width:400px){#appInstallBanner{gap:6px;padding:6px 8px;}.install-banner-copy strong{font-size:11px;}.install-banner-copy>span{display:none;}.install-banner-primary{padding:8px;font-size:10px;}}
 
 #appInstallAdminSettings[hidden]{display:none!important;}.app-install-admin-entry{margin:0 0 14px;}body #modalAppInstall .modal-close{border:0;background:var(--court-soft,#f0f4fa);color:var(--court-muted,#64748b);border-radius:8px;width:34px;height:34px;min-height:34px;padding:0;font-size:23px;line-height:1;right:20px;top:20px;}#appInstallBanner button:focus-visible,.install-guide button:focus-visible,.install-guide a:focus-visible{outline:2px solid #709cf7;outline-offset:3px;}
+
+/* Native proof picker stays reachable on desktop and touch screens. */
+body #modalUserSettings input[type=file]{display:block;max-width:100%;min-height:48px;height:auto;font-size:16px;}
+body #modalUserSettings input[type=file]::file-selector-button{padding:10px;margin-right:8px;border:1px solid var(--court-line);border-radius:7px;background:var(--court-soft);color:var(--court-ink);cursor:pointer;}
+#citizenProofUploadStatus{overflow-wrap:anywhere;font-size:13px;line-height:1.6;}
+#btnUserSettingsLogout{margin-bottom:12px;color:#b42332!important;min-height:44px!important;}
+#btnSaveUserSettings:disabled{opacity:.65;cursor:wait;}

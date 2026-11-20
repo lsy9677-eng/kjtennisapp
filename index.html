@@ -16,7 +16,7 @@
 <meta content="yes" name="apple-mobile-web-app-capable"/>
 <meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"/>
 <meta content="#14233d" name="theme-color"/>
-<link href="./css/app.bundle.css?v=20261029-calendar-nav-v1" rel="stylesheet"/>
+<link href="./css/app.bundle.css?v=20261120-citizen-proof-v1" rel="stylesheet"/>
 <script src="./js/sdk-loader.js"></script>
 
 <style id="mobile-booking-bar-draggable-style">
@@ -826,7 +826,7 @@
 <input accept=".json" id="fileRestore" onchange="restoreData(this)" style="display:none;" type="file"/>
 </div>
 </div>
-<button class="btn-full bg-blue" id="btnSaveSet" onclick="saveSet()">저장하기</button>
+<button class="btn-full bg-blue" id="btnSaveSet" onclick="saveSet()">저장하기</button><button type="button" class="btn-full bg-red" id="btnAdminSettingsLogout" onclick="doLogout()">관리자 로그아웃</button>
 </div>
 </div>
 <div class="modal-mask" id="modalGroupDetail">
@@ -989,7 +989,7 @@
 <script src="./js/utils.js?v=20260619-step20"></script>
 <script src="./js/policy-settings.js?v=20260716-policy-v1"></script>
 <script src="./js/reservation-data.js?v=20261110-read-dedupe-v1"></script>
-<script src="./js/auth.js?v=20260619-step20"></script>
+<script src="./js/auth.js?v=20261120-citizen-proof-v1"></script>
 <script src="./js/calendar.js?v=20261110-read-dedupe-v1"></script>
 <script src="./js/reservation-ui.js?v=20261027-design-v1"></script>
 <script src="./js/booking-helpers.js?v=20261027-pricing-ready-v1"></script>
@@ -1428,10 +1428,8 @@ function goTab(t) {
     function compressImage(file, maxWidth, quality) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
-            reader.readAsDataURL(file);
             reader.onload = function(event) {
                 const img = new Image();
-                img.src = event.target.result;
                 img.onload = function() {
                     let width = img.width;
                     let height = img.height;
@@ -1449,8 +1447,11 @@ function goTab(t) {
                     }, 'image/jpeg', quality);
                 };
                 img.onerror = (err) => reject(new Error("이미지 로드 오류"));
+                img.src = event.target.result;
             };
             reader.onerror = (err) => reject(new Error("파일 읽기 오류"));
+            reader.onabort = () => reject(new Error("파일 읽기 취소"));
+            reader.readAsDataURL(file);
         });
     }
 
@@ -3676,12 +3677,12 @@ let scoreChart = null;
 <div><label for="userSettingsPhone">전화번호</label><input id="userSettingsPhone" type="text" readonly/></div>
 </div><label for="userSettingsAddr">주소</label><input id="userSettingsAddr" type="text" autocomplete="street-address"/>
 <details class="settings-detail"><summary>비밀번호 변경</summary><label for="userSettingsNewPw">새 비밀번호</label><input id="userSettingsNewPw" type="password" autocomplete="new-password" placeholder="변경할 때만 입력하세요"/><p>비밀번호는 6자 이상 입력해 주세요.</p></details>
-<details class="settings-detail"><summary>김해시민 인증 재신청</summary><p>인증이 거절되었거나 주소가 변경된 경우 서류를 첨부해 주세요.</p><label for="userSettingsProof">인증 서류</label><input id="userSettingsProof" type="file" accept="image/*"/></details>
-<button type="button" class="account-primary" onclick="saveUserSettingsInfo()">변경사항 저장</button></section>
+<section class="settings-detail citizen-proof-section"><h3>김해시민 인증 사진 첨부·재신청</h3><p id="citizenProofHelp">김해 주소와 이름을 확인할 수 있는 사진을 첨부해 주세요. 주민등록번호 등 민감정보는 가려 주세요. JPG·PNG 권장, 최대 20MB. 사진 선택 후 아래 저장 버튼을 눌러 주세요.</p><label for="userSettingsProof">인증 사진 선택</label><input id="userSettingsProof" type="file" accept="image/*,.heic,.heif" aria-describedby="citizenProofHelp citizenProofUploadStatus" onchange="showCitizenProofSelection(this)"/><p id="citizenProofUploadStatus" role="status" aria-live="polite"></p></section>
+<button type="button" class="account-primary" id="btnSaveUserSettings" onclick="saveUserSettingsInfo()">변경사항 저장</button></section>
 <section class="settings-section" id="appInstallSettings"><h3>홈 화면에서 이용하기</h3><p class="account-description">홈 화면에 아이콘을 추가해 바로 예약하세요.</p><button type="button" class="account-secondary" onclick="requestAppInstall()">홈 화면에 추가</button></section><section class="settings-section"><h3>앱 사용 환경</h3>
 <div class="settings-preference"><div><label for="userNotificationToggle">예약 알림</label><p>내일 이용할 예약을 알려드려요.</p></div><label class="toggle-switch"><input id="userNotificationToggle" type="checkbox" onchange="toggleNotification()"/><span class="slider"></span></label></div>
 <div class="settings-preference"><div><label for="userDarkModeToggle">다크 모드</label><p>어두운 화면으로 전환합니다.</p></div><label class="toggle-switch"><input id="userDarkModeToggle" type="checkbox" onchange="toggleDarkMode()"/><span class="slider"></span></label></div>
-</section><button type="button" class="account-secondary" onclick="closeModal('modalUserSettings')">닫기</button>
+</section><button type="button" id="btnUserSettingsLogout" class="account-secondary" onclick="doLogout()">로그아웃</button><button type="button" class="account-secondary" onclick="closeModal('modalUserSettings')">닫기</button>
 </div></div>
 <!-- ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ -->
 <div aria-label="주요 메뉴" id="mobileBottomNav">
